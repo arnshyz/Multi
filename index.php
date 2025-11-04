@@ -3,6 +3,108 @@
 $FREEPIK_API_KEY  = 'FPSX06967c376cb6d87d9c551ccb33ed4d56'; // GANTI DI SINI
 $FREEPIK_BASE_URL = 'https://api.freepik.com';
 
+// ====== UPLOAD FILE: ?api=upload ======
+if (isset($_GET['api']) && $_GET['api'] === 'upload') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 405,
+            'error'  => 'Gunakan metode POST untuk upload'
+        ]);
+        exit;
+    }
+
+    if (!isset($_FILES['file']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Tidak ada file yang diunggah'
+        ]);
+        exit;
+    }
+
+    $file = $_FILES['file'];
+    if (!empty($file['error'])) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Upload gagal dengan kode error ' . $file['error']
+        ]);
+        exit;
+    }
+
+    $maxSize = 15 * 1024 * 1024; // 15 MB
+    if ($file['size'] > $maxSize) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 413,
+            'error'  => 'Ukuran file maksimal 15MB'
+        ]);
+        exit;
+    }
+
+    $dir = __DIR__ . '/generated';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp'
+    ];
+
+    $mime = null;
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $mime = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+        }
+    }
+
+    if ($mime && isset($allowed[$mime])) {
+        $ext = $allowed[$mime];
+    }
+
+    if (!$ext) {
+        $ext = 'bin';
+    }
+
+    try {
+        $rand = bin2hex(random_bytes(4));
+    } catch (Exception $e) {
+        $rand = substr(md5(mt_rand()), 0, 8);
+    }
+
+    $filename = 'upload_' . date('Ymd_His') . '_' . $rand . '.' . $ext;
+    $dest = $dir . '/' . $filename;
+
+    if (!move_uploaded_file($file['tmp_name'], $dest)) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Gagal menyimpan file upload'
+        ]);
+        exit;
+    }
+
+    $publicPath = 'generated/' . $filename;
+
+    echo json_encode([
+        'ok'     => true,
+        'status' => 200,
+        'path'   => $publicPath,
+        'url'    => $publicPath,
+        'name'   => $file['name']
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // ====== CACHE FILE: ?api=cache (download dari URL lalu simpan ke server) ======
 if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     header('Content-Type: application/json; charset=utf-8');
@@ -198,6 +300,28 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       background: radial-gradient(circle at top, #1f2937 0, #02030a 55%, #000 100%);
       color: var(--text);
     }
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: -40vh -40vw;
+      pointer-events: none;
+      background: radial-gradient(circle at center, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0.6;
+      filter: blur(60px);
+      animation: orbitGlow 28s linear infinite;
+      z-index: 0;
+    }
+    body::after {
+      animation-duration: 36s;
+      animation-direction: reverse;
+      background: radial-gradient(circle at center, rgba(34,197,94,0.18), transparent 55%);
+    }
+    @keyframes orbitGlow {
+      from { transform: rotate(0deg) scale(1.05); }
+      50% { transform: rotate(180deg) scale(1.15); }
+      to { transform: rotate(360deg) scale(1.05); }
+    }
 
     .topbar {
       position: sticky;
@@ -237,12 +361,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      transition: all 0.25s ease;
     }
     .top-tab.active {
       background: linear-gradient(135deg, #6366f1, #22c55e);
       color: #020617;
       border-color: transparent;
       box-shadow: 0 8px 26px rgba(79,70,229,0.55);
+    }
+    .top-tab:not(.active):hover {
+      border-color: rgba(99,102,241,0.6);
+      color: var(--text);
+      box-shadow: 0 8px 26px rgba(79,70,229,0.25);
     }
     .top-tab .dot {
       width: 7px;
@@ -257,6 +387,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       gap: 18px;
       min-height: calc(100vh - 50px);
       padding: 12px 16px 16px;
+      position: relative;
+      z-index: 1;
     }
     @media (max-width: 1100px) {
       .app { grid-template-columns: 1fr; }
@@ -268,13 +400,59 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       border: 1px solid var(--border);
       padding: 14px 16px;
       box-shadow: 0 18px 60px rgba(0, 0, 0, 0.7);
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: -30%;
+      background: conic-gradient(from 90deg, rgba(99,102,241,0.35), transparent 45%, rgba(34,197,94,0.25));
+      filter: blur(60px);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      animation: cardGlow 12s linear infinite;
+      z-index: 0;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.75);
+    }
+    .card:hover::before {
+      opacity: 0.9;
+    }
+    @keyframes cardGlow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .card > * { position: relative; z-index: 1; }
     .card-soft {
       background: var(--card-soft);
       border-radius: 12px;
       border: 1px solid var(--border);
       padding: 12px 14px;
+      position: relative;
+      overflow: hidden;
     }
+    .card-soft::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(14,165,233,0.04));
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      z-index: 0;
+    }
+    .card-soft:hover::before {
+      opacity: 1;
+    }
+    .card-soft > * { position: relative; z-index: 1; }
     .header {
       display: flex;
       align-items: center;
@@ -350,7 +528,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     button {
       border-radius: 999px;
       border: none;
-      background: linear-gradient(135deg, #6366f1, #a855f7);
+      background: linear-gradient(135deg, #6366f1, #22d3ee, #a855f7);
+      background-size: 200% 200%;
       color: white;
       font-size: 13px;
       font-weight: 500;
@@ -363,6 +542,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, filter 0.12s ease-out;
       box-shadow: 0 12px 30px rgba(79, 70, 229, 0.65);
       white-space: nowrap;
+      animation: gradientShift 6s ease infinite;
     }
     button.secondary {
       background: transparent;
@@ -370,6 +550,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       border: 1px solid var(--border);
       box-shadow: none;
       padding-inline: 12px;
+      animation: none;
     }
     button.small {
       padding: 4px 10px;
@@ -386,6 +567,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       cursor: default;
       box-shadow: none;
       transform: none;
+      animation: none;
     }
     .btn-group {
       display: flex;
@@ -425,27 +607,54 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       padding: 6px 10px;
       cursor: pointer;
       text-align: center;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
     }
     .feature-tab.active {
       background: var(--accent-soft);
       border-color: var(--accent);
       color: var(--text);
+      box-shadow: 0 10px 30px rgba(79,70,229,0.35);
+    }
+    .feature-tab::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.2), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .feature-tab:hover::after {
+      opacity: 1;
     }
 
     .status-bar {
       margin-top: 10px;
       font-size: 12px;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
+      flex-wrap: wrap;
+      align-items: flex-start;
       gap: 10px;
     }
-    .status-text { color: var(--muted); }
+    .status-text {
+      color: var(--muted);
+      flex: 1 1 180px;
+      transition: opacity 0.3s ease, color 0.3s ease;
+    }
+    .status-text.flash { animation: pulseStatus 0.6s ease; }
+    @keyframes pulseStatus {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
     .status-pill {
       padding: 2px 8px;
       border-radius: 999px;
       font-size: 11px;
       border: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.65);
+      box-shadow: inset 0 0 0 1px rgba(148,163,184,0.06);
     }
     .status-pill.ok {
       border-color: rgba(74, 222, 128, 0.5);
@@ -454,6 +663,52 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     .status-pill.err {
       border-color: rgba(248, 113, 113, 0.7);
       color: var(--danger);
+    }
+    .status-progress {
+      flex: 1 1 220px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-progress.active { display: flex; }
+    .status-progress-label {
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status-progress-label span {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .progress-track {
+      flex: 1;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-fill {
+      position: absolute;
+      inset: 0;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(120deg, rgba(99,102,241,0.9), rgba(45,212,191,0.9));
+      box-shadow: 0 0 14px rgba(79,70,229,0.45);
+    }
+    .progress-fill::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+      animation: progressShine 1.8s linear infinite;
+    }
+    @keyframes progressShine {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
     }
 
     .main-layout {
@@ -466,6 +721,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
+    }
+    .preview-progress {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .preview-progress.active { display: flex; }
+    .preview-progress .progress-track {
+      height: 6px;
     }
     .preview-item {
       background: #020617;
@@ -581,12 +848,267 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       margin:6px 0 6px
     }
 
+    .upload-area {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .upload-dropzone {
+      border-radius: 12px;
+      border: 1px dashed rgba(99,102,241,0.35);
+      padding: 14px;
+      background: rgba(2, 6, 23, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-dropzone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .upload-dropzone:hover {
+      border-color: rgba(99,102,241,0.6);
+      background: rgba(15,23,42,0.85);
+      transform: translateY(-1px);
+    }
+    .upload-dropzone:hover::after,
+    .upload-dropzone.dragover::after,
+    .upload-dropzone.has-file::after {
+      opacity: 1;
+    }
+    .upload-dropzone.dragover {
+      border-color: rgba(34,197,94,0.6);
+    }
+    .upload-dropzone.has-file {
+      border-color: rgba(34,197,94,0.55);
+      background: rgba(15,23,42,0.9);
+    }
+    .upload-dropzone-content {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .upload-dropzone strong { color: var(--text); font-size: 12px; }
+    .upload-dropzone-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .upload-preview {
+      width: 64px;
+      height: 64px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      background: #020617;
+    }
+    .upload-status {
+      font-size: 11px;
+      color: var(--muted);
+      display: none;
+    }
+    .upload-status.ok { color: var(--success); display: block; }
+    .upload-status.err { color: var(--danger); display: block; }
+    .upload-status.progress { color: #fbbf24; display: block; }
+
+    .gemini-mode-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .gemini-mode-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .gemini-mode-btn {
+      flex: 1 1 160px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.85);
+      color: var(--muted);
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .gemini-mode-btn strong {
+      display: block;
+      color: var(--text);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .gemini-mode-btn span {
+      display: block;
+      opacity: 0.78;
+      line-height: 1.4;
+    }
+    .gemini-mode-btn::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(99,102,241,0.16), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .gemini-mode-btn:hover::after { opacity: 1; }
+    .gemini-mode-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--text);
+      box-shadow: 0 14px 34px rgba(99,102,241,0.28);
+    }
+    .gemini-mode-desc {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .gemini-reference-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .gemini-dropzone {
+      border-radius: 12px;
+      border: 1px dashed rgba(99,102,241,0.35);
+      padding: 12px;
+      background: rgba(2, 6, 23, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .gemini-dropzone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .gemini-dropzone:hover,
+    .gemini-dropzone.dragover {
+      border-color: rgba(99,102,241,0.6);
+      background: rgba(15,23,42,0.85);
+      transform: translateY(-1px);
+    }
+    .gemini-dropzone:hover::after,
+    .gemini-dropzone.dragover::after,
+    .gemini-dropzone.has-file::after {
+      opacity: 1;
+    }
+    .gemini-dropzone.has-file {
+      border-color: rgba(34,197,94,0.55);
+    }
+    .gemini-dropzone-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .gemini-dropzone-info strong {
+      color: var(--text);
+      font-size: 12px;
+    }
+    .gemini-dropzone-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .gemini-ref-helper {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .gemini-ref-add input {
+      height: 32px;
+    }
+    .gemini-ref-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .gemini-ref-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #020617;
+      padding: 6px 8px;
+    }
+    .gemini-ref-thumb {
+      width: 52px;
+      height: 52px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .gemini-ref-meta {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 0;
+    }
+    .gemini-ref-meta strong {
+      color: var(--text);
+      font-size: 11px;
+    }
+    .gemini-ref-meta span {
+      word-break: break-all;
+    }
+
+    .job-progress {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .job-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .job-progress .progress-track {
+      height: 6px;
+    }
+
     .film-app {
       display: grid;
       grid-template-columns: minmax(0, 2fr) 320px;
       gap: 18px;
       min-height: calc(100vh - 50px);
       padding: 12px 16px 16px;
+      position: relative;
+      z-index: 1;
     }
     @media (max-width: 1100px) {
       .film-app { grid-template-columns: 1fr; }
@@ -734,6 +1256,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       gap: 18px;
       min-height: calc(100vh - 50px);
       padding: 12px 16px 16px;
+      position: relative;
+      z-index: 1;
     }
     @media (max-width: 1100px) {
       .ugc-app { grid-template-columns: 1fr; }
@@ -943,9 +1467,66 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         <div>
           <div id="fieldsTitle" class="form-section-title">Video Generator</div>
 
+          <div id="geminiModeSection" class="gemini-mode-section hidden">
+            <div class="form-section-title">Gemini Flash Modes</div>
+            <div class="gemini-mode-toggle">
+              <button type="button" class="gemini-mode-btn active" data-gemini-mode="text">
+                <strong>Mode 1 · Text-to-Image</strong>
+                <span>Kirim deskripsi tanpa gambar referensi.</span>
+              </button>
+              <button type="button" class="gemini-mode-btn" data-gemini-mode="single">
+                <strong>Mode 2 · Single Image-to-Image</strong>
+                <span>Unggah 1 gambar + caption untuk editing.</span>
+              </button>
+              <button type="button" class="gemini-mode-btn" data-gemini-mode="multi">
+                <strong>⭐ Mode 3 · Multi-Image Reference</strong>
+                <span>Kombinasikan 2-3 gambar referensi + caption.</span>
+              </button>
+            </div>
+            <div id="geminiModeDescription" class="gemini-mode-desc">
+              Mode 1: Text-to-Image — Masukkan prompt deskriptif tanpa gambar.
+            </div>
+          </div>
+
+          <div id="geminiReferenceSection" class="gemini-reference-section hidden">
+            <div class="form-section-title">Reference Images</div>
+            <div class="gemini-dropzone" id="geminiDropzone">
+              <input id="geminiFileInput" type="file" accept="image/*" multiple style="display:none">
+              <div class="gemini-dropzone-info">
+                <strong>Upload referensi</strong>
+                <span class="gemini-ref-helper" id="geminiRefHelper">Mode 2 membutuhkan 1 gambar referensi.</span>
+                <span style="font-size:10px; opacity:0.8;">Drag &amp; drop, klik, atau paste (Ctrl+V) saat mode aktif.</span>
+                <span style="font-size:11px; color:var(--text);">Dipilih: <b id="geminiDropCounter">0/1</b></span>
+              </div>
+              <div class="gemini-dropzone-actions">
+                <button type="button" class="small secondary" id="geminiFileButton">Pilih file</button>
+              </div>
+            </div>
+            <div class="gemini-ref-add field-row">
+              <input id="geminiRefUrl" type="text" placeholder="https://...jpg">
+              <button type="button" class="small" id="geminiRefAddBtn">Tambah URL</button>
+            </div>
+            <div class="gemini-ref-list" id="geminiRefList"></div>
+          </div>
+
           <div id="rowImageUrl">
             <label for="imageUrl">Image URL</label>
             <input id="imageUrl" type="text" placeholder="https://...jpg / .png">
+            <div class="upload-area" id="imageUploadArea">
+              <input id="imageUploadInput" type="file" accept="image/*" style="display:none">
+              <div class="upload-dropzone" id="imageUploadDropzone">
+                <div class="upload-dropzone-content">
+                  <strong>Upload langsung ke server</strong>
+                  <span>Drag & drop, klik, atau paste gambar. URL akan terisi otomatis.</span>
+                  <span style="opacity:0.8">Format JPG, PNG, WEBP hingga 15MB.</span>
+                </div>
+                <div class="upload-dropzone-actions">
+                  <img id="imageUploadPreview" class="upload-preview" style="display:none" alt="Preview upload">
+                  <button type="button" class="small secondary" id="imageUploadButton">Pilih file</button>
+                </div>
+              </div>
+              <div class="upload-status" id="imageUploadStatus"></div>
+            </div>
           </div>
 
           <div id="rowVideoAudio" class="field-row hidden" style="margin-top:4px">
@@ -986,6 +1567,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       <div class="status-bar">
         <div class="status-text" id="statusText">Siap.</div>
         <div class="status-pill" id="statusPill">IDLE</div>
+        <div class="status-progress" id="statusProgressWrapper">
+          <div class="status-progress-label">Progress <span id="statusPercent">0%</span></div>
+          <div class="progress-track">
+            <div class="progress-fill" id="statusProgressFill"></div>
+          </div>
+        </div>
       </div>
     </form>
 
@@ -1005,6 +1592,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       <div id="previewContainer" style="display:none">
         <div class="small-label">Job aktif</div>
         <div id="previewJobMeta" class="muted" style="font-size:11px;margin-bottom:6px"></div>
+        <div class="preview-progress" id="previewProgress">
+          <div class="status-progress-label">Progress <span id="previewProgressPercent">0%</span></div>
+          <div class="progress-track">
+            <div class="progress-fill" id="previewProgressFill"></div>
+          </div>
+        </div>
         <div class="preview-grid" id="previewGrid"></div>
       </div>
     </div>
@@ -1197,6 +1790,31 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 </div>
 
 <script>
+  // ===== GEMINI MODES =====
+  const GEMINI_MODE_META = {
+    text: {
+      title: 'Mode 1: Text-to-Image',
+      desc: 'Masukkan prompt deskriptif tanpa gambar referensi.',
+      helper: 'Mode ini tidak memerlukan gambar referensi.',
+      min: 0,
+      max: 0
+    },
+    single: {
+      title: 'Mode 2: Single Image-to-Image',
+      desc: 'Tambahkan 1 gambar referensi untuk diedit mengikuti caption.',
+      helper: 'Unggah atau tambahkan tepat 1 URL gambar referensi.',
+      min: 1,
+      max: 1
+    },
+    multi: {
+      title: 'Mode 3: Multi-Image Reference',
+      desc: 'Gunakan 2-3 gambar referensi agar gaya/objeknya digabungkan.',
+      helper: 'Unggah hingga 3 gambar referensi sekaligus (minimal 2).',
+      min: 2,
+      max: 3
+    }
+  };
+
   // ===== MODEL CONFIG =====
   const MODEL_CONFIG = {
     gemini: {
@@ -1205,7 +1823,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'image',
       path: '/v1/ai/gemini-2-5-flash-image-preview',
       statusPath: taskId => `/v1/ai/gemini-2-5-flash-image-preview/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, num_images: f.numImages || 1 })
+      buildBody: f => {
+        const body = { prompt: f.prompt, num_images: f.numImages || 1 };
+        if (f.aspectRatio) body.aspect_ratio = f.aspectRatio;
+        if (Array.isArray(f.referenceImages) && f.referenceImages.length) {
+          body.reference_images = f.referenceImages;
+        }
+        return body;
+      }
     },
     imagen3: {
       id: 'imagen3',
@@ -1390,11 +2015,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   let jobs = loadJobs();
   let activeJobId = null;
   let pollingTimers = {};
+  let progressTimers = {};
+  let statusProgressHideTimeout = null;
 
   function loadJobs() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr.map(job => {
+        if (job && typeof job === 'object') {
+          if (typeof job.progress !== 'number') {
+            job.progress = finalStatus(job.status) ? 100 : 0;
+          }
+        }
+        return job;
+      });
     } catch {
       return [];
     }
@@ -1421,10 +2058,143 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     return s === 'COMPLETED' || s === 'FAILED' || s === 'ERROR';
   }
 
+  function getJobProgress(job) {
+    if (!job) return 0;
+    if (typeof job.progress === 'number' && !Number.isNaN(job.progress)) {
+      return Math.max(0, Math.min(100, Math.round(job.progress)));
+    }
+    return finalStatus(job.status) ? 100 : 0;
+  }
+
+  function hideStatusProgress() {
+    if (statusProgressWrapper) {
+      statusProgressWrapper.classList.remove('active');
+    }
+    if (statusProgressFill) {
+      statusProgressFill.style.width = '0%';
+    }
+    if (statusPercent) {
+      statusPercent.textContent = '0%';
+    }
+    if (previewProgress) {
+      previewProgress.classList.remove('active');
+    }
+    if (previewProgressFill) {
+      previewProgressFill.style.width = '0%';
+    }
+    if (previewProgressPercent) {
+      previewProgressPercent.textContent = '0%';
+    }
+  }
+
+  function syncStatusProgress(job) {
+    if (!statusProgressWrapper || !statusProgressFill || !statusPercent) return;
+    clearTimeout(statusProgressHideTimeout);
+
+    if (!job) {
+      hideStatusProgress();
+      return;
+    }
+
+    const percent = getJobProgress(job);
+    statusProgressWrapper.classList.add('active');
+    statusProgressFill.style.width = percent + '%';
+    statusPercent.textContent = percent + '%';
+
+    if (previewProgress && previewProgressFill && previewProgressPercent) {
+      previewProgress.classList.add('active');
+      previewProgressFill.style.width = percent + '%';
+      previewProgressPercent.textContent = percent + '%';
+    }
+
+    if (finalStatus(job.status) && percent >= 100) {
+      statusProgressHideTimeout = setTimeout(() => {
+        hideStatusProgress();
+      }, 1400);
+    }
+  }
+
+  function stopProgressTimer(jobId) {
+    if (progressTimers[jobId]) {
+      clearInterval(progressTimers[jobId]);
+      delete progressTimers[jobId];
+    }
+  }
+
+  function startJobProgress(job) {
+    if (!job) return;
+    if (typeof job.progress !== 'number' || Number.isNaN(job.progress)) {
+      job.progress = finalStatus(job.status) ? 100 : 8;
+    } else if (job.progress < 5 && !finalStatus(job.status)) {
+      job.progress = 8;
+    }
+
+    stopProgressTimer(job.id);
+    if (finalStatus(job.status)) {
+      job.progress = 100;
+      updateProgressUI(job);
+      return;
+    }
+
+    progressTimers[job.id] = setInterval(() => {
+      const current = jobs.find(j => j.id === job.id);
+      if (!current) {
+        stopProgressTimer(job.id);
+        return;
+      }
+      if (finalStatus(current.status)) {
+        current.progress = 100;
+        stopProgressTimer(job.id);
+        updateProgressUI(current);
+        saveJobs();
+        return;
+      }
+      const target = 92;
+      const next = Math.min(target, (current.progress || 0) + (Math.random() * 7 + 3));
+      current.progress = next;
+      updateProgressUI(current);
+      saveJobs();
+    }, 1600);
+
+    updateProgressUI(job);
+  }
+
+  function finishJobProgress(job) {
+    if (!job) return;
+    job.progress = 100;
+    stopProgressTimer(job.id);
+    updateProgressUI(job);
+    saveJobs();
+  }
+
+  function updateProgressUI(job) {
+    if (job && activeJobId === job.id) {
+      syncStatusProgress(job);
+    }
+    renderJobs();
+  }
+
   const modelSelect = document.getElementById('modelSelect');
   const modelHint = document.getElementById('modelHint');
   const promptInput = document.getElementById('prompt');
   const imageUrlInput = document.getElementById('imageUrl');
+  const imageUploadInput = document.getElementById('imageUploadInput');
+  const imageUploadButton = document.getElementById('imageUploadButton');
+  const imageUploadDropzone = document.getElementById('imageUploadDropzone');
+  const imageUploadStatus = document.getElementById('imageUploadStatus');
+  const imageUploadPreview = document.getElementById('imageUploadPreview');
+  const geminiModeSection = document.getElementById('geminiModeSection');
+  const geminiModeButtons = document.querySelectorAll('[data-gemini-mode]');
+  const geminiModeDescription = document.getElementById('geminiModeDescription');
+  const geminiReferenceSection = document.getElementById('geminiReferenceSection');
+  const geminiDropzone = document.getElementById('geminiDropzone');
+  const geminiFileInput = document.getElementById('geminiFileInput');
+  const geminiFileButton = document.getElementById('geminiFileButton');
+  const geminiRefHelper = document.getElementById('geminiRefHelper');
+  const geminiDropCounter = document.getElementById('geminiDropCounter');
+  const geminiRefUrl = document.getElementById('geminiRefUrl');
+  const geminiRefAddBtn = document.getElementById('geminiRefAddBtn');
+  const geminiRefList = document.getElementById('geminiRefList');
   const videoUrlInput = document.getElementById('videoUrl');
   const audioUrlInput = document.getElementById('audioUrl');
   const numImagesInput = document.getElementById('numImages');
@@ -1433,10 +2203,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   const clearPromptBtn = document.getElementById('clearPromptBtn');
   const statusText = document.getElementById('statusText');
   const statusPill = document.getElementById('statusPill');
+  const statusProgressWrapper = document.getElementById('statusProgressWrapper');
+  const statusProgressFill = document.getElementById('statusProgressFill');
+  const statusPercent = document.getElementById('statusPercent');
   const previewEmpty = document.getElementById('previewEmpty');
   const previewContainer = document.getElementById('previewContainer');
   const previewJobMeta = document.getElementById('previewJobMeta');
   const previewGrid = document.getElementById('previewGrid');
+  const previewProgress = document.getElementById('previewProgress');
+  const previewProgressFill = document.getElementById('previewProgressFill');
+  const previewProgressPercent = document.getElementById('previewProgressPercent');
   const clearPreviewBtn = document.getElementById('clearPreviewBtn');
   const queueList = document.getElementById('queueList');
   const queueEmpty = document.getElementById('queueEmpty');
@@ -1482,6 +2258,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
   function setStatus(text, mode = 'idle') {
     statusText.textContent = text;
+    statusText.classList.remove('flash');
+    void statusText.offsetWidth;
+    statusText.classList.add('flash');
     statusPill.classList.remove('ok', 'err');
     if (mode === 'ok') {
       statusPill.textContent = 'OK';
@@ -1494,8 +2273,165 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
   }
 
+  let geminiMode = 'text';
+  let geminiReferences = [];
+
+  function getGeminiMeta(mode = geminiMode) {
+    return GEMINI_MODE_META[mode] || GEMINI_MODE_META.text;
+  }
+
+  function getGeminiLimit(mode = geminiMode) {
+    const meta = getGeminiMeta(mode);
+    return meta && typeof meta.max === 'number' ? meta.max : 0;
+  }
+
+  function resetGeminiState(resetMode = true) {
+    if (resetMode) geminiMode = 'text';
+    geminiReferences = [];
+    if (geminiRefUrl) geminiRefUrl.value = '';
+  }
+
+  function renderGeminiRefs(isGemini = (modelSelect && modelSelect.value === 'gemini')) {
+    if (!geminiRefList) return;
+    const meta = getGeminiMeta();
+    if (geminiDropCounter) {
+      const current = isGemini ? geminiReferences.length : 0;
+      const total = meta.max || 0;
+      geminiDropCounter.textContent = `${current}/${total}`;
+    }
+    if (geminiRefHelper) {
+      if (!isGemini) {
+        geminiRefHelper.textContent = 'Aktifkan Gemini Flash untuk menambah referensi.';
+      } else if (meta.max > 0) {
+        geminiRefHelper.textContent = `${meta.helper} (${geminiReferences.length}/${meta.max}).`;
+      } else {
+        geminiRefHelper.textContent = meta.helper;
+      }
+    }
+
+    geminiRefList.innerHTML = '';
+    if (!isGemini) {
+      if (geminiDropzone) geminiDropzone.classList.remove('has-file');
+      return;
+    }
+
+    if (geminiMode === 'text') {
+      const info = document.createElement('div');
+      info.className = 'muted';
+      info.style.fontSize = '11px';
+      info.textContent = 'Mode text-only tidak menggunakan referensi.';
+      geminiRefList.appendChild(info);
+      if (geminiDropzone) geminiDropzone.classList.remove('has-file');
+      return;
+    }
+
+    if (!geminiReferences.length) {
+      const empty = document.createElement('div');
+      empty.className = 'muted';
+      empty.style.fontSize = '11px';
+      empty.textContent = 'Belum ada referensi. Upload gambar atau tambahkan URL di bawah.';
+      geminiRefList.appendChild(empty);
+      if (geminiDropzone) geminiDropzone.classList.remove('has-file');
+      return;
+    }
+
+    geminiReferences.forEach((ref, idx) => {
+      const item = document.createElement('div');
+      item.className = 'gemini-ref-item';
+
+      const thumb = document.createElement('img');
+      thumb.className = 'gemini-ref-thumb';
+      thumb.src = ref.url;
+      thumb.alt = ref.name || ('Referensi ' + (idx + 1));
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'gemini-ref-meta';
+      const title = document.createElement('strong');
+      title.textContent = ref.name || ('Referensi ' + (idx + 1));
+      const urlSpan = document.createElement('span');
+      urlSpan.textContent = ref.url;
+      metaDiv.appendChild(title);
+      metaDiv.appendChild(urlSpan);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'small secondary';
+      removeBtn.textContent = 'Hapus';
+      removeBtn.addEventListener('click', () => {
+        geminiReferences.splice(idx, 1);
+        renderGeminiRefs(modelSelect && modelSelect.value === 'gemini');
+      });
+
+      item.appendChild(thumb);
+      item.appendChild(metaDiv);
+      item.appendChild(removeBtn);
+      geminiRefList.appendChild(item);
+    });
+
+    if (geminiDropzone) {
+      geminiDropzone.classList.toggle('has-file', geminiReferences.length > 0);
+    }
+  }
+
+  function updateGeminiModeUI(isGemini = (modelSelect && modelSelect.value === 'gemini')) {
+    const meta = getGeminiMeta();
+    if (geminiModeButtons && geminiModeButtons.forEach) {
+      geminiModeButtons.forEach(btn => {
+        const mode = btn.dataset.geminiMode;
+        btn.classList.toggle('active', mode === geminiMode);
+      });
+    }
+    if (geminiModeDescription && meta) {
+      geminiModeDescription.textContent = `${meta.title} — ${meta.desc}`;
+    }
+    if (geminiModeSection) {
+      geminiModeSection.classList.toggle('hidden', !isGemini);
+    }
+    if (geminiReferenceSection) {
+      const showRefs = isGemini && geminiMode !== 'text';
+      geminiReferenceSection.classList.toggle('hidden', !showRefs);
+    }
+    renderGeminiRefs(isGemini);
+  }
+
+  function syncGeminiVisibility() {
+    const isGemini = modelSelect && modelSelect.value === 'gemini';
+    if (!isGemini) {
+      resetGeminiState(true);
+    }
+    updateGeminiModeUI(isGemini);
+  }
+
+  function setGeminiMode(mode) {
+    if (!mode || !GEMINI_MODE_META[mode]) return;
+    if (geminiMode === mode) {
+      updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
+      return;
+    }
+    geminiMode = mode;
+    const limit = getGeminiLimit(mode);
+    if (limit === 0) {
+      geminiReferences = [];
+    } else if (geminiReferences.length > limit) {
+      geminiReferences = geminiReferences.slice(0, limit);
+    }
+    updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
+  }
+
+  if (geminiModeButtons && geminiModeButtons.forEach) {
+    geminiModeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.geminiMode;
+        setGeminiMode(mode);
+      });
+    });
+  }
+
+
   function setModelHint(id) {
-    if (['gemini','imagen3','seedream4','fluxPro11'].includes(id)) {
+    if (id === 'gemini') {
+      modelHint.textContent = 'Gemini Flash: pilih mode (Text / 1 referensi / 2-3 referensi). Prompt wajib, num_images & aspect ratio opsional.';
+    } else if (['imagen3','seedream4','fluxPro11'].includes(id)) {
       modelHint.textContent = 'Text-to-image: wajib prompt. num_images opsional. Aspect ratio opsional.';
     } else if (id === 'seedream4edit') {
       modelHint.textContent = 'Seedream 4 Edit: wajib prompt + image (URL) atau digunakan di Filmmaker/UGC.';
@@ -1541,6 +2477,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     } else {
       fieldsTitle.textContent = 'Input';
     }
+
+    syncGeminiVisibility();
   }
 
   let currentFeature = 'videoGen';
@@ -1596,6 +2534,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     queue.forEach(j => queueList.appendChild(renderJobItem(j)));
     history.forEach(j => historyList.appendChild(renderJobItem(j)));
+
+    if (activeJobId) {
+      const activeJob = jobs.find(j => j.id === activeJobId);
+      if (activeJob) syncStatusProgress(activeJob);
+    }
   }
 
   function renderJobItem(job) {
@@ -1650,6 +2593,28 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     el.appendChild(header);
     el.appendChild(meta);
+
+    if (!finalStatus(job.status)) {
+      const progressWrap = document.createElement('div');
+      progressWrap.className = 'job-progress';
+
+      const label = document.createElement('div');
+      label.className = 'job-progress-label';
+      const pct = getJobProgress(job);
+      label.innerHTML = `<span>Progress</span><span>${pct}%</span>`;
+
+      const track = document.createElement('div');
+      track.className = 'progress-track';
+      const fill = document.createElement('div');
+      fill.className = 'progress-fill';
+      fill.style.width = pct + '%';
+      track.appendChild(fill);
+
+      progressWrap.appendChild(label);
+      progressWrap.appendChild(track);
+      el.appendChild(progressWrap);
+    }
+
     el.appendChild(actions);
     return el;
   }
@@ -1658,6 +2623,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     if (!job) {
       previewContainer.style.display = 'none';
       previewEmpty.style.display = 'block';
+      syncStatusProgress(null);
       return;
     }
     const cfg = MODEL_CONFIG[job.modelId];
@@ -1666,6 +2632,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     previewJobMeta.textContent =
       `${cfg ? cfg.label : job.modelId} • status ${job.status || 'UNKNOWN'} • dibuat ${shortTime(job.createdAt)}`;
+
+    syncStatusProgress(job);
 
     previewGrid.innerHTML = '';
 
@@ -1789,6 +2757,354 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     return json.url || json.path;
   }
 
+  function resetImageUploadArea(clearStatus = true) {
+    if (imageUploadInput) imageUploadInput.value = '';
+    if (imageUploadPreview) {
+      imageUploadPreview.src = '';
+      imageUploadPreview.style.display = 'none';
+    }
+    if (imageUploadDropzone) {
+      imageUploadDropzone.classList.remove('has-file', 'dragover');
+    }
+    if (clearStatus) setImageUploadStatus('', null);
+  }
+
+  function setImageUploadStatus(text, mode) {
+    if (!imageUploadStatus) return;
+    imageUploadStatus.textContent = text || '';
+    imageUploadStatus.classList.remove('ok', 'err', 'progress');
+    if (!text) {
+      imageUploadStatus.style.display = 'none';
+      return;
+    }
+    if (mode) imageUploadStatus.classList.add(mode);
+    imageUploadStatus.style.display = 'block';
+  }
+
+  async function uploadFileToServer(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      console.error('Response /?api=upload bukan JSON. Raw:', text);
+      throw new Error('Endpoint upload mengembalikan format tidak valid.');
+    }
+
+    if (!json.ok) {
+      throw new Error(json.error || 'Upload gagal');
+    }
+
+    return {
+      url: json.url || json.path,
+      name: json.name || file.name
+    };
+  }
+
+  async function uploadImageFile(file) {
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      setImageUploadStatus('File harus gambar (PNG/JPG/WEBP).', 'err');
+      return;
+    }
+
+    setImageUploadStatus('Mengunggah ' + file.name + '…', 'progress');
+
+    try {
+      const result = await uploadFileToServer(file);
+      const url = result.url;
+
+      if (imageUrlInput && url) {
+        imageUrlInput.value = url;
+      }
+      if (imageUploadPreview && url) {
+        imageUploadPreview.src = url;
+        imageUploadPreview.style.display = 'block';
+      }
+      if (imageUploadDropzone) {
+        imageUploadDropzone.classList.add('has-file');
+      }
+
+      setImageUploadStatus('Upload sukses: ' + (result.name || file.name), 'ok');
+      setStatus('Gambar berhasil diupload ke server.', 'ok');
+    } catch (err) {
+      console.error(err);
+      setImageUploadStatus(err.message || 'Upload gagal.', 'err');
+      setStatus('Upload gagal: ' + err.message, 'err');
+    }
+  }
+
+  function handleImageFileList(fileList) {
+    if (!fileList || !fileList.length) return;
+    const file = fileList[0];
+    resetImageUploadArea();
+    uploadImageFile(file);
+  }
+
+  async function uploadGeminiFile(file) {
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+      setStatus('File harus gambar (PNG/JPG/WEBP).', 'err');
+      return;
+    }
+    const isGemini = modelSelect && modelSelect.value === 'gemini';
+    if (!isGemini) {
+      setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+      return;
+    }
+    const limit = getGeminiLimit();
+    if (!limit) {
+      setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+      return;
+    }
+    if (geminiReferences.length >= limit) {
+      setStatus(`Batas referensi tercapai (${limit}).`, 'err');
+      return;
+    }
+
+    try {
+      setStatus('Mengunggah referensi ' + file.name + '…');
+      const result = await uploadFileToServer(file);
+      const url = result.url;
+      if (!url) throw new Error('URL hasil upload tidak ditemukan.');
+      if (geminiReferences.some(ref => ref.url === url)) {
+        setStatus('Gambar sudah ada dalam daftar referensi.', 'err');
+        return;
+      }
+      geminiReferences.push({ url, name: result.name || file.name, source: 'upload' });
+      renderGeminiRefs(isGemini);
+      setStatus('Referensi ditambahkan.', 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('Upload referensi gagal: ' + err.message, 'err');
+    }
+  }
+
+  async function handleGeminiFileList(fileList) {
+    if (!fileList || !fileList.length) return;
+    const isGemini = modelSelect && modelSelect.value === 'gemini';
+    if (!isGemini) {
+      setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+      return;
+    }
+    const limit = getGeminiLimit();
+    if (!limit) {
+      setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+      return;
+    }
+    let available = limit - geminiReferences.length;
+    if (available <= 0) {
+      setStatus(`Batas referensi tercapai (${limit}).`, 'err');
+      return;
+    }
+
+    const files = Array.from(fileList).filter(f => f && f.type && f.type.startsWith('image/'));
+    if (!files.length) {
+      setStatus('Tidak ada file gambar yang valid.', 'err');
+      return;
+    }
+
+    let processed = 0;
+    for (const file of files) {
+      if (available <= 0) break;
+      await uploadGeminiFile(file);
+      processed += 1;
+      available = limit - geminiReferences.length;
+    }
+
+    if (processed < files.length) {
+      setStatus('Sebagian file diabaikan karena batas referensi tercapai.', 'idle');
+    }
+  }
+
+  function addGeminiReferenceUrl() {
+    if (!geminiRefUrl) return;
+    const isGemini = modelSelect && modelSelect.value === 'gemini';
+    if (!isGemini) {
+      setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+      return;
+    }
+    const url = geminiRefUrl.value.trim();
+    if (!url) {
+      setStatus('Masukkan URL gambar referensi terlebih dahulu.', 'err');
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      setStatus('URL harus diawali http:// atau https://', 'err');
+      return;
+    }
+    const limit = getGeminiLimit();
+    if (!limit) {
+      setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+      return;
+    }
+    if (geminiReferences.length >= limit) {
+      setStatus(`Batas referensi tercapai (${limit}).`, 'err');
+      return;
+    }
+    if (geminiReferences.some(ref => ref.url === url)) {
+      setStatus('URL sudah ada dalam daftar referensi.', 'err');
+      return;
+    }
+
+    const nameHint = url.split(/[/?#]/).filter(Boolean).pop() || 'URL Referensi';
+    geminiReferences.push({ url, name: nameHint, source: 'url' });
+    geminiRefUrl.value = '';
+    renderGeminiRefs(isGemini);
+    setStatus('URL referensi ditambahkan.', 'ok');
+  }
+
+  if (imageUploadButton) {
+    imageUploadButton.addEventListener('click', () => {
+      if (imageUploadInput) imageUploadInput.click();
+    });
+  }
+
+  if (imageUploadInput) {
+    imageUploadInput.addEventListener('change', e => {
+      handleImageFileList(e.target.files);
+      e.target.value = '';
+    });
+  }
+
+  if (imageUploadDropzone) {
+    imageUploadDropzone.addEventListener('click', () => {
+      if (imageUploadInput) imageUploadInput.click();
+    });
+    ['dragenter','dragover'].forEach(evt => {
+      imageUploadDropzone.addEventListener(evt, ev => {
+        ev.preventDefault();
+        imageUploadDropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave','dragend'].forEach(evt => {
+      imageUploadDropzone.addEventListener(evt, ev => {
+        ev.preventDefault();
+        imageUploadDropzone.classList.remove('dragover');
+      });
+    });
+    imageUploadDropzone.addEventListener('drop', ev => {
+      ev.preventDefault();
+      imageUploadDropzone.classList.remove('dragover');
+      if (ev.dataTransfer && ev.dataTransfer.files) {
+        handleImageFileList(ev.dataTransfer.files);
+      }
+    });
+  }
+
+  if (geminiFileButton) {
+    geminiFileButton.addEventListener('click', () => {
+      if (!modelSelect || modelSelect.value !== 'gemini') {
+        setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+        return;
+      }
+      if (geminiMode === 'text') {
+        setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+        return;
+      }
+      if (geminiFileInput) geminiFileInput.click();
+    });
+  }
+
+  if (geminiFileInput) {
+    geminiFileInput.addEventListener('change', async e => {
+      await handleGeminiFileList(e.target.files);
+      e.target.value = '';
+    });
+  }
+
+  if (geminiDropzone) {
+    geminiDropzone.addEventListener('click', () => {
+      if (!modelSelect || modelSelect.value !== 'gemini') {
+        setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+        return;
+      }
+      if (geminiMode === 'text') {
+        setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+        return;
+      }
+      if (geminiFileInput) geminiFileInput.click();
+    });
+    ['dragenter','dragover'].forEach(evt => {
+      geminiDropzone.addEventListener(evt, ev => {
+        const isGemini = modelSelect && modelSelect.value === 'gemini';
+        if (!isGemini || geminiMode === 'text') return;
+        ev.preventDefault();
+        geminiDropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave','dragend'].forEach(evt => {
+      geminiDropzone.addEventListener(evt, ev => {
+        ev.preventDefault();
+        geminiDropzone.classList.remove('dragover');
+      });
+    });
+    geminiDropzone.addEventListener('drop', async ev => {
+      ev.preventDefault();
+      geminiDropzone.classList.remove('dragover');
+      const isGemini = modelSelect && modelSelect.value === 'gemini';
+      if (!isGemini) {
+        setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+        return;
+      }
+      if (geminiMode === 'text') {
+        setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+        return;
+      }
+      if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) {
+        await handleGeminiFileList(ev.dataTransfer.files);
+      }
+    });
+  }
+
+  if (geminiRefAddBtn) {
+    geminiRefAddBtn.addEventListener('click', () => addGeminiReferenceUrl());
+  }
+
+  if (geminiRefUrl) {
+    geminiRefUrl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addGeminiReferenceUrl();
+      }
+    });
+  }
+
+  if (imageUrlInput) {
+    imageUrlInput.addEventListener('input', () => {
+      if (!imageUrlInput.value) {
+        resetImageUploadArea();
+      }
+    });
+  }
+
+  document.addEventListener('paste', async ev => {
+    const files = ev.clipboardData && ev.clipboardData.files;
+    if (!files || !files.length) return;
+    const target = ev.target;
+    const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+    if (['input','textarea'].includes(tag)) return;
+
+    const isGemini = modelSelect && modelSelect.value === 'gemini' && geminiMode !== 'text';
+    if (isGemini) {
+      ev.preventDefault();
+      setStatus('Menempel gambar referensi ke Gemini…');
+      await handleGeminiFileList(files);
+      return;
+    }
+
+    if (!imageUploadDropzone) return;
+    handleImageFileList(files);
+    setStatus('Menempel gambar dari clipboard…');
+  });
+
   async function ensureLocalFiles(job) {
     if (!job || !Array.isArray(job.generated) || !job.generated.length) return;
     if (job.localUrls && job.localUrls.length === job.generated.length) return;
@@ -1842,6 +3158,28 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       }
     }
 
+    let usedGeminiRefs = null;
+    let usedGeminiMode = null;
+    if (modelId === 'gemini') {
+      const meta = getGeminiMeta(geminiMode);
+      const refs = geminiReferences.map(ref => ref.url).filter(Boolean);
+      if (meta.max > 0) {
+        if (refs.length < meta.min) {
+          if (geminiMode === 'single') {
+            throw new Error('Mode 2 membutuhkan tepat 1 gambar referensi.');
+          }
+          throw new Error('Mode 3 membutuhkan minimal 2 gambar referensi.');
+        }
+        if (refs.length > meta.max) {
+          refs.splice(meta.max);
+        }
+      }
+      formData.referenceImages = refs;
+      formData.geminiMode = geminiMode;
+      usedGeminiRefs = refs.slice();
+      usedGeminiMode = geminiMode;
+    }
+
     const body = cfg.buildBody(formData);
     const data = await callFreepik(cfg, body, 'POST');
 
@@ -1867,7 +3205,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       }
     }
 
-    return { taskId, status, generated, extraUrl };
+    return { taskId, status, generated, extraUrl, references: usedGeminiRefs, geminiModeUsed: usedGeminiMode };
   }
 
   async function fetchStatus(modelId, taskId) {
@@ -1912,6 +3250,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       if (job.id === activeJobId) refreshPreview();
 
       if (finalStatus(job.status)) {
+        finishJobProgress(job);
         if (pollingTimers[job.id]) {
           clearInterval(pollingTimers[job.id]);
           delete pollingTimers[job.id];
@@ -1952,7 +3291,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     setStatus('Membuat task ke Freepik…');
 
     try {
-      const { taskId, status, generated, extraUrl } = await createTask(modelId);
+      const { taskId, status, generated, extraUrl, references, geminiModeUsed } = await createTask(modelId);
       const jobId = uuid();
 
       const job = {
@@ -1967,6 +3306,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         extraUrl: extraUrl || null
       };
 
+      if (modelId === 'gemini') {
+        job.references = Array.isArray(references) ? references : [];
+        job.geminiMode = geminiModeUsed || geminiMode;
+      }
+
       jobs.unshift(job);
       saveJobs();
       renderJobs();
@@ -1975,9 +3319,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       renderPreview(job);
 
       if (taskId && !finalStatus(job.status)) {
+        startJobProgress(job);
         startPolling(job);
         setStatus('Task dibuat: ' + taskId.slice(0,8) + '…', 'ok');
       } else {
+        finishJobProgress(job);
         setStatus('Task selesai (synchronous).', 'ok');
         if (job.generated && job.generated.length) {
           await ensureLocalFiles(job);
@@ -2003,6 +3349,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     audioUrlInput.value = '';
     numImagesInput.value = '1';
     aspectRatioInput.value = '';
+    resetImageUploadArea();
+    resetGeminiState(true);
+    updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
     setStatus('Form dibersihkan.');
   });
   clearPreviewBtn.addEventListener('click', () => {
@@ -2571,7 +3920,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     jobs.unshift(job);
     saveJobs();
     renderJobs();
-    if (taskId && !finalStatus(status)) startPolling(job);
+    if (taskId && !finalStatus(status)) {
+      startJobProgress(job);
+      startPolling(job);
+    } else {
+      finishJobProgress(job);
+    }
 
     item.videoJobId = jobId;
     renderUgcList();
@@ -2584,6 +3938,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
   // ===== INIT =====
   setFeature('videoGen');
+  jobs.filter(j => !finalStatus(j.status)).forEach(job => startJobProgress(job));
   renderJobs();
   if (jobs.length) {
     const lastCompleted = jobs.find(j => finalStatus(j.status)) || jobs[0];
