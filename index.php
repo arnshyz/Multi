@@ -3404,6 +3404,146 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   let filmScenes = [];
   let filmPollTimer = null;
 
+  const filmSceneLocations = [
+    'crowded street market filled with ambient details',
+    'rain-soaked neon city alley with reflective puddles',
+    'dimly lit interior workspace surrounded by holographic monitors',
+    'rooftop overlooking the skyline during blue hour',
+    'abandoned warehouse with shafts of light piercing through windows',
+    'lush urban park with misty morning atmosphere',
+    'hi-tech control room glowing with translucent interfaces',
+    'narrow subway platform with motion blur from passing trains'
+  ];
+
+  const filmSceneLightingPresets = [
+    'dramatic rim lighting with strong contrast',
+    'soft diffused lighting with pastel highlights',
+    'high-contrast chiaroscuro with deep shadows',
+    'golden hour sunlight with warm highlights',
+    'cold tungsten practicals mixed with cyan fill light',
+    'moody volumetric light cutting through atmosphere',
+    'noir-style lighting with slatted window shadows',
+    'neon glow accents with reflective surfaces'
+  ];
+
+  const filmSceneCameraAngles = [
+    'wide establishing shot from a slightly elevated angle',
+    'shoulder-level medium shot highlighting expressions',
+    'dynamic low-angle shot that empowers the protagonist',
+    'tracking shot with slight motion blur to imply movement',
+    'close-up focusing on hands and important props',
+    'dutch angle to emphasize tension and imbalance',
+    'overhead shot revealing spatial relationships',
+    'long lens compression shot isolating the subject'
+  ];
+
+  const filmSceneMoods = [
+    'anticipation and intrigue',
+    'quiet determination',
+    'rising tension with subtle anxiety',
+    'pulse-pounding urgency',
+    'mystery with analytical focus',
+    'confrontational and intense',
+    'reflective calm after the storm',
+    'hopeful yet unresolved cliffhanger tone'
+  ];
+
+  const filmNarrativeBeats = [
+    'Opening beat that introduces the world and protagonist.',
+    'Complication emerges, revealing a new obstacle.',
+    'Discovery beat where new information shifts the stakes.',
+    'Escalation sequence pushing the conflict forward.',
+    'Strategic regrouping before the confrontation.',
+    'Climactic confrontation with the central threat.',
+    'Falling action showing immediate consequences.',
+    'Teaser for the next chapter, leaving a lingering question.'
+  ];
+
+  function capitalizeFirst(text) {
+    if (!text) return '';
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  function ensureSentence(text, fallback) {
+    const base = (text || '').trim();
+    if (!base) return fallback;
+    return /[.!?]$/.test(base) ? base : base + '.';
+  }
+
+  function extractStoryPartsForScenes(brief, count) {
+    const cleaned = (brief || '').replace(/\r\n?/g, '\n');
+    const parts = [];
+
+    cleaned
+      .split(/\n+/)
+      .map(part => part.trim())
+      .filter(Boolean)
+      .forEach(part => parts.push(part));
+
+    if (parts.length < count) {
+      cleaned
+        .split(/(?<=[.!?])\s+/)
+        .map(part => part.trim())
+        .filter(Boolean)
+        .forEach(sentence => {
+          if (!parts.includes(sentence)) {
+            parts.push(sentence);
+          }
+        });
+    }
+
+    if (!parts.length) {
+      parts.push(brief.trim() || 'Describe the protagonist in action');
+    }
+
+    const baseLength = parts.length;
+    let idx = 0;
+    while (parts.length < count) {
+      parts.push(parts[idx % baseLength]);
+      idx += 1;
+    }
+
+    return parts.slice(0, count);
+  }
+
+  function buildFilmScenePlans(brief, count) {
+    const parts = extractStoryPartsForScenes(brief, count);
+    return parts.map((part, idx) => {
+      const index = idx + 1;
+      const action = ensureSentence(capitalizeFirst(part), 'Describe the protagonist in action.');
+      const environment = filmSceneLocations[idx % filmSceneLocations.length];
+      const lighting = filmSceneLightingPresets[idx % filmSceneLightingPresets.length];
+      const camera = filmSceneCameraAngles[idx % filmSceneCameraAngles.length];
+      const mood = filmSceneMoods[idx % filmSceneMoods.length];
+      const continuity = idx === 0
+        ? 'Opening beat introducing the story.'
+        : filmNarrativeBeats[(idx - 1) % filmNarrativeBeats.length];
+
+      const promptLines = [
+        `Scene ${index}: ${action}`,
+        `Setting/environment: ${environment}.`,
+        `Lighting: ${lighting}.`,
+        `Camera style: ${camera}.`,
+        `Mood: ${mood}.`,
+        `Narrative continuity: ${continuity}`,
+        'Maintain the protagonist consistent with the uploaded character reference.'
+      ];
+
+      return {
+        index,
+        prompt: promptLines.join(' '),
+        meta: {
+          action,
+          environment,
+          lighting,
+          camera,
+          mood,
+          continuity
+        }
+      };
+    });
+  }
+
   filmCharacterDrop.addEventListener('click', () => filmCharacterInput.click());
 
   filmCharacterInput.addEventListener('change', e => {
@@ -3568,8 +3708,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     const cfg = MODEL_CONFIG.gemini;
     const base64 = filmCharacterDataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 
-    for (let i = 1; i <= count; i++) {
-      const scenePrompt = `Scene ${i}: ${brief}`;
+    const scenePlans = buildFilmScenePlans(brief, count);
+
+    for (const plan of scenePlans) {
+      const scenePrompt = plan.prompt;
 
       const body = {
         prompt: scenePrompt,
@@ -3591,8 +3733,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           status  = data.data.status   || status;
         }
         filmScenes.push({
-          index: i,
+          index: plan.index,
           prompt: scenePrompt,
+          meta: plan.meta,
           taskId,
           status,
           url: null
@@ -3600,8 +3743,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       } catch (err) {
         console.error(err);
         filmScenes.push({
-          index: i,
+          index: plan.index,
           prompt: scenePrompt,
+          meta: plan.meta,
           taskId: null,
           status: 'ERROR',
           url: null
