@@ -743,14 +743,30 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: flex;
       flex-direction: column;
       gap: 6px;
+      transition: box-shadow 0.2s ease, transform 0.2s ease;
     }
-    .preview-item img,
-    .preview-item video {
+    .preview-item.preview-item--active {
+      box-shadow: 0 0 0 2px rgba(79,70,229,0.55);
+      transform: translateY(-2px);
+    }
+    .preview-thumb {
+      position: relative;
       width: 100%;
-      max-width: 198px;
-      max-height: 198px;
+      aspect-ratio: 1 / 1;
       border-radius: 8px;
-      object-fit: cover;
+      overflow: hidden;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+    }
+    .preview-thumb.is-image { cursor: pointer; }
+    .preview-thumb img,
+    .preview-thumb video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
       background: #000;
     }
     .preview-meta {
@@ -2843,6 +2859,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       syncStatusProgress(null);
       return;
     }
+    const flashPreviewItem = (el) => {
+      if (!el) return;
+      el.classList.add('preview-item--active');
+      setTimeout(() => {
+        el.classList.remove('preview-item--active');
+      }, 220);
+    };
+    
     const cfg = MODEL_CONFIG[job.modelId];
     previewContainer.style.display = 'block';
     previewEmpty.style.display = 'none';
@@ -2877,6 +2901,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
       const assetType = (job.type === 'video' || isVideoUrl(url)) ? 'video' : 'image';
 
+      const thumb = document.createElement('div');
+      thumb.className = 'preview-thumb';
+      thumb.classList.add(assetType === 'video' ? 'is-video' : 'is-image');
+
       let media;
       if (assetType === 'video') {
         media = document.createElement('video');
@@ -2890,7 +2918,19 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         media.src = url;
         media.alt = `Result ${idx + 1}`;
         media.classList.add('clickable-media');
-        media.addEventListener('click', () => openAssetPreview(url, assetType));
+      }
+
+      thumb.appendChild(media);
+
+      if (assetType === 'image') {
+        thumb.addEventListener('click', () => {
+          flashPreviewItem(item);
+          openAssetPreview(url, assetType);
+        });
+      } else {
+        thumb.addEventListener('click', () => {
+          flashPreviewItem(item);
+        });
       }
 
       const metaRow = document.createElement('div');
@@ -2903,7 +2943,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       previewBtn.type = 'button';
       previewBtn.className = 'small secondary';
       previewBtn.textContent = 'Preview';
-      previewBtn.addEventListener('click', () => openAssetPreview(url, assetType));
+      previewBtn.addEventListener('click', () => {
+        flashPreviewItem(item);
+        openAssetPreview(url, assetType);
+      });
       btnGroup.appendChild(previewBtn);
 
       const urlSpan = document.createElement('div');
@@ -2927,7 +2970,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       metaRow.appendChild(btnGroup);
       metaRow.appendChild(urlSpan);
 
-      item.appendChild(media);
+      item.appendChild(thumb);
       item.appendChild(metaRow);
 
       previewGrid.appendChild(item);
