@@ -1639,7 +1639,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         <div class="subtitle">Buat rangkaian scene sinematik dari satu karakter & story brief</div>
       </div>
       <div class="badge">
-        <span>Seedream 4 Edit</span>
+        <span>Gemini Flash 2.5</span>
       </div>
     </div>
     <div class="film-scenes-board">
@@ -1703,7 +1703,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           Generate Scenes
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
-          Setiap scene akan memanggil model Seedream 4 Edit secara terpisah. Progress scene akan muncul di panel kiri.
+          Setiap scene akan memanggil model Gemini Flash 2.5 secara terpisah. Progress scene akan muncul di panel kiri.
         </div>
       </div>
     </div>
@@ -2430,11 +2430,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
   function setModelHint(id) {
     if (id === 'gemini') {
-      modelHint.textContent = 'Gemini Flash: pilih mode (Text / 1 referensi / 2-3 referensi). Prompt wajib, num_images & aspect ratio opsional.';
+      modelHint.textContent = 'Gemini Flash 2.5: pilih mode (Text / 1 referensi / 2-3 referensi). Prompt wajib, num_images & aspect ratio opsional.';
     } else if (['imagen3','seedream4','fluxPro11'].includes(id)) {
       modelHint.textContent = 'Text-to-image: wajib prompt. num_images opsional. Aspect ratio opsional.';
     } else if (id === 'seedream4edit') {
-      modelHint.textContent = 'Seedream 4 Edit: wajib prompt + image (URL) atau digunakan di Filmmaker/UGC.';
+      modelHint.textContent = 'Seedream 4 Edit: wajib prompt + image (URL). Direkomendasikan untuk workflow UGC.';
     } else if (['upscalerCreative','upscalePrecV1','upscalePrecV2'].includes(id)) {
       modelHint.textContent = 'Upscaler: wajib image URL. Prompt opsional.';
     } else if (id === 'removeBg') {
@@ -3515,7 +3515,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     for (const scene of pending) {
       try {
-        const { status, generated } = await fetchStatus('seedream4edit', scene.taskId);
+        const { status, generated } = await fetchStatus('gemini', scene.taskId);
         if (status) scene.status = status;
         if (generated && Array.isArray(generated) && generated.length) {
           const remote = generated[0];
@@ -3565,7 +3565,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     filmScenes = [];
     renderFilmScenes();
 
-    const cfg = MODEL_CONFIG.seedream4edit;
+    const cfg = MODEL_CONFIG.gemini;
     const base64 = filmCharacterDataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 
     for (let i = 1; i <= count; i++) {
@@ -3573,6 +3573,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
       const body = {
         prompt: scenePrompt,
+        num_images: 1,
         reference_images: [base64]
       };
       if (filmAspect === '9:16') {
