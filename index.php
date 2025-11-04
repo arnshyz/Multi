@@ -755,9 +755,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
     .preview-meta {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
+      align-items: stretch;
       gap: 6px;
+    }
+    .preview-btn-group {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
     }
     .preview-url {
       font-size: 10px;
@@ -1336,8 +1343,22 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       text-align: center;
       min-height: 80px;
       display:flex;
+      flex-direction: column;
+      gap: 6px;
       align-items:center;
       justify-content:center;
+    }
+    .ugc-video-card video {
+      width: 100%;
+      max-height: 210px;
+      border-radius: 8px;
+      background: #000;
+    }
+    .ugc-video-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
     }
     .ugc-right {
       display: flex;
@@ -1367,6 +1388,89 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       align-items:center;
       justify-content:center;
       color:var(--muted);
+    }
+    .asset-preview {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.86);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 2000;
+    }
+    .asset-preview.hidden { display: none; }
+    .asset-preview-inner {
+      background: #020617;
+      border-radius: 14px;
+      border: 1px solid rgba(99,102,241,0.35);
+      max-width: min(90vw, 960px);
+      max-height: min(90vh, 620px);
+      width: 100%;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 18px 55px rgba(15,23,42,0.8);
+      position: relative;
+    }
+    .asset-preview-close {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      border: none;
+      background: rgba(148,163,184,0.12);
+      color: #e5e7eb;
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s ease;
+    }
+    .asset-preview-close:hover {
+      background: rgba(148,163,184,0.28);
+    }
+    .asset-preview-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .asset-preview-body img,
+    .asset-preview-body video {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 12px;
+      background: #000;
+    }
+    .asset-preview-download {
+      align-self: flex-end;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(99,102,241,0.5);
+      color: #e0e7ff;
+      font-size: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+    .asset-preview-download:hover {
+      background: rgba(99,102,241,0.2);
+      border-color: rgba(129,140,248,0.75);
+    }
+    body.modal-open {
+      overflow: hidden;
+    }
+    .clickable-media {
+      cursor: zoom-in;
     }
   </style>
 </head>
@@ -1786,6 +1890,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="assetPreviewModal" class="asset-preview hidden">
+  <div class="asset-preview-inner">
+    <button type="button" id="assetPreviewClose" class="asset-preview-close">&times;</button>
+    <div id="assetPreviewBody" class="asset-preview-body"></div>
+    <a id="assetPreviewDownload" class="asset-preview-download" href="#" download target="_blank">Download file</a>
   </div>
 </div>
 
@@ -2658,21 +2770,36 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       const item = document.createElement('div');
       item.className = 'preview-item';
 
+      const assetType = (job.type === 'video' || isVideoUrl(url)) ? 'video' : 'image';
+
       let media;
-      if (job.type === 'video' || url.endsWith('.mp4')) {
+      if (assetType === 'video') {
         media = document.createElement('video');
         media.src = url;
         media.controls = true;
         media.loop = true;
         media.muted = true;
+        media.playsInline = true;
       } else {
         media = document.createElement('img');
         media.src = url;
         media.alt = `Result ${idx + 1}`;
+        media.classList.add('clickable-media');
+        media.addEventListener('click', () => openAssetPreview(url, assetType));
       }
 
       const metaRow = document.createElement('div');
       metaRow.className = 'preview-meta';
+
+      const btnGroup = document.createElement('div');
+      btnGroup.className = 'preview-btn-group';
+
+      const previewBtn = document.createElement('button');
+      previewBtn.type = 'button';
+      previewBtn.className = 'small secondary';
+      previewBtn.textContent = 'Preview';
+      previewBtn.addEventListener('click', () => openAssetPreview(url, assetType));
+      btnGroup.appendChild(previewBtn);
 
       const urlSpan = document.createElement('div');
       urlSpan.className = 'preview-url';
@@ -2690,8 +2817,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       dlBtn.textContent = 'Download';
       dlLink.appendChild(dlBtn);
 
+      btnGroup.appendChild(dlLink);
+
+      metaRow.appendChild(btnGroup);
       metaRow.appendChild(urlSpan);
-      metaRow.appendChild(dlLink);
 
       item.appendChild(media);
       item.appendChild(metaRow);
@@ -3618,12 +3747,22 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         img.className = 'film-scene-thumb';
         img.src = scene.url;
         img.alt = 'Scene ' + scene.index;
+        img.classList.add('clickable-media');
+        img.addEventListener('click', () => openAssetPreview(scene.url, 'image'));
         card.appendChild(img);
 
         const actions = document.createElement('div');
         actions.style.display = 'flex';
         actions.style.justifyContent = 'flex-end';
         actions.style.marginTop = '4px';
+        actions.style.gap = '6px';
+
+        const previewBtn = document.createElement('button');
+        previewBtn.type = 'button';
+        previewBtn.className = 'small secondary';
+        previewBtn.textContent = 'Preview';
+        previewBtn.addEventListener('click', () => openAssetPreview(scene.url, 'image'));
+        actions.appendChild(previewBtn);
 
         const a = document.createElement('a');
         a.href = scene.url;
@@ -3799,6 +3938,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         const img = document.createElement('img');
         img.src = item.imageUrl;
         img.alt = 'UGC Image ' + item.index;
+        img.classList.add('clickable-media');
+        img.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
         imgCard.innerHTML = '';
         imgCard.appendChild(img);
       } else {
@@ -3809,8 +3950,44 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       const videoCard = document.createElement('div');
       videoCard.className = 'ugc-video-card';
       if (item.videoUrl) {
-        videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video ready</div><video src=\"' +
-          item.videoUrl + '\" controls style=\"width:100%;border-radius:8px;max-height:200px\"></video></div>';
+        videoCard.innerHTML = '';
+        const title = document.createElement('div');
+        title.className = 'ugc-media-title';
+        title.textContent = 'Video ready';
+
+        const video = document.createElement('video');
+        video.src = item.videoUrl;
+        video.controls = true;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
+
+        const actions = document.createElement('div');
+        actions.className = 'ugc-video-actions';
+
+        const previewVideoBtn = document.createElement('button');
+        previewVideoBtn.type = 'button';
+        previewVideoBtn.className = 'small secondary';
+        previewVideoBtn.textContent = 'Preview Video';
+        previewVideoBtn.addEventListener('click', () => openAssetPreview(item.videoUrl, 'video'));
+        actions.appendChild(previewVideoBtn);
+
+        const videoDownloadLink = document.createElement('a');
+        videoDownloadLink.href = item.videoUrl;
+        videoDownloadLink.target = '_blank';
+        videoDownloadLink.download = '';
+        videoDownloadLink.className = 'download-link';
+
+        const videoDownloadBtn = document.createElement('button');
+        videoDownloadBtn.type = 'button';
+        videoDownloadBtn.className = 'small';
+        videoDownloadBtn.textContent = 'Download';
+        videoDownloadLink.appendChild(videoDownloadBtn);
+        actions.appendChild(videoDownloadLink);
+
+        videoCard.appendChild(title);
+        videoCard.appendChild(video);
+        videoCard.appendChild(actions);
       } else if (item.videoJobId) {
         videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video generating...</div><div class=\"ugc-media-status\">Check status di Queue</div></div>';
       } else {
@@ -3847,9 +4024,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       const btnRow = document.createElement('div');
       btnRow.className = 'btn-group';
 
+      const previewImgBtn = document.createElement('button');
+      previewImgBtn.type = 'button';
+      previewImgBtn.className = 'secondary small';
+      previewImgBtn.textContent = 'Preview Image';
+      previewImgBtn.disabled = !item.imageUrl;
+      if (item.imageUrl) {
+        previewImgBtn.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
+      }
+
       const dlBtn = document.createElement('button');
       dlBtn.type = 'button';
-      dlBtn.className = 'secondary small';
+      dlBtn.className = 'small';
       dlBtn.textContent = 'Download Image';
       dlBtn.disabled = !item.imageUrl;
       if (item.imageUrl) {
@@ -3870,6 +4056,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       vidBtn.disabled = !item.imageUrl;
       vidBtn.addEventListener('click', () => ugcGenerateVideo(item));
 
+      btnRow.appendChild(previewImgBtn);
       btnRow.appendChild(dlBtn);
       btnRow.appendChild(vidBtn);
 
@@ -4079,6 +4266,77 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     alert('Gagal membuat video: ' + e.message);
   }
 }
+
+
+const assetPreviewModal = document.getElementById('assetPreviewModal');
+const assetPreviewBody = document.getElementById('assetPreviewBody');
+const assetPreviewClose = document.getElementById('assetPreviewClose');
+const assetPreviewDownload = document.getElementById('assetPreviewDownload');
+
+function isVideoUrl(url = '') {
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
+}
+
+function openAssetPreview(url, type = 'image') {
+  if (!assetPreviewModal || !assetPreviewBody || !url) return;
+  assetPreviewBody.innerHTML = '';
+  let el;
+  if (type === 'video' || isVideoUrl(url)) {
+    el = document.createElement('video');
+    el.src = url;
+    el.controls = true;
+    el.autoplay = true;
+    el.loop = true;
+    el.playsInline = true;
+  } else {
+    el = document.createElement('img');
+    el.src = url;
+    el.alt = 'Preview';
+    el.classList.add('clickable-media');
+  }
+  assetPreviewBody.appendChild(el);
+
+  if (assetPreviewDownload) {
+    assetPreviewDownload.href = url;
+    assetPreviewDownload.style.display = 'inline-flex';
+  }
+
+  assetPreviewModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+}
+
+function closeAssetPreview() {
+  if (!assetPreviewModal || !assetPreviewBody) return;
+  const video = assetPreviewBody.querySelector('video');
+  if (video) {
+    video.pause();
+  }
+  assetPreviewBody.innerHTML = '';
+  assetPreviewModal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  if (assetPreviewDownload) {
+    assetPreviewDownload.href = '#';
+    assetPreviewDownload.style.display = 'none';
+  }
+}
+
+if (assetPreviewClose) {
+  assetPreviewClose.addEventListener('click', closeAssetPreview);
+}
+
+if (assetPreviewModal) {
+  assetPreviewModal.addEventListener('click', event => {
+    if (event.target === assetPreviewModal) {
+      closeAssetPreview();
+    }
+  });
+}
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && assetPreviewModal && !assetPreviewModal.classList.contains('hidden')) {
+    closeAssetPreview();
+  }
+});
 
 
   // ===== INIT =====
