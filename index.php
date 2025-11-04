@@ -1644,6 +1644,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
             </div>
           </div>
 
+          <div id="rowVideoSettings" class="field-row hidden" style="margin-top:4px">
+            <div>
+              <label for="videoDuration">Durasi video</label>
+              <select id="videoDuration"></select>
+            </div>
+            <div>
+              <label for="videoLayout">Layout</label>
+              <select id="videoLayout"></select>
+            </div>
+          </div>
+
           <div id="rowTIOptions" class="field-row hidden" style="margin-top:4px">
             <div>
               <label for="numImages">Jumlah image</label>
@@ -1927,6 +1938,50 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
   };
 
+  const VIDEO_LAYOUT_OPTIONS = [
+    { value: 'portrait',  label: 'Portrait 9:16',  ratio: 'portrait_9_16' },
+    { value: 'landscape', label: 'Landscape 16:9', ratio: 'landscape_16_9' },
+    { value: 'square',    label: 'Square 1:1',     ratio: 'square_1_1' }
+  ];
+
+  const VIDEO_LAYOUT_TO_RATIO = VIDEO_LAYOUT_OPTIONS.reduce((acc, opt) => {
+    acc[opt.value] = opt.ratio;
+    return acc;
+  }, {});
+
+  const VIDEO_MODEL_DURATION_OPTIONS = {
+    wan480: { values: [4, 6, 10], default: 6, defaultLayout: 'portrait' },
+    wan720: { values: [4, 6, 10], default: 6, defaultLayout: 'portrait' },
+    seedancePro480: { values: [5, 10], default: 5, defaultLayout: 'portrait' },
+    seedancePro720: { values: [5, 10], default: 5, defaultLayout: 'portrait' },
+    seedancePro1080: { values: [5, 10], default: 5, defaultLayout: 'landscape' },
+    klingStd21: { values: [5, 8], default: 5, defaultLayout: 'portrait' },
+    kling25Pro: { values: [5, 8, 12], default: 5, defaultLayout: 'landscape' },
+    minimax1080: { values: [6, 12], default: 6, defaultLayout: 'landscape' },
+    _default: { values: [5], default: 5, defaultLayout: 'portrait' }
+  };
+
+  function mapVideoAspect(layoutKey) {
+    if (!layoutKey) return 'auto';
+    const key = String(layoutKey).toLowerCase();
+    return VIDEO_LAYOUT_TO_RATIO[key] || 'auto';
+  }
+
+  function applyVideoExtras(body, formData = {}) {
+    if (!body || typeof body !== 'object') return body;
+    const duration = formData.videoDuration;
+    if (typeof duration === 'number' && !Number.isNaN(duration) && duration > 0) {
+      body.duration = duration;
+    }
+    const ratio = mapVideoAspect(formData.videoLayout);
+    if (ratio && (ratio !== 'auto' || !body.aspect_ratio)) {
+      body.aspect_ratio = ratio;
+    } else if (!body.aspect_ratio) {
+      body.aspect_ratio = 'auto';
+    }
+    return body;
+  }
+
   // ===== MODEL CONFIG =====
   const MODEL_CONFIG = {
     gemini: {
@@ -2040,7 +2095,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'video',
       path: '/v1/ai/image-to-video/wan-v2-2-480p',
       statusPath: taskId => `/v1/ai/image-to-video/wan-v2-2-480p/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, image: f.imageUrl })
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
     wan720: {
       id: 'wan720',
@@ -2048,7 +2103,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'video',
       path: '/v1/ai/image-to-video/wan-v2-2-720p',
       statusPath: taskId => `/v1/ai/image-to-video/wan-v2-2-720p/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, image: f.imageUrl })
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
     seedancePro480: {
       id: 'seedancePro480',
@@ -2056,7 +2111,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'video',
       path: '/v1/ai/image-to-video/seedance-pro-480p',
       statusPath: taskId => `/v1/ai/image-to-video/seedance-pro-480p/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, image: f.imageUrl })
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
     seedancePro720: {
       id: 'seedancePro720',
@@ -2064,7 +2119,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'video',
       path: '/v1/ai/image-to-video/seedance-pro-720p',
       statusPath: taskId => `/v1/ai/image-to-video/seedance-pro-720p/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, image: f.imageUrl })
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
     seedancePro1080: {
       id: 'seedancePro1080',
@@ -2072,7 +2127,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'video',
       path: '/v1/ai/image-to-video/seedance-pro-1080p',
       statusPath: taskId => `/v1/ai/image-to-video/seedance-pro-1080p/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, image: f.imageUrl })
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
     klingStd21: {
       id: 'klingStd21',
@@ -2080,7 +2135,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'video',
       path: '/v1/ai/image-to-video/kling-v2-1-std',
       statusPath: taskId => `/v1/ai/image-to-video/kling-v2-1-std/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, image: f.imageUrl })
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
     kling25Pro: {
       id: 'kling25Pro',
@@ -2088,7 +2143,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'video',
       path: '/v1/ai/image-to-video/kling-v2-5-pro',
       statusPath: taskId => `/v1/ai/image-to-video/kling-v2-5-pro/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, image: f.imageUrl })
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
     minimax1080: {
       id: 'minimax1080',
@@ -2096,10 +2151,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'video',
       path: '/v1/ai/image-to-video/minimax-hailuo-02-1080p',
       statusPath: taskId => `/v1/ai/image-to-video/minimax-hailuo-02-1080p/${taskId}`,
-      buildBody: f => ({
+      buildBody: f => applyVideoExtras({
         prompt: f.prompt,
         first_frame_image: f.imageUrl || undefined
-      })
+      }, f)
     },
 
     latentSync: {
@@ -2309,6 +2364,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   const geminiRefList = document.getElementById('geminiRefList');
   const videoUrlInput = document.getElementById('videoUrl');
   const audioUrlInput = document.getElementById('audioUrl');
+  const rowVideoSettings = document.getElementById('rowVideoSettings');
+  const videoDurationSelect = document.getElementById('videoDuration');
+  const videoLayoutSelect = document.getElementById('videoLayout');
   const numImagesInput = document.getElementById('numImages');
   const aspectRatioInput = document.getElementById('aspectRatio');
   const submitBtn = document.getElementById('submitBtn');
@@ -2552,11 +2610,55 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     } else if (id === 'removeBg') {
       modelHint.textContent = 'Remove Background: wajib image URL. Response langsung URL hasil (valid 5 menit).';
     } else if (['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'].includes(id)) {
-      modelHint.textContent = 'Image-to-video: wajib image URL + prompt singkat.';
+      modelHint.textContent = 'Image-to-video: wajib image URL + prompt singkat. Pilih durasi & layout (portrait / landscape / square).';
     } else if (id === 'latentSync') {
       modelHint.textContent = 'Latent-Sync: wajib video URL dan audio URL. Prompt opsional.';
     } else {
       modelHint.textContent = 'Isi prompt dan field sesuai model.';
+    }
+  }
+
+  function getVideoDurationMeta(modelId) {
+    return VIDEO_MODEL_DURATION_OPTIONS[modelId] || VIDEO_MODEL_DURATION_OPTIONS._default;
+  }
+
+  function ensureVideoLayoutOptions() {
+    if (!videoLayoutSelect || videoLayoutSelect.dataset.populated) return;
+    videoLayoutSelect.innerHTML = '';
+    VIDEO_LAYOUT_OPTIONS.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      videoLayoutSelect.appendChild(option);
+    });
+    videoLayoutSelect.dataset.populated = '1';
+  }
+
+  function configureVideoControls(modelId) {
+    if (!rowVideoSettings || !videoDurationSelect || !videoLayoutSelect) return;
+    ensureVideoLayoutOptions();
+
+    const meta = getVideoDurationMeta(modelId);
+    const durations = Array.isArray(meta.values) && meta.values.length ? meta.values : getVideoDurationMeta('_default').values;
+
+    videoDurationSelect.innerHTML = '';
+    durations.forEach(sec => {
+      const option = document.createElement('option');
+      option.value = String(sec);
+      option.textContent = `${sec} detik`;
+      videoDurationSelect.appendChild(option);
+    });
+
+    const defaultDuration = meta.default || durations[0] || null;
+    if (defaultDuration) {
+      videoDurationSelect.value = String(defaultDuration);
+    } else if (videoDurationSelect.options.length) {
+      videoDurationSelect.selectedIndex = 0;
+    }
+
+    const layoutDefault = (meta.defaultLayout && VIDEO_LAYOUT_TO_RATIO[meta.defaultLayout]) ? meta.defaultLayout : (videoLayoutSelect.options[0] ? videoLayoutSelect.options[0].value : '');
+    if (layoutDefault) {
+      videoLayoutSelect.value = layoutDefault;
     }
   }
 
@@ -2570,6 +2672,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     rowImageUrl.classList.add('hidden');
     rowVideoAudio.classList.add('hidden');
+    rowVideoSettings.classList.add('hidden');
     rowTIOptions.classList.add('hidden');
     rowPrompt.classList.remove('hidden');
 
@@ -2583,6 +2686,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     } else if (isI2V) {
       fieldsTitle.textContent = 'Video Generator';
       rowImageUrl.classList.remove('hidden');
+      rowVideoSettings.classList.remove('hidden');
+      configureVideoControls(id);
     } else if (isLip) {
       fieldsTitle.textContent = 'Lipsync Studio';
       rowVideoAudio.classList.remove('hidden');
@@ -3265,6 +3370,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       imageUrl: imageUrlInput.value.trim(),
       videoUrl: videoUrlInput.value.trim(),
       audioUrl: audioUrlInput.value.trim(),
+      videoDuration: (videoDurationSelect && videoDurationSelect.value) ? Number(videoDurationSelect.value) : null,
+      videoLayout: videoLayoutSelect && videoLayoutSelect.value ? videoLayoutSelect.value : null,
       numImages: numImagesInput.value ? Number(numImagesInput.value) : null,
       aspectRatio: aspectRatioInput.value || null
     };
@@ -3478,6 +3585,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     audioUrlInput.value = '';
     numImagesInput.value = '1';
     aspectRatioInput.value = '';
+    if (videoDurationSelect && modelSelect) {
+      configureVideoControls(modelSelect.value);
+    }
     resetImageUploadArea();
     resetGeminiState(true);
     updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
