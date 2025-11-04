@@ -3,6 +3,108 @@
 $FREEPIK_API_KEY  = 'FPSX06967c376cb6d87d9c551ccb33ed4d56'; // GANTI DI SINI
 $FREEPIK_BASE_URL = 'https://api.freepik.com';
 
+// ====== UPLOAD FILE: ?api=upload ======
+if (isset($_GET['api']) && $_GET['api'] === 'upload') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 405,
+            'error'  => 'Gunakan metode POST untuk upload'
+        ]);
+        exit;
+    }
+
+    if (!isset($_FILES['file']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Tidak ada file yang diunggah'
+        ]);
+        exit;
+    }
+
+    $file = $_FILES['file'];
+    if (!empty($file['error'])) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Upload gagal dengan kode error ' . $file['error']
+        ]);
+        exit;
+    }
+
+    $maxSize = 15 * 1024 * 1024; // 15 MB
+    if ($file['size'] > $maxSize) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 413,
+            'error'  => 'Ukuran file maksimal 15MB'
+        ]);
+        exit;
+    }
+
+    $dir = __DIR__ . '/generated';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp'
+    ];
+
+    $mime = null;
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $mime = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+        }
+    }
+
+    if ($mime && isset($allowed[$mime])) {
+        $ext = $allowed[$mime];
+    }
+
+    if (!$ext) {
+        $ext = 'bin';
+    }
+
+    try {
+        $rand = bin2hex(random_bytes(4));
+    } catch (Exception $e) {
+        $rand = substr(md5(mt_rand()), 0, 8);
+    }
+
+    $filename = 'upload_' . date('Ymd_His') . '_' . $rand . '.' . $ext;
+    $dest = $dir . '/' . $filename;
+
+    if (!move_uploaded_file($file['tmp_name'], $dest)) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Gagal menyimpan file upload'
+        ]);
+        exit;
+    }
+
+    $publicPath = 'generated/' . $filename;
+
+    echo json_encode([
+        'ok'     => true,
+        'status' => 200,
+        'path'   => $publicPath,
+        'url'    => $publicPath,
+        'name'   => $file['name']
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // ====== CACHE FILE: ?api=cache (download dari URL lalu simpan ke server) ======
 if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     header('Content-Type: application/json; charset=utf-8');
@@ -198,6 +300,28 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       background: radial-gradient(circle at top, #1f2937 0, #02030a 55%, #000 100%);
       color: var(--text);
     }
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: -40vh -40vw;
+      pointer-events: none;
+      background: radial-gradient(circle at center, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0.6;
+      filter: blur(60px);
+      animation: orbitGlow 28s linear infinite;
+      z-index: 0;
+    }
+    body::after {
+      animation-duration: 36s;
+      animation-direction: reverse;
+      background: radial-gradient(circle at center, rgba(34,197,94,0.18), transparent 55%);
+    }
+    @keyframes orbitGlow {
+      from { transform: rotate(0deg) scale(1.05); }
+      50% { transform: rotate(180deg) scale(1.15); }
+      to { transform: rotate(360deg) scale(1.05); }
+    }
 
     .topbar {
       position: sticky;
@@ -237,12 +361,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      transition: all 0.25s ease;
     }
     .top-tab.active {
       background: linear-gradient(135deg, #6366f1, #22c55e);
       color: #020617;
       border-color: transparent;
       box-shadow: 0 8px 26px rgba(79,70,229,0.55);
+    }
+    .top-tab:not(.active):hover {
+      border-color: rgba(99,102,241,0.6);
+      color: var(--text);
+      box-shadow: 0 8px 26px rgba(79,70,229,0.25);
     }
     .top-tab .dot {
       width: 7px;
@@ -257,6 +387,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       gap: 18px;
       min-height: calc(100vh - 50px);
       padding: 12px 16px 16px;
+      position: relative;
+      z-index: 1;
     }
     @media (max-width: 1100px) {
       .app { grid-template-columns: 1fr; }
@@ -268,13 +400,59 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       border: 1px solid var(--border);
       padding: 14px 16px;
       box-shadow: 0 18px 60px rgba(0, 0, 0, 0.7);
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: -30%;
+      background: conic-gradient(from 90deg, rgba(99,102,241,0.35), transparent 45%, rgba(34,197,94,0.25));
+      filter: blur(60px);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      animation: cardGlow 12s linear infinite;
+      z-index: 0;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.75);
+    }
+    .card:hover::before {
+      opacity: 0.9;
+    }
+    @keyframes cardGlow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .card > * { position: relative; z-index: 1; }
     .card-soft {
       background: var(--card-soft);
       border-radius: 12px;
       border: 1px solid var(--border);
       padding: 12px 14px;
+      position: relative;
+      overflow: hidden;
     }
+    .card-soft::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(14,165,233,0.04));
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      z-index: 0;
+    }
+    .card-soft:hover::before {
+      opacity: 1;
+    }
+    .card-soft > * { position: relative; z-index: 1; }
     .header {
       display: flex;
       align-items: center;
@@ -350,7 +528,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     button {
       border-radius: 999px;
       border: none;
-      background: linear-gradient(135deg, #6366f1, #a855f7);
+      background: linear-gradient(135deg, #6366f1, #22d3ee, #a855f7);
+      background-size: 200% 200%;
       color: white;
       font-size: 13px;
       font-weight: 500;
@@ -363,6 +542,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, filter 0.12s ease-out;
       box-shadow: 0 12px 30px rgba(79, 70, 229, 0.65);
       white-space: nowrap;
+      animation: gradientShift 6s ease infinite;
     }
     button.secondary {
       background: transparent;
@@ -370,6 +550,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       border: 1px solid var(--border);
       box-shadow: none;
       padding-inline: 12px;
+      animation: none;
     }
     button.small {
       padding: 4px 10px;
@@ -386,6 +567,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       cursor: default;
       box-shadow: none;
       transform: none;
+      animation: none;
     }
     .btn-group {
       display: flex;
@@ -425,27 +607,54 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       padding: 6px 10px;
       cursor: pointer;
       text-align: center;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
     }
     .feature-tab.active {
       background: var(--accent-soft);
       border-color: var(--accent);
       color: var(--text);
+      box-shadow: 0 10px 30px rgba(79,70,229,0.35);
+    }
+    .feature-tab::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.2), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .feature-tab:hover::after {
+      opacity: 1;
     }
 
     .status-bar {
       margin-top: 10px;
       font-size: 12px;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
+      flex-wrap: wrap;
+      align-items: flex-start;
       gap: 10px;
     }
-    .status-text { color: var(--muted); }
+    .status-text {
+      color: var(--muted);
+      flex: 1 1 180px;
+      transition: opacity 0.3s ease, color 0.3s ease;
+    }
+    .status-text.flash { animation: pulseStatus 0.6s ease; }
+    @keyframes pulseStatus {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
     .status-pill {
       padding: 2px 8px;
       border-radius: 999px;
       font-size: 11px;
       border: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.65);
+      box-shadow: inset 0 0 0 1px rgba(148,163,184,0.06);
     }
     .status-pill.ok {
       border-color: rgba(74, 222, 128, 0.5);
@@ -454,6 +663,52 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     .status-pill.err {
       border-color: rgba(248, 113, 113, 0.7);
       color: var(--danger);
+    }
+    .status-progress {
+      flex: 1 1 220px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-progress.active { display: flex; }
+    .status-progress-label {
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status-progress-label span {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .progress-track {
+      flex: 1;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-fill {
+      position: absolute;
+      inset: 0;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(120deg, rgba(99,102,241,0.9), rgba(45,212,191,0.9));
+      box-shadow: 0 0 14px rgba(79,70,229,0.45);
+    }
+    .progress-fill::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+      animation: progressShine 1.8s linear infinite;
+    }
+    @keyframes progressShine {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
     }
 
     .main-layout {
@@ -466,6 +721,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
+    }
+    .preview-progress {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .preview-progress.active { display: flex; }
+    .preview-progress .progress-track {
+      height: 6px;
     }
     .preview-item {
       background: #020617;
@@ -581,12 +848,105 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       margin:6px 0 6px
     }
 
+    .upload-area {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .upload-dropzone {
+      border-radius: 12px;
+      border: 1px dashed rgba(99,102,241,0.35);
+      padding: 14px;
+      background: rgba(2, 6, 23, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-dropzone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .upload-dropzone:hover {
+      border-color: rgba(99,102,241,0.6);
+      background: rgba(15,23,42,0.85);
+      transform: translateY(-1px);
+    }
+    .upload-dropzone:hover::after,
+    .upload-dropzone.dragover::after,
+    .upload-dropzone.has-file::after {
+      opacity: 1;
+    }
+    .upload-dropzone.dragover {
+      border-color: rgba(34,197,94,0.6);
+    }
+    .upload-dropzone.has-file {
+      border-color: rgba(34,197,94,0.55);
+      background: rgba(15,23,42,0.9);
+    }
+    .upload-dropzone-content {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .upload-dropzone strong { color: var(--text); font-size: 12px; }
+    .upload-dropzone-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .upload-preview {
+      width: 64px;
+      height: 64px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      background: #020617;
+    }
+    .upload-status {
+      font-size: 11px;
+      color: var(--muted);
+      display: none;
+    }
+    .upload-status.ok { color: var(--success); display: block; }
+    .upload-status.err { color: var(--danger); display: block; }
+    .upload-status.progress { color: #fbbf24; display: block; }
+
+    .job-progress {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .job-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .job-progress .progress-track {
+      height: 6px;
+    }
+
     .film-app {
       display: grid;
       grid-template-columns: minmax(0, 2fr) 320px;
       gap: 18px;
       min-height: calc(100vh - 50px);
       padding: 12px 16px 16px;
+      position: relative;
+      z-index: 1;
     }
     @media (max-width: 1100px) {
       .film-app { grid-template-columns: 1fr; }
@@ -734,6 +1094,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       gap: 18px;
       min-height: calc(100vh - 50px);
       padding: 12px 16px 16px;
+      position: relative;
+      z-index: 1;
     }
     @media (max-width: 1100px) {
       .ugc-app { grid-template-columns: 1fr; }
@@ -946,6 +1308,21 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           <div id="rowImageUrl">
             <label for="imageUrl">Image URL</label>
             <input id="imageUrl" type="text" placeholder="https://...jpg / .png">
+            <div class="upload-area" id="imageUploadArea">
+              <input id="imageUploadInput" type="file" accept="image/*" style="display:none">
+              <div class="upload-dropzone" id="imageUploadDropzone">
+                <div class="upload-dropzone-content">
+                  <strong>Upload langsung ke server</strong>
+                  <span>Drag & drop, klik, atau paste gambar. URL akan terisi otomatis.</span>
+                  <span style="opacity:0.8">Format JPG, PNG, WEBP hingga 15MB.</span>
+                </div>
+                <div class="upload-dropzone-actions">
+                  <img id="imageUploadPreview" class="upload-preview" style="display:none" alt="Preview upload">
+                  <button type="button" class="small secondary" id="imageUploadButton">Pilih file</button>
+                </div>
+              </div>
+              <div class="upload-status" id="imageUploadStatus"></div>
+            </div>
           </div>
 
           <div id="rowVideoAudio" class="field-row hidden" style="margin-top:4px">
@@ -986,6 +1363,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       <div class="status-bar">
         <div class="status-text" id="statusText">Siap.</div>
         <div class="status-pill" id="statusPill">IDLE</div>
+        <div class="status-progress" id="statusProgressWrapper">
+          <div class="status-progress-label">Progress <span id="statusPercent">0%</span></div>
+          <div class="progress-track">
+            <div class="progress-fill" id="statusProgressFill"></div>
+          </div>
+        </div>
       </div>
     </form>
 
@@ -1005,6 +1388,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       <div id="previewContainer" style="display:none">
         <div class="small-label">Job aktif</div>
         <div id="previewJobMeta" class="muted" style="font-size:11px;margin-bottom:6px"></div>
+        <div class="preview-progress" id="previewProgress">
+          <div class="status-progress-label">Progress <span id="previewProgressPercent">0%</span></div>
+          <div class="progress-track">
+            <div class="progress-fill" id="previewProgressFill"></div>
+          </div>
+        </div>
         <div class="preview-grid" id="previewGrid"></div>
       </div>
     </div>
@@ -1390,11 +1779,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   let jobs = loadJobs();
   let activeJobId = null;
   let pollingTimers = {};
+  let progressTimers = {};
+  let statusProgressHideTimeout = null;
 
   function loadJobs() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr.map(job => {
+        if (job && typeof job === 'object') {
+          if (typeof job.progress !== 'number') {
+            job.progress = finalStatus(job.status) ? 100 : 0;
+          }
+        }
+        return job;
+      });
     } catch {
       return [];
     }
@@ -1421,10 +1822,131 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     return s === 'COMPLETED' || s === 'FAILED' || s === 'ERROR';
   }
 
+  function getJobProgress(job) {
+    if (!job) return 0;
+    if (typeof job.progress === 'number' && !Number.isNaN(job.progress)) {
+      return Math.max(0, Math.min(100, Math.round(job.progress)));
+    }
+    return finalStatus(job.status) ? 100 : 0;
+  }
+
+  function hideStatusProgress() {
+    if (statusProgressWrapper) {
+      statusProgressWrapper.classList.remove('active');
+    }
+    if (statusProgressFill) {
+      statusProgressFill.style.width = '0%';
+    }
+    if (statusPercent) {
+      statusPercent.textContent = '0%';
+    }
+    if (previewProgress) {
+      previewProgress.classList.remove('active');
+    }
+    if (previewProgressFill) {
+      previewProgressFill.style.width = '0%';
+    }
+    if (previewProgressPercent) {
+      previewProgressPercent.textContent = '0%';
+    }
+  }
+
+  function syncStatusProgress(job) {
+    if (!statusProgressWrapper || !statusProgressFill || !statusPercent) return;
+    clearTimeout(statusProgressHideTimeout);
+
+    if (!job) {
+      hideStatusProgress();
+      return;
+    }
+
+    const percent = getJobProgress(job);
+    statusProgressWrapper.classList.add('active');
+    statusProgressFill.style.width = percent + '%';
+    statusPercent.textContent = percent + '%';
+
+    if (previewProgress && previewProgressFill && previewProgressPercent) {
+      previewProgress.classList.add('active');
+      previewProgressFill.style.width = percent + '%';
+      previewProgressPercent.textContent = percent + '%';
+    }
+
+    if (finalStatus(job.status) && percent >= 100) {
+      statusProgressHideTimeout = setTimeout(() => {
+        hideStatusProgress();
+      }, 1400);
+    }
+  }
+
+  function stopProgressTimer(jobId) {
+    if (progressTimers[jobId]) {
+      clearInterval(progressTimers[jobId]);
+      delete progressTimers[jobId];
+    }
+  }
+
+  function startJobProgress(job) {
+    if (!job) return;
+    if (typeof job.progress !== 'number' || Number.isNaN(job.progress)) {
+      job.progress = finalStatus(job.status) ? 100 : 8;
+    } else if (job.progress < 5 && !finalStatus(job.status)) {
+      job.progress = 8;
+    }
+
+    stopProgressTimer(job.id);
+    if (finalStatus(job.status)) {
+      job.progress = 100;
+      updateProgressUI(job);
+      return;
+    }
+
+    progressTimers[job.id] = setInterval(() => {
+      const current = jobs.find(j => j.id === job.id);
+      if (!current) {
+        stopProgressTimer(job.id);
+        return;
+      }
+      if (finalStatus(current.status)) {
+        current.progress = 100;
+        stopProgressTimer(job.id);
+        updateProgressUI(current);
+        saveJobs();
+        return;
+      }
+      const target = 92;
+      const next = Math.min(target, (current.progress || 0) + (Math.random() * 7 + 3));
+      current.progress = next;
+      updateProgressUI(current);
+      saveJobs();
+    }, 1600);
+
+    updateProgressUI(job);
+  }
+
+  function finishJobProgress(job) {
+    if (!job) return;
+    job.progress = 100;
+    stopProgressTimer(job.id);
+    updateProgressUI(job);
+    saveJobs();
+  }
+
+  function updateProgressUI(job) {
+    if (job && activeJobId === job.id) {
+      syncStatusProgress(job);
+    }
+    renderJobs();
+  }
+
   const modelSelect = document.getElementById('modelSelect');
   const modelHint = document.getElementById('modelHint');
   const promptInput = document.getElementById('prompt');
   const imageUrlInput = document.getElementById('imageUrl');
+  const imageUploadInput = document.getElementById('imageUploadInput');
+  const imageUploadButton = document.getElementById('imageUploadButton');
+  const imageUploadDropzone = document.getElementById('imageUploadDropzone');
+  const imageUploadStatus = document.getElementById('imageUploadStatus');
+  const imageUploadPreview = document.getElementById('imageUploadPreview');
   const videoUrlInput = document.getElementById('videoUrl');
   const audioUrlInput = document.getElementById('audioUrl');
   const numImagesInput = document.getElementById('numImages');
@@ -1433,10 +1955,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   const clearPromptBtn = document.getElementById('clearPromptBtn');
   const statusText = document.getElementById('statusText');
   const statusPill = document.getElementById('statusPill');
+  const statusProgressWrapper = document.getElementById('statusProgressWrapper');
+  const statusProgressFill = document.getElementById('statusProgressFill');
+  const statusPercent = document.getElementById('statusPercent');
   const previewEmpty = document.getElementById('previewEmpty');
   const previewContainer = document.getElementById('previewContainer');
   const previewJobMeta = document.getElementById('previewJobMeta');
   const previewGrid = document.getElementById('previewGrid');
+  const previewProgress = document.getElementById('previewProgress');
+  const previewProgressFill = document.getElementById('previewProgressFill');
+  const previewProgressPercent = document.getElementById('previewProgressPercent');
   const clearPreviewBtn = document.getElementById('clearPreviewBtn');
   const queueList = document.getElementById('queueList');
   const queueEmpty = document.getElementById('queueEmpty');
@@ -1482,6 +2010,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
   function setStatus(text, mode = 'idle') {
     statusText.textContent = text;
+    statusText.classList.remove('flash');
+    void statusText.offsetWidth;
+    statusText.classList.add('flash');
     statusPill.classList.remove('ok', 'err');
     if (mode === 'ok') {
       statusPill.textContent = 'OK';
@@ -1596,6 +2127,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     queue.forEach(j => queueList.appendChild(renderJobItem(j)));
     history.forEach(j => historyList.appendChild(renderJobItem(j)));
+
+    if (activeJobId) {
+      const activeJob = jobs.find(j => j.id === activeJobId);
+      if (activeJob) syncStatusProgress(activeJob);
+    }
   }
 
   function renderJobItem(job) {
@@ -1650,6 +2186,28 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     el.appendChild(header);
     el.appendChild(meta);
+
+    if (!finalStatus(job.status)) {
+      const progressWrap = document.createElement('div');
+      progressWrap.className = 'job-progress';
+
+      const label = document.createElement('div');
+      label.className = 'job-progress-label';
+      const pct = getJobProgress(job);
+      label.innerHTML = `<span>Progress</span><span>${pct}%</span>`;
+
+      const track = document.createElement('div');
+      track.className = 'progress-track';
+      const fill = document.createElement('div');
+      fill.className = 'progress-fill';
+      fill.style.width = pct + '%';
+      track.appendChild(fill);
+
+      progressWrap.appendChild(label);
+      progressWrap.appendChild(track);
+      el.appendChild(progressWrap);
+    }
+
     el.appendChild(actions);
     return el;
   }
@@ -1658,6 +2216,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     if (!job) {
       previewContainer.style.display = 'none';
       previewEmpty.style.display = 'block';
+      syncStatusProgress(null);
       return;
     }
     const cfg = MODEL_CONFIG[job.modelId];
@@ -1666,6 +2225,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     previewJobMeta.textContent =
       `${cfg ? cfg.label : job.modelId} • status ${job.status || 'UNKNOWN'} • dibuat ${shortTime(job.createdAt)}`;
+
+    syncStatusProgress(job);
 
     previewGrid.innerHTML = '';
 
@@ -1788,6 +2349,145 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
     return json.url || json.path;
   }
+
+  function resetImageUploadArea(clearStatus = true) {
+    if (imageUploadInput) imageUploadInput.value = '';
+    if (imageUploadPreview) {
+      imageUploadPreview.src = '';
+      imageUploadPreview.style.display = 'none';
+    }
+    if (imageUploadDropzone) {
+      imageUploadDropzone.classList.remove('has-file', 'dragover');
+    }
+    if (clearStatus) setImageUploadStatus('', null);
+  }
+
+  function setImageUploadStatus(text, mode) {
+    if (!imageUploadStatus) return;
+    imageUploadStatus.textContent = text || '';
+    imageUploadStatus.classList.remove('ok', 'err', 'progress');
+    if (!text) {
+      imageUploadStatus.style.display = 'none';
+      return;
+    }
+    if (mode) imageUploadStatus.classList.add(mode);
+    imageUploadStatus.style.display = 'block';
+  }
+
+  async function uploadImageFile(file) {
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      setImageUploadStatus('File harus gambar (PNG/JPG/WEBP).', 'err');
+      return;
+    }
+
+    setImageUploadStatus('Mengunggah ' + file.name + '…', 'progress');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        console.error('Response /?api=upload bukan JSON. Raw:', text);
+        throw new Error('Endpoint upload mengembalikan format tidak valid.');
+      }
+
+      if (!json.ok) {
+        throw new Error(json.error || 'Upload gagal');
+      }
+
+      const url = json.url || json.path;
+      if (imageUrlInput && url) {
+        imageUrlInput.value = url;
+      }
+      if (imageUploadPreview && url) {
+        imageUploadPreview.src = url;
+        imageUploadPreview.style.display = 'block';
+      }
+      if (imageUploadDropzone) {
+        imageUploadDropzone.classList.add('has-file');
+      }
+
+      setImageUploadStatus('Upload sukses: ' + (json.name || file.name), 'ok');
+      setStatus('Gambar berhasil diupload ke server.', 'ok');
+    } catch (err) {
+      console.error(err);
+      setImageUploadStatus(err.message || 'Upload gagal.', 'err');
+      setStatus('Upload gagal: ' + err.message, 'err');
+    }
+  }
+
+  function handleImageFileList(fileList) {
+    if (!fileList || !fileList.length) return;
+    const file = fileList[0];
+    resetImageUploadArea();
+    uploadImageFile(file);
+  }
+
+  if (imageUploadButton) {
+    imageUploadButton.addEventListener('click', () => {
+      if (imageUploadInput) imageUploadInput.click();
+    });
+  }
+
+  if (imageUploadInput) {
+    imageUploadInput.addEventListener('change', e => {
+      handleImageFileList(e.target.files);
+      e.target.value = '';
+    });
+  }
+
+  if (imageUploadDropzone) {
+    imageUploadDropzone.addEventListener('click', () => {
+      if (imageUploadInput) imageUploadInput.click();
+    });
+    ['dragenter','dragover'].forEach(evt => {
+      imageUploadDropzone.addEventListener(evt, ev => {
+        ev.preventDefault();
+        imageUploadDropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave','dragend'].forEach(evt => {
+      imageUploadDropzone.addEventListener(evt, ev => {
+        ev.preventDefault();
+        imageUploadDropzone.classList.remove('dragover');
+      });
+    });
+    imageUploadDropzone.addEventListener('drop', ev => {
+      ev.preventDefault();
+      imageUploadDropzone.classList.remove('dragover');
+      if (ev.dataTransfer && ev.dataTransfer.files) {
+        handleImageFileList(ev.dataTransfer.files);
+      }
+    });
+  }
+
+  if (imageUrlInput) {
+    imageUrlInput.addEventListener('input', () => {
+      if (!imageUrlInput.value) {
+        resetImageUploadArea();
+      }
+    });
+  }
+
+  document.addEventListener('paste', ev => {
+    if (!imageUploadDropzone) return;
+    if (!ev.clipboardData || !ev.clipboardData.files || !ev.clipboardData.files.length) return;
+    const target = ev.target;
+    const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+    if (['input','textarea'].includes(tag)) return;
+    handleImageFileList(ev.clipboardData.files);
+    setStatus('Menempel gambar dari clipboard…');
+  });
 
   async function ensureLocalFiles(job) {
     if (!job || !Array.isArray(job.generated) || !job.generated.length) return;
@@ -1912,6 +2612,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       if (job.id === activeJobId) refreshPreview();
 
       if (finalStatus(job.status)) {
+        finishJobProgress(job);
         if (pollingTimers[job.id]) {
           clearInterval(pollingTimers[job.id]);
           delete pollingTimers[job.id];
@@ -1975,9 +2676,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       renderPreview(job);
 
       if (taskId && !finalStatus(job.status)) {
+        startJobProgress(job);
         startPolling(job);
         setStatus('Task dibuat: ' + taskId.slice(0,8) + '…', 'ok');
       } else {
+        finishJobProgress(job);
         setStatus('Task selesai (synchronous).', 'ok');
         if (job.generated && job.generated.length) {
           await ensureLocalFiles(job);
@@ -2003,6 +2706,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     audioUrlInput.value = '';
     numImagesInput.value = '1';
     aspectRatioInput.value = '';
+    resetImageUploadArea();
     setStatus('Form dibersihkan.');
   });
   clearPreviewBtn.addEventListener('click', () => {
@@ -2571,7 +3275,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     jobs.unshift(job);
     saveJobs();
     renderJobs();
-    if (taskId && !finalStatus(status)) startPolling(job);
+    if (taskId && !finalStatus(status)) {
+      startJobProgress(job);
+      startPolling(job);
+    } else {
+      finishJobProgress(job);
+    }
 
     item.videoJobId = jobId;
     renderUgcList();
@@ -2584,6 +3293,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
   // ===== INIT =====
   setFeature('videoGen');
+  jobs.filter(j => !finalStatus(j.status)).forEach(job => startJobProgress(job));
   renderJobs();
   if (jobs.length) {
     const lastCompleted = jobs.find(j => finalStatus(j.status)) || jobs[0];
