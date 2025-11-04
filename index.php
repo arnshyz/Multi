@@ -923,6 +923,168 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     .upload-status.err { color: var(--danger); display: block; }
     .upload-status.progress { color: #fbbf24; display: block; }
 
+    .gemini-mode-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .gemini-mode-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .gemini-mode-btn {
+      flex: 1 1 160px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.85);
+      color: var(--muted);
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .gemini-mode-btn strong {
+      display: block;
+      color: var(--text);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .gemini-mode-btn span {
+      display: block;
+      opacity: 0.78;
+      line-height: 1.4;
+    }
+    .gemini-mode-btn::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(99,102,241,0.16), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .gemini-mode-btn:hover::after { opacity: 1; }
+    .gemini-mode-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--text);
+      box-shadow: 0 14px 34px rgba(99,102,241,0.28);
+    }
+    .gemini-mode-desc {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .gemini-reference-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .gemini-dropzone {
+      border-radius: 12px;
+      border: 1px dashed rgba(99,102,241,0.35);
+      padding: 12px;
+      background: rgba(2, 6, 23, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .gemini-dropzone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .gemini-dropzone:hover,
+    .gemini-dropzone.dragover {
+      border-color: rgba(99,102,241,0.6);
+      background: rgba(15,23,42,0.85);
+      transform: translateY(-1px);
+    }
+    .gemini-dropzone:hover::after,
+    .gemini-dropzone.dragover::after,
+    .gemini-dropzone.has-file::after {
+      opacity: 1;
+    }
+    .gemini-dropzone.has-file {
+      border-color: rgba(34,197,94,0.55);
+    }
+    .gemini-dropzone-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .gemini-dropzone-info strong {
+      color: var(--text);
+      font-size: 12px;
+    }
+    .gemini-dropzone-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .gemini-ref-helper {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .gemini-ref-add input {
+      height: 32px;
+    }
+    .gemini-ref-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .gemini-ref-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #020617;
+      padding: 6px 8px;
+    }
+    .gemini-ref-thumb {
+      width: 52px;
+      height: 52px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .gemini-ref-meta {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 0;
+    }
+    .gemini-ref-meta strong {
+      color: var(--text);
+      font-size: 11px;
+    }
+    .gemini-ref-meta span {
+      word-break: break-all;
+    }
+
     .job-progress {
       margin-top: 8px;
       display: flex;
@@ -1305,6 +1467,48 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         <div>
           <div id="fieldsTitle" class="form-section-title">Video Generator</div>
 
+          <div id="geminiModeSection" class="gemini-mode-section hidden">
+            <div class="form-section-title">Gemini Flash Modes</div>
+            <div class="gemini-mode-toggle">
+              <button type="button" class="gemini-mode-btn active" data-gemini-mode="text">
+                <strong>Mode 1 · Text-to-Image</strong>
+                <span>Kirim deskripsi tanpa gambar referensi.</span>
+              </button>
+              <button type="button" class="gemini-mode-btn" data-gemini-mode="single">
+                <strong>Mode 2 · Single Image-to-Image</strong>
+                <span>Unggah 1 gambar + caption untuk editing.</span>
+              </button>
+              <button type="button" class="gemini-mode-btn" data-gemini-mode="multi">
+                <strong>⭐ Mode 3 · Multi-Image Reference</strong>
+                <span>Kombinasikan 2-3 gambar referensi + caption.</span>
+              </button>
+            </div>
+            <div id="geminiModeDescription" class="gemini-mode-desc">
+              Mode 1: Text-to-Image — Masukkan prompt deskriptif tanpa gambar.
+            </div>
+          </div>
+
+          <div id="geminiReferenceSection" class="gemini-reference-section hidden">
+            <div class="form-section-title">Reference Images</div>
+            <div class="gemini-dropzone" id="geminiDropzone">
+              <input id="geminiFileInput" type="file" accept="image/*" multiple style="display:none">
+              <div class="gemini-dropzone-info">
+                <strong>Upload referensi</strong>
+                <span class="gemini-ref-helper" id="geminiRefHelper">Mode 2 membutuhkan 1 gambar referensi.</span>
+                <span style="font-size:10px; opacity:0.8;">Drag &amp; drop, klik, atau paste (Ctrl+V) saat mode aktif.</span>
+                <span style="font-size:11px; color:var(--text);">Dipilih: <b id="geminiDropCounter">0/1</b></span>
+              </div>
+              <div class="gemini-dropzone-actions">
+                <button type="button" class="small secondary" id="geminiFileButton">Pilih file</button>
+              </div>
+            </div>
+            <div class="gemini-ref-add field-row">
+              <input id="geminiRefUrl" type="text" placeholder="https://...jpg">
+              <button type="button" class="small" id="geminiRefAddBtn">Tambah URL</button>
+            </div>
+            <div class="gemini-ref-list" id="geminiRefList"></div>
+          </div>
+
           <div id="rowImageUrl">
             <label for="imageUrl">Image URL</label>
             <input id="imageUrl" type="text" placeholder="https://...jpg / .png">
@@ -1435,7 +1639,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         <div class="subtitle">Buat rangkaian scene sinematik dari satu karakter & story brief</div>
       </div>
       <div class="badge">
-        <span>Seedream 4 Edit</span>
+        <span>Gemini Flash 2.5</span>
       </div>
     </div>
     <div class="film-scenes-board">
@@ -1499,7 +1703,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           Generate Scenes
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
-          Setiap scene akan memanggil model Seedream 4 Edit secara terpisah. Progress scene akan muncul di panel kiri.
+          Setiap scene akan memanggil model Gemini Flash 2.5 secara terpisah. Progress scene akan muncul di panel kiri.
         </div>
       </div>
     </div>
@@ -1586,6 +1790,31 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 </div>
 
 <script>
+  // ===== GEMINI MODES =====
+  const GEMINI_MODE_META = {
+    text: {
+      title: 'Mode 1: Text-to-Image',
+      desc: 'Masukkan prompt deskriptif tanpa gambar referensi.',
+      helper: 'Mode ini tidak memerlukan gambar referensi.',
+      min: 0,
+      max: 0
+    },
+    single: {
+      title: 'Mode 2: Single Image-to-Image',
+      desc: 'Tambahkan 1 gambar referensi untuk diedit mengikuti caption.',
+      helper: 'Unggah atau tambahkan tepat 1 URL gambar referensi.',
+      min: 1,
+      max: 1
+    },
+    multi: {
+      title: 'Mode 3: Multi-Image Reference',
+      desc: 'Gunakan 2-3 gambar referensi agar gaya/objeknya digabungkan.',
+      helper: 'Unggah hingga 3 gambar referensi sekaligus (minimal 2).',
+      min: 2,
+      max: 3
+    }
+  };
+
   // ===== MODEL CONFIG =====
   const MODEL_CONFIG = {
     gemini: {
@@ -1594,7 +1823,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       type: 'image',
       path: '/v1/ai/gemini-2-5-flash-image-preview',
       statusPath: taskId => `/v1/ai/gemini-2-5-flash-image-preview/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, num_images: f.numImages || 1 })
+      buildBody: f => {
+        const body = { prompt: f.prompt, num_images: f.numImages || 1 };
+        if (f.aspectRatio) body.aspect_ratio = f.aspectRatio;
+        if (Array.isArray(f.referenceImages) && f.referenceImages.length) {
+          body.reference_images = f.referenceImages;
+        }
+        return body;
+      }
     },
     imagen3: {
       id: 'imagen3',
@@ -1947,6 +2183,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   const imageUploadDropzone = document.getElementById('imageUploadDropzone');
   const imageUploadStatus = document.getElementById('imageUploadStatus');
   const imageUploadPreview = document.getElementById('imageUploadPreview');
+  const geminiModeSection = document.getElementById('geminiModeSection');
+  const geminiModeButtons = document.querySelectorAll('[data-gemini-mode]');
+  const geminiModeDescription = document.getElementById('geminiModeDescription');
+  const geminiReferenceSection = document.getElementById('geminiReferenceSection');
+  const geminiDropzone = document.getElementById('geminiDropzone');
+  const geminiFileInput = document.getElementById('geminiFileInput');
+  const geminiFileButton = document.getElementById('geminiFileButton');
+  const geminiRefHelper = document.getElementById('geminiRefHelper');
+  const geminiDropCounter = document.getElementById('geminiDropCounter');
+  const geminiRefUrl = document.getElementById('geminiRefUrl');
+  const geminiRefAddBtn = document.getElementById('geminiRefAddBtn');
+  const geminiRefList = document.getElementById('geminiRefList');
   const videoUrlInput = document.getElementById('videoUrl');
   const audioUrlInput = document.getElementById('audioUrl');
   const numImagesInput = document.getElementById('numImages');
@@ -2025,11 +2273,168 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
   }
 
+  let geminiMode = 'text';
+  let geminiReferences = [];
+
+  function getGeminiMeta(mode = geminiMode) {
+    return GEMINI_MODE_META[mode] || GEMINI_MODE_META.text;
+  }
+
+  function getGeminiLimit(mode = geminiMode) {
+    const meta = getGeminiMeta(mode);
+    return meta && typeof meta.max === 'number' ? meta.max : 0;
+  }
+
+  function resetGeminiState(resetMode = true) {
+    if (resetMode) geminiMode = 'text';
+    geminiReferences = [];
+    if (geminiRefUrl) geminiRefUrl.value = '';
+  }
+
+  function renderGeminiRefs(isGemini = (modelSelect && modelSelect.value === 'gemini')) {
+    if (!geminiRefList) return;
+    const meta = getGeminiMeta();
+    if (geminiDropCounter) {
+      const current = isGemini ? geminiReferences.length : 0;
+      const total = meta.max || 0;
+      geminiDropCounter.textContent = `${current}/${total}`;
+    }
+    if (geminiRefHelper) {
+      if (!isGemini) {
+        geminiRefHelper.textContent = 'Aktifkan Gemini Flash untuk menambah referensi.';
+      } else if (meta.max > 0) {
+        geminiRefHelper.textContent = `${meta.helper} (${geminiReferences.length}/${meta.max}).`;
+      } else {
+        geminiRefHelper.textContent = meta.helper;
+      }
+    }
+
+    geminiRefList.innerHTML = '';
+    if (!isGemini) {
+      if (geminiDropzone) geminiDropzone.classList.remove('has-file');
+      return;
+    }
+
+    if (geminiMode === 'text') {
+      const info = document.createElement('div');
+      info.className = 'muted';
+      info.style.fontSize = '11px';
+      info.textContent = 'Mode text-only tidak menggunakan referensi.';
+      geminiRefList.appendChild(info);
+      if (geminiDropzone) geminiDropzone.classList.remove('has-file');
+      return;
+    }
+
+    if (!geminiReferences.length) {
+      const empty = document.createElement('div');
+      empty.className = 'muted';
+      empty.style.fontSize = '11px';
+      empty.textContent = 'Belum ada referensi. Upload gambar atau tambahkan URL di bawah.';
+      geminiRefList.appendChild(empty);
+      if (geminiDropzone) geminiDropzone.classList.remove('has-file');
+      return;
+    }
+
+    geminiReferences.forEach((ref, idx) => {
+      const item = document.createElement('div');
+      item.className = 'gemini-ref-item';
+
+      const thumb = document.createElement('img');
+      thumb.className = 'gemini-ref-thumb';
+      thumb.src = ref.url;
+      thumb.alt = ref.name || ('Referensi ' + (idx + 1));
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'gemini-ref-meta';
+      const title = document.createElement('strong');
+      title.textContent = ref.name || ('Referensi ' + (idx + 1));
+      const urlSpan = document.createElement('span');
+      urlSpan.textContent = ref.url;
+      metaDiv.appendChild(title);
+      metaDiv.appendChild(urlSpan);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'small secondary';
+      removeBtn.textContent = 'Hapus';
+      removeBtn.addEventListener('click', () => {
+        geminiReferences.splice(idx, 1);
+        renderGeminiRefs(modelSelect && modelSelect.value === 'gemini');
+      });
+
+      item.appendChild(thumb);
+      item.appendChild(metaDiv);
+      item.appendChild(removeBtn);
+      geminiRefList.appendChild(item);
+    });
+
+    if (geminiDropzone) {
+      geminiDropzone.classList.toggle('has-file', geminiReferences.length > 0);
+    }
+  }
+
+  function updateGeminiModeUI(isGemini = (modelSelect && modelSelect.value === 'gemini')) {
+    const meta = getGeminiMeta();
+    if (geminiModeButtons && geminiModeButtons.forEach) {
+      geminiModeButtons.forEach(btn => {
+        const mode = btn.dataset.geminiMode;
+        btn.classList.toggle('active', mode === geminiMode);
+      });
+    }
+    if (geminiModeDescription && meta) {
+      geminiModeDescription.textContent = `${meta.title} — ${meta.desc}`;
+    }
+    if (geminiModeSection) {
+      geminiModeSection.classList.toggle('hidden', !isGemini);
+    }
+    if (geminiReferenceSection) {
+      const showRefs = isGemini && geminiMode !== 'text';
+      geminiReferenceSection.classList.toggle('hidden', !showRefs);
+    }
+    renderGeminiRefs(isGemini);
+  }
+
+  function syncGeminiVisibility() {
+    const isGemini = modelSelect && modelSelect.value === 'gemini';
+    if (!isGemini) {
+      resetGeminiState(true);
+    }
+    updateGeminiModeUI(isGemini);
+  }
+
+  function setGeminiMode(mode) {
+    if (!mode || !GEMINI_MODE_META[mode]) return;
+    if (geminiMode === mode) {
+      updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
+      return;
+    }
+    geminiMode = mode;
+    const limit = getGeminiLimit(mode);
+    if (limit === 0) {
+      geminiReferences = [];
+    } else if (geminiReferences.length > limit) {
+      geminiReferences = geminiReferences.slice(0, limit);
+    }
+    updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
+  }
+
+  if (geminiModeButtons && geminiModeButtons.forEach) {
+    geminiModeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.geminiMode;
+        setGeminiMode(mode);
+      });
+    });
+  }
+
+
   function setModelHint(id) {
-    if (['gemini','imagen3','seedream4','fluxPro11'].includes(id)) {
+    if (id === 'gemini') {
+      modelHint.textContent = 'Gemini Flash 2.5: pilih mode (Text / 1 referensi / 2-3 referensi). Prompt wajib, num_images & aspect ratio opsional.';
+    } else if (['imagen3','seedream4','fluxPro11'].includes(id)) {
       modelHint.textContent = 'Text-to-image: wajib prompt. num_images opsional. Aspect ratio opsional.';
     } else if (id === 'seedream4edit') {
-      modelHint.textContent = 'Seedream 4 Edit: wajib prompt + image (URL) atau digunakan di Filmmaker/UGC.';
+      modelHint.textContent = 'Seedream 4 Edit: wajib prompt + image (URL). Direkomendasikan untuk workflow UGC.';
     } else if (['upscalerCreative','upscalePrecV1','upscalePrecV2'].includes(id)) {
       modelHint.textContent = 'Upscaler: wajib image URL. Prompt opsional.';
     } else if (id === 'removeBg') {
@@ -2072,6 +2477,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     } else {
       fieldsTitle.textContent = 'Input';
     }
+
+    syncGeminiVisibility();
   }
 
   let currentFeature = 'videoGen';
@@ -2374,6 +2781,34 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     imageUploadStatus.style.display = 'block';
   }
 
+  async function uploadFileToServer(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      console.error('Response /?api=upload bukan JSON. Raw:', text);
+      throw new Error('Endpoint upload mengembalikan format tidak valid.');
+    }
+
+    if (!json.ok) {
+      throw new Error(json.error || 'Upload gagal');
+    }
+
+    return {
+      url: json.url || json.path,
+      name: json.name || file.name
+    };
+  }
+
   async function uploadImageFile(file) {
     if (!file) return;
     if (!file.type || !file.type.startsWith('image/')) {
@@ -2383,29 +2818,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     setImageUploadStatus('Mengunggah ' + file.name + '…', 'progress');
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=upload', {
-        method: 'POST',
-        body: formData
-      });
+      const result = await uploadFileToServer(file);
+      const url = result.url;
 
-      const text = await res.text();
-      let json;
-      try {
-        json = JSON.parse(text);
-      } catch (e) {
-        console.error('Response /?api=upload bukan JSON. Raw:', text);
-        throw new Error('Endpoint upload mengembalikan format tidak valid.');
-      }
-
-      if (!json.ok) {
-        throw new Error(json.error || 'Upload gagal');
-      }
-
-      const url = json.url || json.path;
       if (imageUrlInput && url) {
         imageUrlInput.value = url;
       }
@@ -2417,7 +2833,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         imageUploadDropzone.classList.add('has-file');
       }
 
-      setImageUploadStatus('Upload sukses: ' + (json.name || file.name), 'ok');
+      setImageUploadStatus('Upload sukses: ' + (result.name || file.name), 'ok');
       setStatus('Gambar berhasil diupload ke server.', 'ok');
     } catch (err) {
       console.error(err);
@@ -2431,6 +2847,118 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     const file = fileList[0];
     resetImageUploadArea();
     uploadImageFile(file);
+  }
+
+  async function uploadGeminiFile(file) {
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+      setStatus('File harus gambar (PNG/JPG/WEBP).', 'err');
+      return;
+    }
+    const isGemini = modelSelect && modelSelect.value === 'gemini';
+    if (!isGemini) {
+      setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+      return;
+    }
+    const limit = getGeminiLimit();
+    if (!limit) {
+      setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+      return;
+    }
+    if (geminiReferences.length >= limit) {
+      setStatus(`Batas referensi tercapai (${limit}).`, 'err');
+      return;
+    }
+
+    try {
+      setStatus('Mengunggah referensi ' + file.name + '…');
+      const result = await uploadFileToServer(file);
+      const url = result.url;
+      if (!url) throw new Error('URL hasil upload tidak ditemukan.');
+      if (geminiReferences.some(ref => ref.url === url)) {
+        setStatus('Gambar sudah ada dalam daftar referensi.', 'err');
+        return;
+      }
+      geminiReferences.push({ url, name: result.name || file.name, source: 'upload' });
+      renderGeminiRefs(isGemini);
+      setStatus('Referensi ditambahkan.', 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('Upload referensi gagal: ' + err.message, 'err');
+    }
+  }
+
+  async function handleGeminiFileList(fileList) {
+    if (!fileList || !fileList.length) return;
+    const isGemini = modelSelect && modelSelect.value === 'gemini';
+    if (!isGemini) {
+      setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+      return;
+    }
+    const limit = getGeminiLimit();
+    if (!limit) {
+      setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+      return;
+    }
+    let available = limit - geminiReferences.length;
+    if (available <= 0) {
+      setStatus(`Batas referensi tercapai (${limit}).`, 'err');
+      return;
+    }
+
+    const files = Array.from(fileList).filter(f => f && f.type && f.type.startsWith('image/'));
+    if (!files.length) {
+      setStatus('Tidak ada file gambar yang valid.', 'err');
+      return;
+    }
+
+    let processed = 0;
+    for (const file of files) {
+      if (available <= 0) break;
+      await uploadGeminiFile(file);
+      processed += 1;
+      available = limit - geminiReferences.length;
+    }
+
+    if (processed < files.length) {
+      setStatus('Sebagian file diabaikan karena batas referensi tercapai.', 'idle');
+    }
+  }
+
+  function addGeminiReferenceUrl() {
+    if (!geminiRefUrl) return;
+    const isGemini = modelSelect && modelSelect.value === 'gemini';
+    if (!isGemini) {
+      setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+      return;
+    }
+    const url = geminiRefUrl.value.trim();
+    if (!url) {
+      setStatus('Masukkan URL gambar referensi terlebih dahulu.', 'err');
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      setStatus('URL harus diawali http:// atau https://', 'err');
+      return;
+    }
+    const limit = getGeminiLimit();
+    if (!limit) {
+      setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+      return;
+    }
+    if (geminiReferences.length >= limit) {
+      setStatus(`Batas referensi tercapai (${limit}).`, 'err');
+      return;
+    }
+    if (geminiReferences.some(ref => ref.url === url)) {
+      setStatus('URL sudah ada dalam daftar referensi.', 'err');
+      return;
+    }
+
+    const nameHint = url.split(/[/?#]/).filter(Boolean).pop() || 'URL Referensi';
+    geminiReferences.push({ url, name: nameHint, source: 'url' });
+    geminiRefUrl.value = '';
+    renderGeminiRefs(isGemini);
+    setStatus('URL referensi ditambahkan.', 'ok');
   }
 
   if (imageUploadButton) {
@@ -2471,6 +2999,84 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     });
   }
 
+  if (geminiFileButton) {
+    geminiFileButton.addEventListener('click', () => {
+      if (!modelSelect || modelSelect.value !== 'gemini') {
+        setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+        return;
+      }
+      if (geminiMode === 'text') {
+        setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+        return;
+      }
+      if (geminiFileInput) geminiFileInput.click();
+    });
+  }
+
+  if (geminiFileInput) {
+    geminiFileInput.addEventListener('change', async e => {
+      await handleGeminiFileList(e.target.files);
+      e.target.value = '';
+    });
+  }
+
+  if (geminiDropzone) {
+    geminiDropzone.addEventListener('click', () => {
+      if (!modelSelect || modelSelect.value !== 'gemini') {
+        setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+        return;
+      }
+      if (geminiMode === 'text') {
+        setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+        return;
+      }
+      if (geminiFileInput) geminiFileInput.click();
+    });
+    ['dragenter','dragover'].forEach(evt => {
+      geminiDropzone.addEventListener(evt, ev => {
+        const isGemini = modelSelect && modelSelect.value === 'gemini';
+        if (!isGemini || geminiMode === 'text') return;
+        ev.preventDefault();
+        geminiDropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave','dragend'].forEach(evt => {
+      geminiDropzone.addEventListener(evt, ev => {
+        ev.preventDefault();
+        geminiDropzone.classList.remove('dragover');
+      });
+    });
+    geminiDropzone.addEventListener('drop', async ev => {
+      ev.preventDefault();
+      geminiDropzone.classList.remove('dragover');
+      const isGemini = modelSelect && modelSelect.value === 'gemini';
+      if (!isGemini) {
+        setStatus('Aktifkan Gemini Flash untuk menambah referensi.', 'err');
+        return;
+      }
+      if (geminiMode === 'text') {
+        setStatus('Mode text-only tidak memerlukan referensi.', 'err');
+        return;
+      }
+      if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) {
+        await handleGeminiFileList(ev.dataTransfer.files);
+      }
+    });
+  }
+
+  if (geminiRefAddBtn) {
+    geminiRefAddBtn.addEventListener('click', () => addGeminiReferenceUrl());
+  }
+
+  if (geminiRefUrl) {
+    geminiRefUrl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addGeminiReferenceUrl();
+      }
+    });
+  }
+
   if (imageUrlInput) {
     imageUrlInput.addEventListener('input', () => {
       if (!imageUrlInput.value) {
@@ -2479,13 +3085,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     });
   }
 
-  document.addEventListener('paste', ev => {
-    if (!imageUploadDropzone) return;
-    if (!ev.clipboardData || !ev.clipboardData.files || !ev.clipboardData.files.length) return;
+  document.addEventListener('paste', async ev => {
+    const files = ev.clipboardData && ev.clipboardData.files;
+    if (!files || !files.length) return;
     const target = ev.target;
     const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
     if (['input','textarea'].includes(tag)) return;
-    handleImageFileList(ev.clipboardData.files);
+
+    const isGemini = modelSelect && modelSelect.value === 'gemini' && geminiMode !== 'text';
+    if (isGemini) {
+      ev.preventDefault();
+      setStatus('Menempel gambar referensi ke Gemini…');
+      await handleGeminiFileList(files);
+      return;
+    }
+
+    if (!imageUploadDropzone) return;
+    handleImageFileList(files);
     setStatus('Menempel gambar dari clipboard…');
   });
 
@@ -2542,6 +3158,28 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       }
     }
 
+    let usedGeminiRefs = null;
+    let usedGeminiMode = null;
+    if (modelId === 'gemini') {
+      const meta = getGeminiMeta(geminiMode);
+      const refs = geminiReferences.map(ref => ref.url).filter(Boolean);
+      if (meta.max > 0) {
+        if (refs.length < meta.min) {
+          if (geminiMode === 'single') {
+            throw new Error('Mode 2 membutuhkan tepat 1 gambar referensi.');
+          }
+          throw new Error('Mode 3 membutuhkan minimal 2 gambar referensi.');
+        }
+        if (refs.length > meta.max) {
+          refs.splice(meta.max);
+        }
+      }
+      formData.referenceImages = refs;
+      formData.geminiMode = geminiMode;
+      usedGeminiRefs = refs.slice();
+      usedGeminiMode = geminiMode;
+    }
+
     const body = cfg.buildBody(formData);
     const data = await callFreepik(cfg, body, 'POST');
 
@@ -2567,7 +3205,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       }
     }
 
-    return { taskId, status, generated, extraUrl };
+    return { taskId, status, generated, extraUrl, references: usedGeminiRefs, geminiModeUsed: usedGeminiMode };
   }
 
   async function fetchStatus(modelId, taskId) {
@@ -2653,7 +3291,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     setStatus('Membuat task ke Freepik…');
 
     try {
-      const { taskId, status, generated, extraUrl } = await createTask(modelId);
+      const { taskId, status, generated, extraUrl, references, geminiModeUsed } = await createTask(modelId);
       const jobId = uuid();
 
       const job = {
@@ -2667,6 +3305,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         generated: generated || [],
         extraUrl: extraUrl || null
       };
+
+      if (modelId === 'gemini') {
+        job.references = Array.isArray(references) ? references : [];
+        job.geminiMode = geminiModeUsed || geminiMode;
+      }
 
       jobs.unshift(job);
       saveJobs();
@@ -2707,6 +3350,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     numImagesInput.value = '1';
     aspectRatioInput.value = '';
     resetImageUploadArea();
+    resetGeminiState(true);
+    updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
     setStatus('Form dibersihkan.');
   });
   clearPreviewBtn.addEventListener('click', () => {
@@ -2870,7 +3515,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     for (const scene of pending) {
       try {
-        const { status, generated } = await fetchStatus('seedream4edit', scene.taskId);
+        const { status, generated } = await fetchStatus('gemini', scene.taskId);
         if (status) scene.status = status;
         if (generated && Array.isArray(generated) && generated.length) {
           const remote = generated[0];
@@ -2920,7 +3565,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     filmScenes = [];
     renderFilmScenes();
 
-    const cfg = MODEL_CONFIG.seedream4edit;
+    const cfg = MODEL_CONFIG.gemini;
     const base64 = filmCharacterDataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 
     for (let i = 1; i <= count; i++) {
@@ -2928,6 +3573,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
       const body = {
         prompt: scenePrompt,
+        num_images: 1,
         reference_images: [base64]
       };
       if (filmAspect === '9:16') {
