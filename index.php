@@ -1912,7 +1912,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           Generate UGC
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
-          Sistem akan membuat 4 ide UGC beserta gambar dari Seedream 4 Edit.
+          Sistem akan membuat 4 ide UGC beserta gambar dari Gemini Flash 2.5.
           Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
         </div>
       </div>
@@ -4232,7 +4232,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     for (const item of pending) {
       try {
-        const { status, generated } = await fetchStatus('seedream4edit', item.taskId);
+        const { status, generated } = await fetchStatus('gemini', item.taskId);
         if (status) item.status = status;
        if (generated && Array.isArray(generated) && generated.length && !item.imageUrl) {
   const remote = generated[0];
@@ -4318,12 +4318,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     ugcItems = [];
     renderUgcList();
 
-    const cfg = MODEL_CONFIG.seedream4edit;
+    const cfg = MODEL_CONFIG.gemini;
+    const referenceLimit = 3;
     const refs = [];
     ugcProductImages.forEach(p => {
-      refs.push(p.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
+      if (refs.length < referenceLimit) {
+        refs.push(p.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
+      }
     });
-    if (ugcModelImage) {
+    if (ugcModelImage && refs.length < referenceLimit) {
       refs.push(ugcModelImage.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
     }
 
@@ -4342,7 +4345,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       ugcItems.push(item);
       renderUgcList();
 
-      const body = { prompt, reference_images: refs };
+      const body = {
+        prompt,
+        num_images: 1,
+        aspect_ratio: 'square_1_1'
+      };
+      if (refs.length) {
+        body.reference_images = refs;
+      }
       try {
         const data = await callFreepik(cfg, body, 'POST');
         if (data && data.data) {
