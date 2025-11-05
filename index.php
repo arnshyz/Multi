@@ -444,6 +444,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'profile_update') {
 if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     header('Content-Type: application/json; charset=utf-8');
 
+    $user = app_require_user();
+    $role = strtolower($user['role'] ?? 'user');
+    $plan = strtoupper($user['subscription_plan'] ?? '');
+
+    if ($role !== 'admin' && $plan !== 'PRO') {
+        app_send_json(403, [
+            'error' => 'Upload hanya tersedia untuk pengguna PRO. Silakan upgrade akun.'
+        ]);
+    }
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         echo json_encode([
             'ok'     => false,
@@ -546,6 +556,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
 if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     header('Content-Type: application/json; charset=utf-8');
 
+    $user = app_require_user();
+    $role = strtolower($user['role'] ?? 'user');
+    $plan = strtoupper($user['subscription_plan'] ?? '');
+
+    if ($role !== 'admin' && $plan !== 'PRO') {
+        app_send_json(403, [
+            'error' => 'Fitur cache hanya tersedia untuk pengguna PRO.'
+        ]);
+    }
+
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
     $url = $payload['url'] ?? '';
@@ -644,6 +664,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     $method      = strtoupper($payload['method'] ?? 'POST');
     $body        = $payload['body']        ?? null;
     $contentType = $payload['contentType'] ?? 'json';
+
+    $user = app_require_user();
+    $role = strtolower($user['role'] ?? 'user');
+    $plan = strtoupper($user['subscription_plan'] ?? '');
+
+    if ($role !== 'admin') {
+        if ($plan !== 'PRO') {
+            app_send_json(403, [
+                'error' => 'Hanya pengguna PRO yang dapat mengakses generator Freepik.'
+            ]);
+        }
+        if ($method !== 'GET' && (int)($user['coins'] ?? 0) <= 0) {
+            app_send_json(403, [
+                'error' => 'Koin kamu habis. Top up sebelum melakukan generate baru.'
+            ]);
+        }
+    }
 
     if (!$path) {
         echo json_encode([
