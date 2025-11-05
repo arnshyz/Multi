@@ -1,11 +1,458 @@
 <?php
+session_start();
+
+$dataDir = __DIR__ . '/data';
+if (!is_dir($dataDir)) {
+    @mkdir($dataDir, 0775, true);
+}
+
+function app_db(): PDO
+{
+    static $pdo = null;
+    if ($pdo instanceof PDO) {
+        return $pdo;
+    }
+
+    global $dataDir;
+    $dbFile = $dataDir . '/app.sqlite';
+    $dsn = 'sqlite:' . $dbFile;
+    $pdo = new PDO($dsn);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec('PRAGMA foreign_keys = ON');
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT "user",
+            subscription_plan TEXT NOT NULL DEFAULT "FREE",
+            coins INTEGER NOT NULL DEFAULT 0,
+            generated_count INTEGER NOT NULL DEFAULT 0,
+            profile_json TEXT,
+            last_ip TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )'
+    );
+
+    $stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'");
+    $hasAdmin = (int)$stmt->fetchColumn();
+    if ($hasAdmin === 0) {
+        $now = date('c');
+        $passwordHash = password_hash('admin123', PASSWORD_DEFAULT);
+        $profile = json_encode(['display_name' => 'Administrator', 'bio' => 'Default admin account']);
+        $insert = $pdo->prepare(
+            'INSERT INTO users (username, email, password_hash, role, subscription_plan, coins, generated_count, profile_json, last_ip, created_at, updated_at)
+             VALUES (:username, :email, :password_hash, :role, :plan, :coins, 0, :profile, :ip, :created_at, :updated_at)'
+        );
+        $insert->execute([
+            ':username'     => 'admin',
+            ':email'        => 'admin@example.com',
+            ':password_hash'=> $passwordHash,
+            ':role'         => 'admin',
+            ':plan'         => 'PRO',
+            ':coins'        => 999,
+            ':profile'      => $profile,
+            ':ip'           => null,
+            ':created_at'   => $now,
+            ':updated_at'   => $now,
+        ]);
+    }
+
+    return $pdo;
+}
+
+function app_user_by_id(int $id): ?array
+{
+    $pdo = app_db();
+    $stmt = $pdo->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
+    $stmt->execute([':id' => $id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function app_user_by_email(string $email): ?array
+{
+    $pdo = app_db();
+    $stmt = $pdo->prepare('SELECT * FROM users WHERE email = :email LIMIT 1');
+    $stmt->execute([':email' => $email]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function app_user_by_username(string $username): ?array
+{
+    $pdo = app_db();
+    $stmt = $pdo->prepare('SELECT * FROM users WHERE username = :username LIMIT 1');
+    $stmt->execute([':username' => $username]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function app_format_user(?array $row): ?array
+{
+    if (!$row) {
+        return null;
+    }
+    $profile = [];
+    if (!empty($row['profile_json'])) {
+        $decoded = json_decode($row['profile_json'], true);
+        if (is_array($decoded)) {
+            $profile = $decoded;
+        }
+    }
+    return [
+        'id'               => (int)$row['id'],
+        'username'         => $row['username'],
+        'email'            => $row['email'],
+        'role'             => $row['role'],
+        'subscription_plan'=> $row['subscription_plan'],
+        'coins'            => (int)$row['coins'],
+        'generated_count'  => (int)$row['generated_count'],
+        'profile'          => $profile,
+        'last_ip'          => $row['last_ip'],
+        'created_at'       => $row['created_at'],
+        'updated_at'       => $row['updated_at'],
+    ];
+}
+
+function app_require_user(): array
+{
+    global $currentUser;
+    if (!$currentUser) {
+        app_send_json(401, [
+            'ok'    => false,
+            'error' => 'Login diperlukan sebelum melanjutkan.'
+        ]);
+    }
+    return $currentUser;
+}
+
+function app_reload_current_user(): void
+{
+    global $currentUser;
+    if (!empty($_SESSION['user_id'])) {
+        $refreshed = app_user_by_id((int)$_SESSION['user_id']);
+        if ($refreshed) {
+            $currentUser = $refreshed;
+            return;
+        }
+    }
+    $currentUser = null;
+    unset($_SESSION['user_id']);
+}
+
+function app_send_json(int $statusCode, array $payload): void
+{
+    http_response_code($statusCode);
+    header('Content-Type: application/json; charset=utf-8');
+    if (!array_key_exists('status', $payload)) {
+        $payload['status'] = $statusCode;
+    }
+    if (!array_key_exists('ok', $payload)) {
+        $payload['ok'] = $statusCode >= 200 && $statusCode < 300;
+    }
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function app_client_ip(): string
+{
+    foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'] as $key) {
+        if (!empty($_SERVER[$key])) {
+            $value = $_SERVER[$key];
+            if ($key === 'HTTP_X_FORWARDED_FOR') {
+                $parts = explode(',', $value);
+                return trim($parts[0]);
+            }
+            return $value;
+        }
+    }
+    return '0.0.0.0';
+}
+
+$currentUser = null;
+if (!empty($_SESSION['user_id'])) {
+    $foundUser = app_user_by_id((int)$_SESSION['user_id']);
+    if ($foundUser) {
+        $currentUser = $foundUser;
+    } else {
+        unset($_SESSION['user_id']);
+    }
+}
+
 // ====== CONFIG FREEPIK ======
 $FREEPIK_API_KEY  = 'FPSX06967c376cb6d87d9c551ccb33ed4d56'; // GANTI DI SINI
 $FREEPIK_BASE_URL = 'https://api.freepik.com';
 
+if (isset($_GET['api']) && $_GET['api'] === 'auth_session') {
+    $user = $currentUser ? app_format_user($currentUser) : null;
+    app_send_json(200, [
+        'user' => $user
+    ]);
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'auth_login') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        app_send_json(405, [
+            'ok'    => false,
+            'error' => 'Gunakan metode POST untuk login.'
+        ]);
+    }
+
+    $payload = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($payload)) {
+        app_send_json(400, [
+            'ok'    => false,
+            'error' => 'Payload tidak valid.'
+        ]);
+    }
+
+    $email    = trim($payload['email'] ?? '');
+    $password = (string)($payload['password'] ?? '');
+
+    if (!$email || !$password) {
+        app_send_json(422, [
+            'ok'    => false,
+            'error' => 'Email dan password wajib diisi.'
+        ]);
+    }
+
+    $user = app_user_by_email($email);
+    if (!$user || empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
+        app_send_json(401, [
+            'ok'    => false,
+            'error' => 'Email atau password salah.'
+        ]);
+    }
+
+    $pdo = app_db();
+    $now = date('c');
+    $stmt = $pdo->prepare('UPDATE users SET last_ip = :ip, updated_at = :updated WHERE id = :id');
+    $stmt->execute([
+        ':ip'      => app_client_ip(),
+        ':updated' => $now,
+        ':id'      => $user['id'],
+    ]);
+
+    $_SESSION['user_id'] = (int)$user['id'];
+    app_reload_current_user();
+
+    app_send_json(200, [
+        'user' => app_format_user($currentUser)
+    ]);
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'auth_register') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        app_send_json(405, [
+            'ok'    => false,
+            'error' => 'Gunakan metode POST untuk registrasi.'
+        ]);
+    }
+
+    $payload = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($payload)) {
+        app_send_json(400, [
+            'ok'    => false,
+            'error' => 'Payload tidak valid.'
+        ]);
+    }
+
+    $username = trim($payload['username'] ?? '');
+    $email    = trim($payload['email'] ?? '');
+    $password = (string)($payload['password'] ?? '');
+    $display  = trim($payload['display_name'] ?? '');
+
+    if (!$username || !$email || !$password) {
+        app_send_json(422, [
+            'ok'    => false,
+            'error' => 'Username, email, dan password wajib diisi.'
+        ]);
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        app_send_json(422, [
+            'ok'    => false,
+            'error' => 'Format email tidak valid.'
+        ]);
+    }
+
+    if (strlen($password) < 6) {
+        app_send_json(422, [
+            'ok'    => false,
+            'error' => 'Password minimal 6 karakter.'
+        ]);
+    }
+
+    if (app_user_by_username($username)) {
+        app_send_json(409, [
+            'ok'    => false,
+            'error' => 'Username sudah digunakan.'
+        ]);
+    }
+
+    if (app_user_by_email($email)) {
+        app_send_json(409, [
+            'ok'    => false,
+            'error' => 'Email sudah terdaftar.'
+        ]);
+    }
+
+    $pdo = app_db();
+    $now = date('c');
+    $profile = json_encode([
+        'display_name' => $display ?: $username,
+        'bio'          => ''
+    ]);
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO users (username, email, password_hash, role, subscription_plan, coins, generated_count, profile_json, last_ip, created_at, updated_at)
+         VALUES (:username, :email, :password_hash, :role, :plan, :coins, 0, :profile, :ip, :created_at, :updated_at)'
+    );
+
+    $stmt->execute([
+        ':username'      => $username,
+        ':email'         => $email,
+        ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
+        ':role'          => 'user',
+        ':plan'          => 'FREE',
+        ':coins'         => 0,
+        ':profile'       => $profile,
+        ':ip'            => app_client_ip(),
+        ':created_at'    => $now,
+        ':updated_at'    => $now,
+    ]);
+
+    $_SESSION['user_id'] = (int)$pdo->lastInsertId();
+    app_reload_current_user();
+
+    app_send_json(201, [
+        'user' => app_format_user($currentUser)
+    ]);
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'auth_logout') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        app_send_json(405, [
+            'ok'    => false,
+            'error' => 'Gunakan metode POST untuk logout.'
+        ]);
+    }
+
+    $_SESSION = [];
+    if (session_id()) {
+        session_regenerate_id(true);
+    }
+    $currentUser = null;
+
+    app_send_json(200, [
+        'message' => 'Logout berhasil.'
+    ]);
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'auth_guard') {
+    $user = app_require_user();
+    $plan = strtoupper($user['subscription_plan'] ?? '');
+    $role = strtolower($user['role'] ?? 'user');
+
+    if ($role !== 'admin') {
+        if ($plan !== 'PRO') {
+            app_send_json(403, [
+                'ok'    => false,
+                'error' => 'Fitur generate hanya untuk pengguna PRO. Hubungi admin untuk upgrade.'
+            ]);
+        }
+        if ((int)($user['coins'] ?? 0) <= 0) {
+            app_send_json(403, [
+                'ok'    => false,
+                'error' => 'Koin kamu habis. Hubungi admin untuk top up sebelum generate lagi.'
+            ]);
+        }
+    }
+
+    app_reload_current_user();
+    app_send_json(200, [
+        'user' => app_format_user($currentUser)
+    ]);
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'auth_track') {
+    $user = app_require_user();
+    $pdo = app_db();
+    $now = date('c');
+    $isAdmin = strtolower($user['role'] ?? 'user') === 'admin';
+    if ($isAdmin) {
+        $stmt = $pdo->prepare('UPDATE users SET generated_count = generated_count + 1, updated_at = :updated WHERE id = :id');
+    } else {
+        $stmt = $pdo->prepare('UPDATE users SET generated_count = generated_count + 1, coins = CASE WHEN coins > 0 THEN coins - 1 ELSE 0 END, updated_at = :updated WHERE id = :id');
+    }
+    $stmt->execute([
+        ':updated' => $now,
+        ':id'      => $user['id'],
+    ]);
+
+    app_reload_current_user();
+    app_send_json(200, [
+        'user' => app_format_user($currentUser)
+    ]);
+}
+
+if (isset($_GET['api']) && $_GET['api'] === 'profile_update') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        app_send_json(405, [
+            'ok'    => false,
+            'error' => 'Gunakan metode POST untuk update profile.'
+        ]);
+    }
+
+    $user = app_require_user();
+    $payload = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($payload)) {
+        app_send_json(400, [
+            'ok'    => false,
+            'error' => 'Payload tidak valid.'
+        ]);
+    }
+
+    $display = trim($payload['display_name'] ?? '');
+    $bio     = trim($payload['bio'] ?? '');
+
+    $profile = json_encode([
+        'display_name' => $display ?: ($user['username'] ?? ''),
+        'bio'          => $bio
+    ]);
+
+    $pdo = app_db();
+    $stmt = $pdo->prepare('UPDATE users SET profile_json = :profile, updated_at = :updated WHERE id = :id');
+    $stmt->execute([
+        ':profile' => $profile,
+        ':updated' => date('c'),
+        ':id'      => $user['id'],
+    ]);
+
+    app_reload_current_user();
+    app_send_json(200, [
+        'user'    => app_format_user($currentUser),
+        'message' => 'Profile berhasil diperbarui.'
+    ]);
+}
+
 // ====== UPLOAD FILE: ?api=upload ======
 if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     header('Content-Type: application/json; charset=utf-8');
+
+    $user = app_require_user();
+    $role = strtolower($user['role'] ?? 'user');
+    $plan = strtoupper($user['subscription_plan'] ?? '');
+
+    if ($role !== 'admin' && $plan !== 'PRO') {
+        app_send_json(403, [
+            'error' => 'Upload hanya tersedia untuk pengguna PRO. Silakan upgrade akun.'
+        ]);
+    }
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         echo json_encode([
@@ -109,6 +556,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
 if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     header('Content-Type: application/json; charset=utf-8');
 
+    $user = app_require_user();
+    $role = strtolower($user['role'] ?? 'user');
+    $plan = strtoupper($user['subscription_plan'] ?? '');
+
+    if ($role !== 'admin' && $plan !== 'PRO') {
+        app_send_json(403, [
+            'error' => 'Fitur cache hanya tersedia untuk pengguna PRO.'
+        ]);
+    }
+
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
     $url = $payload['url'] ?? '';
@@ -207,6 +664,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     $method      = strtoupper($payload['method'] ?? 'POST');
     $body        = $payload['body']        ?? null;
     $contentType = $payload['contentType'] ?? 'json';
+
+    $user = app_require_user();
+    $role = strtolower($user['role'] ?? 'user');
+    $plan = strtoupper($user['subscription_plan'] ?? '');
+
+    if ($role !== 'admin') {
+        if ($plan !== 'PRO') {
+            app_send_json(403, [
+                'error' => 'Hanya pengguna PRO yang dapat mengakses generator Freepik.'
+            ]);
+        }
+        if ($method !== 'GET' && (int)($user['coins'] ?? 0) <= 0) {
+            app_send_json(403, [
+                'error' => 'Koin kamu habis. Top up sebelum melakukan generate baru.'
+            ]);
+        }
+    }
 
     if (!$path) {
         echo json_encode([
@@ -335,6 +809,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       justify-content: space-between;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
     }
     .topbar-title {
       font-size: 14px;
@@ -349,6 +824,35 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
+    }
+    .topbar-account {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .account-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .account-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .account-meta {
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .topbar-account button.primary {
+      font-size: 12px;
+    }
+    .topbar-account .outline {
+      font-size: 11px;
+      padding: 5px 10px;
     }
     .top-tab {
       border-radius: 999px;
@@ -743,14 +1247,30 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: flex;
       flex-direction: column;
       gap: 6px;
+      transition: box-shadow 0.2s ease, transform 0.2s ease;
     }
-    .preview-item img,
-    .preview-item video {
+    .preview-item.preview-item--active {
+      box-shadow: 0 0 0 2px rgba(79,70,229,0.55);
+      transform: translateY(-2px);
+    }
+    .preview-thumb {
+      position: relative;
       width: 100%;
-      max-width: 198px;
-      max-height: 198px;
+      aspect-ratio: 1 / 1;
       border-radius: 8px;
-      object-fit: cover;
+      overflow: hidden;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+    }
+    .preview-thumb.is-image { cursor: pointer; }
+    .preview-thumb img,
+    .preview-thumb video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
       background: #000;
     }
     .preview-meta {
@@ -849,6 +1369,47 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
 
     .hidden{display:none!important}
+    .account-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 11px;
+    }
+    .account-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 12px;
+    }
+    .account-stat-label {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .account-stat-value {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .profile-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .profile-form textarea {
+      min-height: 70px;
+    }
+    .profile-message {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .profile-message.ok {
+      color: var(--success);
+    }
+    .profile-message.err {
+      color: var(--danger);
+    }
     .form-section-title{
       font-size:11px;color:var(--muted);
       text-transform:uppercase;letter-spacing:.08em;
@@ -1472,6 +2033,67 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     .clickable-media {
       cursor: zoom-in;
     }
+    .auth-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(2,6,23,0.86);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+    .auth-card {
+      width: min(420px, 92vw);
+      background: var(--card);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      padding: 20px 22px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.75);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+    }
+    .auth-close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .auth-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .auth-toggle {
+      display: inline-flex;
+      background: rgba(15,23,42,0.8);
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 3px;
+    }
+    .auth-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .auth-toggle button.active {
+      background: linear-gradient(135deg, rgba(99,102,241,0.35), rgba(34,197,94,0.35));
+      color: var(--text);
+    }
+    .auth-message {
+      font-size: 11px;
+      color: var(--danger);
+      min-height: 14px;
+    }
   </style>
 </head>
 <body>
@@ -1491,6 +2113,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     <button class="top-tab" data-target="viewUGC">
       <span class="dot"></span> UGC Tool
     </button>
+  </div>
+  <div class="topbar-account" id="accountSection">
+    <div id="accountInfo" class="account-info hidden">
+      <div class="account-name" id="accountName"></div>
+      <div class="account-meta">
+        <span id="accountRole"></span> • <span id="accountPlan"></span> • <span id="accountCoins"></span> koin
+      </div>
+    </div>
+    <button type="button" class="primary" id="authTriggerBtn">Masuk / Daftar</button>
+    <button type="button" class="outline hidden" id="logoutBtn">Keluar</button>
   </div>
 </div>
 
@@ -1708,6 +2340,63 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   </div>
 
   <div class="jobs-col">
+    <div class="card-soft" id="accountCard">
+      <div class="header" style="margin-bottom:6px">
+        <div>
+          <div class="title" style="font-size:14px">Akun &amp; Status</div>
+          <div class="subtitle">Kelola akses generate &amp; profile</div>
+        </div>
+      </div>
+      <div class="account-card-body">
+        <div id="accountCardPrompt" class="muted" style="font-size:11px">Masuk untuk mulai generate.</div>
+        <div id="accountStats" class="account-stat-grid hidden">
+          <div>
+            <div class="account-stat-label">Username</div>
+            <div class="account-stat-value" id="statUsername"></div>
+          </div>
+          <div>
+            <div class="account-stat-label">Email</div>
+            <div class="account-stat-value" id="statEmail"></div>
+          </div>
+          <div>
+            <div class="account-stat-label">Role</div>
+            <div class="account-stat-value" id="statRole"></div>
+          </div>
+          <div>
+            <div class="account-stat-label">Subscription</div>
+            <div class="account-stat-value" id="statPlan"></div>
+          </div>
+          <div>
+            <div class="account-stat-label">Generated</div>
+            <div class="account-stat-value" id="statGenerated"></div>
+          </div>
+          <div>
+            <div class="account-stat-label">Koin</div>
+            <div class="account-stat-value" id="statCoins"></div>
+          </div>
+          <div>
+            <div class="account-stat-label">IP Terakhir</div>
+            <div class="account-stat-value" id="statIp"></div>
+          </div>
+          <div>
+            <div class="account-stat-label">Dibuat</div>
+            <div class="account-stat-value" id="statCreated"></div>
+          </div>
+        </div>
+        <form id="profileForm" class="profile-form hidden">
+          <div>
+            <label for="profileDisplayName">Display Name</label>
+            <input type="text" id="profileDisplayName" placeholder="Nama tampilan">
+          </div>
+          <div>
+            <label for="profileBio">Bio Singkat</label>
+            <textarea id="profileBio" placeholder="Tuliskan deskripsi singkat"></textarea>
+          </div>
+          <button type="submit" class="secondary">Simpan Profile</button>
+          <div id="profileMessage" class="profile-message"></div>
+        </form>
+      </div>
+    </div>
     <div class="card-soft">
       <div class="header" style="margin-bottom:6px">
         <div>
@@ -1893,6 +2582,52 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   </div>
 </div>
 
+<div id="authModal" class="auth-modal hidden">
+  <div class="auth-card">
+    <button type="button" class="auth-close" id="authCloseBtn">&times;</button>
+    <div>
+      <div class="auth-title">Kelola Akun</div>
+      <div class="subtitle" style="font-size:12px;color:var(--muted);">Masuk untuk menyimpan history generate &amp; akses PRO.</div>
+    </div>
+    <div class="auth-toggle">
+      <button type="button" class="active" data-auth-mode="login">Masuk</button>
+      <button type="button" data-auth-mode="register">Daftar</button>
+    </div>
+    <form id="loginForm">
+      <div class="auth-message" id="loginMessage"></div>
+      <div>
+        <label for="loginEmail">Email</label>
+        <input type="email" id="loginEmail" placeholder="email@domain.com" required>
+      </div>
+      <div>
+        <label for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="Password" required>
+      </div>
+      <button type="submit">Masuk</button>
+    </form>
+    <form id="registerForm" class="hidden">
+      <div class="auth-message" id="registerMessage"></div>
+      <div>
+        <label for="registerUsername">Username</label>
+        <input type="text" id="registerUsername" placeholder="username" required>
+      </div>
+      <div>
+        <label for="registerEmail">Email</label>
+        <input type="email" id="registerEmail" placeholder="email@domain.com" required>
+      </div>
+      <div>
+        <label for="registerPassword">Password</label>
+        <input type="password" id="registerPassword" placeholder="Minimal 6 karakter" required>
+      </div>
+      <div>
+        <label for="registerDisplay">Display Name (opsional)</label>
+        <input type="text" id="registerDisplay" placeholder="Nama tampilan">
+      </div>
+      <button type="submit">Daftar &amp; Masuk</button>
+    </form>
+  </div>
+</div>
+
 <div id="assetPreviewModal" class="asset-preview hidden">
   <div class="asset-preview-inner">
     <button type="button" id="assetPreviewClose" class="asset-preview-close">&times;</button>
@@ -1902,6 +2637,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 </div>
 
 <script>
+  const PHP_SELF = '<?= htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES) ?>';
+  window.__APP_USER__ = <?= json_encode(app_format_user($currentUser), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+  let currentUser = window.__APP_USER__;
+
   // ===== GEMINI MODES =====
   const GEMINI_MODE_META = {
     text: {
@@ -2286,6 +3025,41 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     renderJobs();
   }
 
+  const accountInfo = document.getElementById('accountInfo');
+  const accountName = document.getElementById('accountName');
+  const accountRole = document.getElementById('accountRole');
+  const accountPlan = document.getElementById('accountPlan');
+  const accountCoins = document.getElementById('accountCoins');
+  const authTriggerBtn = document.getElementById('authTriggerBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const accountCardPrompt = document.getElementById('accountCardPrompt');
+  const accountStats = document.getElementById('accountStats');
+  const statUsername = document.getElementById('statUsername');
+  const statEmail = document.getElementById('statEmail');
+  const statRole = document.getElementById('statRole');
+  const statPlan = document.getElementById('statPlan');
+  const statGenerated = document.getElementById('statGenerated');
+  const statCoins = document.getElementById('statCoins');
+  const statIp = document.getElementById('statIp');
+  const statCreated = document.getElementById('statCreated');
+  const profileForm = document.getElementById('profileForm');
+  const profileDisplayNameInput = document.getElementById('profileDisplayName');
+  const profileBioInput = document.getElementById('profileBio');
+  const profileMessage = document.getElementById('profileMessage');
+  const authModal = document.getElementById('authModal');
+  const authCloseBtn = document.getElementById('authCloseBtn');
+  const loginForm = document.getElementById('loginForm');
+  const registerForm = document.getElementById('registerForm');
+  const loginMessage = document.getElementById('loginMessage');
+  const registerMessage = document.getElementById('registerMessage');
+  const loginEmailInput = document.getElementById('loginEmail');
+  const loginPasswordInput = document.getElementById('loginPassword');
+  const registerUsernameInput = document.getElementById('registerUsername');
+  const registerEmailInput = document.getElementById('registerEmail');
+  const registerPasswordInput = document.getElementById('registerPassword');
+  const registerDisplayInput = document.getElementById('registerDisplay');
+  const authModeButtons = document.querySelectorAll('[data-auth-mode]');
+
   const modelSelect = document.getElementById('modelSelect');
   const modelHint = document.getElementById('modelHint');
   const promptInput = document.getElementById('prompt');
@@ -2367,6 +3141,355 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   const ugcStyleSelect    = document.getElementById('ugcStyle');
   const ugcBriefInput     = document.getElementById('ugcBrief');
   const ugcGenerateBtn    = document.getElementById('ugcGenerateBtn');
+
+  let authMode = 'login';
+
+  function formatDateTime(value) {
+    if (!value) return '-';
+    try {
+      return new Date(value).toLocaleString('id-ID', { hour12: false });
+    } catch (err) {
+      return value;
+    }
+  }
+
+  function setAuthMode(mode) {
+    authMode = mode === 'register' ? 'register' : 'login';
+    authModeButtons.forEach(btn => {
+      if (btn.dataset.authMode === authMode) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    if (authMode === 'login') {
+      loginForm?.classList.remove('hidden');
+      registerForm?.classList.add('hidden');
+      loginMessage.textContent = '';
+    } else {
+      registerForm?.classList.remove('hidden');
+      loginForm?.classList.add('hidden');
+      registerMessage.textContent = '';
+    }
+  }
+
+  function openAuthModal(mode = 'login') {
+    setAuthMode(mode);
+    if (!authModal) return;
+    authModal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    if (authMode === 'login') {
+      setTimeout(() => loginEmailInput?.focus(), 50);
+    } else {
+      setTimeout(() => registerUsernameInput?.focus(), 50);
+    }
+  }
+
+  function closeAuthModal() {
+    if (!authModal) return;
+    authModal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
+    loginForm?.reset();
+    registerForm?.reset();
+    loginMessage.textContent = '';
+    registerMessage.textContent = '';
+  }
+
+  function updateAccountUI() {
+    const profile = currentUser && currentUser.profile ? currentUser.profile : {};
+    if (currentUser) {
+      const displayName = profile.display_name || currentUser.username || '';
+      const role = (currentUser.role || 'user').toUpperCase();
+      const plan = (currentUser.subscription_plan || 'FREE').toUpperCase();
+      const coins = Number.isFinite(currentUser.coins) ? currentUser.coins : 0;
+      const generated = Number.isFinite(currentUser.generated_count) ? currentUser.generated_count : 0;
+
+      accountInfo?.classList.remove('hidden');
+      if (accountName) accountName.textContent = displayName;
+      if (accountRole) accountRole.textContent = role;
+      if (accountPlan) accountPlan.textContent = plan;
+      if (accountCoins) accountCoins.textContent = coins;
+
+      authTriggerBtn?.classList.add('hidden');
+      logoutBtn?.classList.remove('hidden');
+
+      if (accountCardPrompt) {
+        if (role === 'ADMIN') {
+          accountCardPrompt.textContent = 'Admin dapat mengakses semua fitur dan mengelola user.';
+        } else if (plan === 'PRO' && coins > 0) {
+          accountCardPrompt.textContent = `PRO aktif. Sisa koin: ${coins}.`;
+        } else if (plan === 'PRO') {
+          accountCardPrompt.textContent = 'PRO aktif namun koin habis. Hubungi admin untuk top up.';
+        } else {
+          accountCardPrompt.textContent = 'Akun masih Free. Upgrade ke PRO untuk mengakses generator.';
+        }
+        accountCardPrompt.classList.remove('hidden');
+      }
+
+      if (accountStats) {
+        accountStats.classList.remove('hidden');
+        if (statUsername) statUsername.textContent = currentUser.username || '-';
+        if (statEmail) statEmail.textContent = currentUser.email || '-';
+        if (statRole) statRole.textContent = role;
+        if (statPlan) statPlan.textContent = plan;
+        if (statGenerated) statGenerated.textContent = generated.toString();
+        if (statCoins) statCoins.textContent = coins.toString();
+        if (statIp) statIp.textContent = currentUser.last_ip || '-';
+        if (statCreated) statCreated.textContent = formatDateTime(currentUser.created_at);
+      }
+
+      if (profileForm) {
+        profileForm.classList.remove('hidden');
+        if (profileDisplayNameInput) profileDisplayNameInput.value = profile.display_name || '';
+        if (profileBioInput) profileBioInput.value = profile.bio || '';
+        if (profileMessage) {
+          profileMessage.textContent = '';
+          profileMessage.classList.remove('ok', 'err');
+        }
+      }
+    } else {
+      accountInfo?.classList.add('hidden');
+      authTriggerBtn?.classList.remove('hidden');
+      if (logoutBtn) {
+        logoutBtn.classList.add('hidden');
+        logoutBtn.disabled = false;
+      }
+      if (accountCardPrompt) {
+        accountCardPrompt.textContent = 'Masuk untuk mulai generate.';
+        accountCardPrompt.classList.remove('hidden');
+      }
+      accountStats?.classList.add('hidden');
+      if (profileForm) profileForm.classList.add('hidden');
+      if (profileMessage) {
+        profileMessage.textContent = '';
+        profileMessage.classList.remove('ok', 'err');
+      }
+    }
+  }
+
+  async function ensureCanGenerate() {
+    if (!currentUser) {
+      openAuthModal('login');
+      throw new Error('Silakan login dengan akun PRO terlebih dahulu.');
+    }
+
+    let response;
+    try {
+      response = await fetch(`${PHP_SELF}?api=auth_guard`, { method: 'POST' });
+    } catch (err) {
+      throw new Error('Gagal menghubungi server autentikasi.');
+    }
+
+    const text = await response.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (err) {
+      console.error('auth_guard invalid JSON:', text);
+      throw new Error('Respon auth tidak valid.');
+    }
+
+    if (!json.ok) {
+      if (json.status === 401) {
+        openAuthModal('login');
+      }
+      throw new Error(json.error || 'Akses generate ditolak.');
+    }
+
+    if (json.user) {
+      currentUser = json.user;
+      window.__APP_USER__ = currentUser;
+      updateAccountUI();
+    }
+  }
+
+  async function trackGeneration() {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(`${PHP_SELF}?api=auth_track`, { method: 'POST' });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (err) {
+        return;
+      }
+      if (json && json.ok && json.user) {
+        currentUser = json.user;
+        window.__APP_USER__ = currentUser;
+        updateAccountUI();
+      }
+    } catch (err) {
+      console.warn('Gagal memperbarui statistik user', err);
+    }
+  }
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    loginMessage.textContent = '';
+    const email = (loginEmailInput?.value || '').trim();
+    const password = loginPasswordInput?.value || '';
+
+    if (!email || !password) {
+      loginMessage.textContent = 'Email dan password wajib diisi.';
+      return;
+    }
+
+    try {
+      const res = await fetch(`${PHP_SELF}?api=auth_login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (err) {
+        throw new Error('Respon login tidak valid.');
+      }
+      if (!json.ok) {
+        throw new Error(json.error || 'Login gagal.');
+      }
+      currentUser = json.user;
+      window.__APP_USER__ = currentUser;
+      updateAccountUI();
+      closeAuthModal();
+      setStatus('Login berhasil.', 'ok');
+    } catch (err) {
+      loginMessage.textContent = err.message;
+    }
+  }
+
+  async function handleRegister(event) {
+    event.preventDefault();
+    registerMessage.textContent = '';
+    const username = (registerUsernameInput?.value || '').trim();
+    const email = (registerEmailInput?.value || '').trim();
+    const password = registerPasswordInput?.value || '';
+    const display = (registerDisplayInput?.value || '').trim();
+
+    if (!username || !email || !password) {
+      registerMessage.textContent = 'Semua field wajib diisi.';
+      return;
+    }
+
+    try {
+      const res = await fetch(`${PHP_SELF}?api=auth_register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password, display_name: display })
+      });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (err) {
+        throw new Error('Respon registrasi tidak valid.');
+      }
+      if (!json.ok) {
+        throw new Error(json.error || 'Registrasi gagal.');
+      }
+      currentUser = json.user;
+      window.__APP_USER__ = currentUser;
+      updateAccountUI();
+      closeAuthModal();
+      setStatus('Registrasi berhasil, selamat datang!', 'ok');
+    } catch (err) {
+      registerMessage.textContent = err.message;
+    }
+  }
+
+  async function handleProfileUpdate(event) {
+    event.preventDefault();
+    if (!currentUser) {
+      openAuthModal('login');
+      return;
+    }
+
+    const displayName = (profileDisplayNameInput?.value || '').trim();
+    const bio = (profileBioInput?.value || '').trim();
+    const submitButton = profileForm?.querySelector('button[type="submit"]');
+
+    if (profileMessage) {
+      profileMessage.textContent = 'Menyimpan...';
+      profileMessage.classList.remove('ok', 'err');
+    }
+    if (submitButton) submitButton.disabled = true;
+
+    try {
+      const res = await fetch(`${PHP_SELF}?api=profile_update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: displayName, bio })
+      });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (err) {
+        throw new Error('Respon server tidak valid.');
+      }
+      if (!json.ok) {
+        throw new Error(json.error || 'Gagal memperbarui profile.');
+      }
+      currentUser = json.user;
+      window.__APP_USER__ = currentUser;
+      updateAccountUI();
+      if (profileMessage) {
+        profileMessage.textContent = json.message || 'Profile diperbarui.';
+        profileMessage.classList.add('ok');
+      }
+    } catch (err) {
+      if (profileMessage) {
+        profileMessage.textContent = err.message;
+        profileMessage.classList.add('err');
+      }
+    } finally {
+      if (submitButton) submitButton.disabled = false;
+    }
+  }
+
+  updateAccountUI();
+
+  authModeButtons.forEach(btn => {
+    btn.addEventListener('click', () => setAuthMode(btn.dataset.authMode));
+  });
+
+  authTriggerBtn?.addEventListener('click', () => openAuthModal('login'));
+  authCloseBtn?.addEventListener('click', () => closeAuthModal());
+
+  if (authModal) {
+    authModal.addEventListener('click', ev => {
+      if (ev.target === authModal) {
+        closeAuthModal();
+      }
+    });
+  }
+
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && authModal && !authModal.classList.contains('hidden')) {
+      closeAuthModal();
+    }
+  });
+
+  loginForm?.addEventListener('submit', handleLogin);
+  registerForm?.addEventListener('submit', handleRegister);
+  profileForm?.addEventListener('submit', handleProfileUpdate);
+
+  logoutBtn?.addEventListener('click', async () => {
+    if (!logoutBtn) return;
+    logoutBtn.disabled = true;
+    try {
+      await fetch(`${PHP_SELF}?api=auth_logout`, { method: 'POST' });
+    } catch (err) {
+      console.warn('Gagal logout', err);
+    }
+    currentUser = null;
+    window.__APP_USER__ = null;
+    updateAccountUI();
+    setStatus('Anda telah logout.', 'ok');
+  });
 
   function setStatus(text, mode = 'idle') {
     statusText.textContent = text;
@@ -2738,6 +3861,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       syncStatusProgress(null);
       return;
     }
+    const flashPreviewItem = (el) => {
+      if (!el) return;
+      el.classList.add('preview-item--active');
+      setTimeout(() => {
+        el.classList.remove('preview-item--active');
+      }, 220);
+    };
+    
     const cfg = MODEL_CONFIG[job.modelId];
     previewContainer.style.display = 'block';
     previewEmpty.style.display = 'none';
@@ -2772,6 +3903,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
       const assetType = (job.type === 'video' || isVideoUrl(url)) ? 'video' : 'image';
 
+      const thumb = document.createElement('div');
+      thumb.className = 'preview-thumb';
+      thumb.classList.add(assetType === 'video' ? 'is-video' : 'is-image');
+
       let media;
       if (assetType === 'video') {
         media = document.createElement('video');
@@ -2785,7 +3920,19 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         media.src = url;
         media.alt = `Result ${idx + 1}`;
         media.classList.add('clickable-media');
-        media.addEventListener('click', () => openAssetPreview(url, assetType));
+      }
+
+      thumb.appendChild(media);
+
+      if (assetType === 'image') {
+        thumb.addEventListener('click', () => {
+          flashPreviewItem(item);
+          openAssetPreview(url, assetType);
+        });
+      } else {
+        thumb.addEventListener('click', () => {
+          flashPreviewItem(item);
+        });
       }
 
       const metaRow = document.createElement('div');
@@ -2798,7 +3945,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       previewBtn.type = 'button';
       previewBtn.className = 'small secondary';
       previewBtn.textContent = 'Preview';
-      previewBtn.addEventListener('click', () => openAssetPreview(url, assetType));
+      previewBtn.addEventListener('click', () => {
+        flashPreviewItem(item);
+        openAssetPreview(url, assetType);
+      });
       btnGroup.appendChild(previewBtn);
 
       const urlSpan = document.createElement('div');
@@ -2822,7 +3972,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       metaRow.appendChild(btnGroup);
       metaRow.appendChild(urlSpan);
 
-      item.appendChild(media);
+      item.appendChild(thumb);
       item.appendChild(metaRow);
 
       previewGrid.appendChild(item);
@@ -2835,6 +3985,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   }
 
   async function callFreepik(cfg, body, method = 'POST') {
+    if (method !== 'GET') {
+      await ensureCanGenerate();
+    }
+
     const payload = {
       path: cfg.statusPath && method === 'GET' ? cfg.statusPath(body.taskId) : cfg.path,
       method,
@@ -2859,6 +4013,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     if (!json.ok) {
       throw new Error(`HTTP ${json.status} – ${(json.data && json.data.message) || json.error || 'unknown error'}`);
+    }
+    if (method !== 'GET') {
+      await trackGeneration();
     }
     return json.data;
   }
