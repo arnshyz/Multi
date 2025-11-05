@@ -184,8 +184,233 @@ if (!empty($_SESSION['user_id'])) {
 }
 
 // ====== CONFIG FREEPIK ======
-$FREEPIK_API_KEY  = 'FPSX06967c376cb6d87d9c551ccb33ed4d56'; // GANTI DI SINI
+$FREEPIK_API_KEYS = [
+    'FPSX06967c376cb6d87d9c551ccb33ed4d56', // GANTI / TAMBAH DI SINI
+];
 $FREEPIK_BASE_URL = 'https://api.freepik.com';
+$ADMIN_DATA_FILE  = __DIR__ . '/admin-data.json';
+
+function admin_default_data() {
+    return [
+        'users' => [],
+        'apiKeys' => [],
+        'meta' => [
+            'rollingIndex' => 0
+        ]
+    ];
+}
+
+function admin_data_path() {
+    global $ADMIN_DATA_FILE;
+    return $ADMIN_DATA_FILE;
+}
+
+function load_admin_data() {
+    $path = admin_data_path();
+    if (!is_file($path)) {
+        $data = admin_default_data();
+        save_admin_data($data);
+        return $data;
+    }
+
+    $json = @file_get_contents($path);
+    if ($json === false) {
+        return admin_default_data();
+    }
+
+    $data = json_decode($json, true);
+    if (!is_array($data)) {
+        $data = admin_default_data();
+    }
+
+    if (!isset($data['users']) || !is_array($data['users'])) {
+        $data['users'] = [];
+    }
+    if (!isset($data['apiKeys']) || !is_array($data['apiKeys'])) {
+        $data['apiKeys'] = [];
+    }
+    if (!isset($data['meta']) || !is_array($data['meta'])) {
+        $data['meta'] = [];
+    }
+    if (!isset($data['meta']['rollingIndex']) || !is_numeric($data['meta']['rollingIndex'])) {
+        $data['meta']['rollingIndex'] = 0;
+    }
+
+    return $data;
+}
+
+function save_admin_data($data) {
+    $path = admin_data_path();
+    $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        return false;
+    }
+    return @file_put_contents($path, $json, LOCK_EX) !== false;
+}
+
+function get_active_freepik_keys($data) {
+    $keys = [];
+    if (!empty($data['apiKeys']) && is_array($data['apiKeys'])) {
+        foreach ($data['apiKeys'] as $item) {
+            if (!is_array($item)) continue;
+            if (isset($item['active']) && !$item['active']) continue;
+            $key = trim($item['key'] ?? '');
+            if ($key !== '') {
+                $keys[] = $key;
+            }
+        }
+    }
+    return $keys;
+}
+
+function get_fallback_freepik_keys() {
+    global $FREEPIK_API_KEYS;
+    $keys = [];
+    foreach ($FREEPIK_API_KEYS as $key) {
+        $key = trim($key);
+        if ($key !== '' && $key !== 'YOUR_FREEPIK_API_KEY') {
+            $keys[] = $key;
+        }
+    }
+    return $keys;
+}
+
+function pick_freepik_api_key() {
+    static $selected = null;
+    if ($selected !== null) {
+        return $selected;
+    }
+
+    $data = load_admin_data();
+    $activeKeys = get_active_freepik_keys($data);
+    $useFallback = false;
+
+    if (empty($activeKeys)) {
+        $activeKeys = get_fallback_freepik_keys();
+        $useFallback = true;
+    }
+
+    if (empty($activeKeys)) {
+        return '';
+    }
+
+    $count = count($activeKeys);
+    if ($count === 1) {
+        $selected = $activeKeys[0];
+        return $selected;
+    }
+
+    $index = (int)($data['meta']['rollingIndex'] ?? 0);
+    if ($index < 0) {
+        $index = 0;
+    }
+    $selected = $activeKeys[$index % $count];
+    $data['meta']['rollingIndex'] = ($index + 1) % $count;
+    save_admin_data($data);
+    return $selected;
+}
+
+// ====== UPLOAD FILE: ?api=upload ======
+if (isset($_GET['api']) && $_GET['api'] === 'upload') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 405,
+            'error'  => 'Gunakan metode POST untuk upload'
+        ]);
+        exit;
+    }
+
+    if (!isset($_FILES['file']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Tidak ada file yang diunggah'
+        ]);
+        exit;
+    }
+
+    $file = $_FILES['file'];
+    if (!empty($file['error'])) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Upload gagal dengan kode error ' . $file['error']
+        ]);
+        exit;
+    }
+
+    $maxSize = 15 * 1024 * 1024; // 15 MB
+    if ($file['size'] > $maxSize) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 413,
+            'error'  => 'Ukuran file maksimal 15MB'
+        ]);
+        exit;
+    }
+
+    $dir = __DIR__ . '/generated';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp'
+    ];
+
+    $mime = null;
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $mime = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+        }
+    }
+
+    if ($mime && isset($allowed[$mime])) {
+        $ext = $allowed[$mime];
+    }
+
+    if (!$ext) {
+        $ext = 'bin';
+    }
+
+    try {
+        $rand = bin2hex(random_bytes(4));
+    } catch (Exception $e) {
+        $rand = substr(md5(mt_rand()), 0, 8);
+    }
+
+    $filename = 'upload_' . date('Ymd_His') . '_' . $rand . '.' . $ext;
+    $dest = $dir . '/' . $filename;
+
+    if (!move_uploaded_file($file['tmp_name'], $dest)) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Gagal menyimpan file upload'
+        ]);
+        exit;
+    }
+
+    $publicPath = 'generated/' . $filename;
+
+    echo json_encode([
+        'ok'     => true,
+        'status' => 200,
+        'path'   => $publicPath,
+        'url'    => $publicPath,
+        'name'   => $file['name']
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
 
 if (isset($_GET['api']) && $_GET['api'] === 'auth_session') {
     $user = $currentUser ? app_format_user($currentUser) : null;
@@ -639,15 +864,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
 if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     header('Content-Type: application/json; charset=utf-8');
 
-    if (!$FREEPIK_API_KEY || $FREEPIK_API_KEY === 'YOUR_FREEPIK_API_KEY') {
-        echo json_encode([
-            'ok'     => false,
-            'status' => 500,
-            'error'  => 'FREEPIK_API_KEY belum di-set di file PHP'
-        ]);
-        exit;
-    }
-
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
 
@@ -691,6 +907,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         exit;
     }
 
+    $freepikKey = pick_freepik_api_key();
+    if (!$freepikKey) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Belum ada Freepik API key aktif. Tambahkan lewat Admin Panel.'
+        ]);
+        exit;
+    }
+
     $url = rtrim($FREEPIK_BASE_URL, '/') . $path;
 
     $ch = curl_init($url);
@@ -698,7 +924,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
 
     $headers = [
-        'x-freepik-api-key: ' . $FREEPIK_API_KEY,
+        'x-freepik-api-key: ' . $freepikKey,
         'Accept: application/json'
     ];
 
@@ -811,6 +1037,11 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       gap: 12px;
       flex-wrap: wrap;
     }
+    .topbar-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
     .topbar-title {
       font-size: 14px;
       font-weight: 600;
@@ -825,34 +1056,34 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       gap: 6px;
       flex-wrap: wrap;
     }
-    .topbar-account {
-      margin-left: auto;
+    .topbar-actions {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
-    .account-info {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      min-width: 0;
-    }
-    .account-name {
+    .admin-link {
+      border-radius: 999px;
+      border: 1px solid rgba(99,102,241,0.5);
+      background: linear-gradient(90deg, rgba(99,102,241,0.25), rgba(59,130,246,0.18));
+      color: #c7d2fe;
+      padding: 6px 14px;
       font-size: 12px;
-      font-weight: 600;
-      color: var(--text);
+      text-decoration: none;
+      box-shadow: inset 0 0 12px rgba(59,130,246,0.22);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
-    .account-meta {
-      font-size: 10px;
-      color: var(--muted);
-      white-space: nowrap;
+    .admin-link::before {
+      content: '\2699';
+      font-size: 13px;
     }
-    .topbar-account button.primary {
-      font-size: 12px;
-    }
-    .topbar-account .outline {
-      font-size: 11px;
-      padding: 5px 10px;
+    .admin-link:hover {
+      transform: translateY(-1px);
+      box-shadow: inset 0 0 16px rgba(59,130,246,0.35);
     }
     .top-tab {
       border-radius: 999px;
@@ -1414,6 +1645,271 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       font-size:11px;color:var(--muted);
       text-transform:uppercase;letter-spacing:.08em;
       margin:6px 0 6px
+    }
+
+    .upload-area {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .upload-dropzone {
+      border-radius: 12px;
+      border: 1px dashed rgba(99,102,241,0.35);
+      padding: 14px;
+      background: rgba(2, 6, 23, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-dropzone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .upload-dropzone:hover {
+      border-color: rgba(99,102,241,0.6);
+      background: rgba(15,23,42,0.85);
+      transform: translateY(-1px);
+    }
+    .upload-dropzone:hover::after,
+    .upload-dropzone.dragover::after,
+    .upload-dropzone.has-file::after {
+      opacity: 1;
+    }
+    .upload-dropzone.dragover {
+      border-color: rgba(34,197,94,0.6);
+    }
+    .upload-dropzone.has-file {
+      border-color: rgba(34,197,94,0.55);
+      background: rgba(15,23,42,0.9);
+    }
+    .upload-dropzone-content {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .upload-dropzone strong { color: var(--text); font-size: 12px; }
+    .upload-dropzone-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .upload-preview {
+      width: 64px;
+      height: 64px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      background: #020617;
+    }
+    .upload-status {
+      font-size: 11px;
+      color: var(--muted);
+      display: none;
+    }
+    .upload-status.ok { color: var(--success); display: block; }
+    .upload-status.err { color: var(--danger); display: block; }
+    .upload-status.progress { color: #fbbf24; display: block; }
+
+    .gemini-mode-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .gemini-mode-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .preview-progress {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .preview-progress.active { display: flex; }
+    .preview-progress .progress-track {
+      height: 6px;
+    }
+    .preview-item {
+      background: #020617;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.85);
+      color: var(--muted);
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .gemini-mode-btn strong {
+      display: block;
+      color: var(--text);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .gemini-mode-btn span {
+      display: block;
+      opacity: 0.78;
+      line-height: 1.4;
+    }
+    .gemini-mode-btn::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(99,102,241,0.16), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .gemini-mode-btn:hover::after { opacity: 1; }
+    .gemini-mode-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--text);
+      box-shadow: 0 14px 34px rgba(99,102,241,0.28);
+    }
+    .gemini-mode-desc {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .gemini-reference-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .gemini-dropzone {
+      border-radius: 12px;
+      border: 1px dashed rgba(99,102,241,0.35);
+      padding: 12px;
+      background: rgba(2, 6, 23, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .gemini-dropzone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .gemini-dropzone:hover,
+    .gemini-dropzone.dragover {
+      border-color: rgba(99,102,241,0.6);
+      background: rgba(15,23,42,0.85);
+      transform: translateY(-1px);
+    }
+    .gemini-dropzone:hover::after,
+    .gemini-dropzone.dragover::after,
+    .gemini-dropzone.has-file::after {
+      opacity: 1;
+    }
+    .gemini-dropzone.has-file {
+      border-color: rgba(34,197,94,0.55);
+    }
+    .gemini-dropzone-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .gemini-dropzone-info strong {
+      color: var(--text);
+      font-size: 12px;
+    }
+    .gemini-dropzone-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .gemini-ref-helper {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .gemini-ref-add input {
+      height: 32px;
+    }
+    .gemini-ref-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .gemini-ref-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #020617;
+      padding: 6px 8px;
+    }
+    .gemini-ref-thumb {
+      width: 52px;
+      height: 52px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .gemini-ref-meta {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 0;
+    }
+    .gemini-ref-meta strong {
+      color: var(--text);
+      font-size: 11px;
+    }
+    .gemini-ref-meta span {
+      word-break: break-all;
+    }
+
+    .job-progress {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .job-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .job-progress .progress-track {
+      height: 6px;
     }
 
     .upload-area {
@@ -2099,20 +2595,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 <body>
 
 <div class="topbar">
-  <div>
+  <div class="topbar-info">
     <div class="topbar-title">Freepik Multi Suite</div>
     <div class="topbar-sub">AI Hub • Filmmaker • UGC Tool</div>
   </div>
-  <div class="topbar-tabs">
-    <button class="top-tab active" data-target="viewHub">
-      <span class="dot"></span> AI Hub
-    </button>
-    <button class="top-tab" data-target="viewFilm">
-      <span class="dot"></span> Filmmaker
-    </button>
-    <button class="top-tab" data-target="viewUGC">
-      <span class="dot"></span> UGC Tool
-    </button>
+  <div class="topbar-actions">
+    <a class="admin-link" href="admin.php" target="_blank" rel="noopener">Admin Panel</a>
+    <div class="topbar-tabs">
+      <button class="top-tab active" data-target="viewHub">
+        <span class="dot"></span> AI Hub
+      </button>
+      <button class="top-tab" data-target="viewFilm">
+        <span class="dot"></span> Filmmaker
+      </button>
+      <button class="top-tab" data-target="viewUGC">
+        <span class="dot"></span> UGC Tool
+      </button>
+    </div>
   </div>
   <div class="topbar-account" id="accountSection">
     <div id="accountInfo" class="account-info hidden">
@@ -2520,7 +3019,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     <div class="header" style="margin-bottom:6px">
       <div>
         <div class="title" style="font-size:16px">UGC Prompt Generator</div>
-        <div class="subtitle">AI-powered UGC photography prompts from your product images</div>
+        <div class="subtitle">Gemini Flash 2.5 siap membuat ide foto UGC dari gambar produk kamu.</div>
       </div>
     </div>
 
@@ -2585,7 +3084,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           Generate UGC
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
-          Sistem akan membuat 4 ide UGC beserta gambar dari Seedream 4 Edit.
+          Sistem akan membuat 4 ide UGC beserta gambar dari Gemini Flash 2.5.
           Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
         </div>
       </div>
@@ -2648,10 +3147,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 </div>
 
 <script>
-  const PHP_SELF = '<?= htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES) ?>';
-  window.__APP_USER__ = <?= json_encode(app_format_user($currentUser), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
-  let currentUser = window.__APP_USER__;
-
   // ===== GEMINI MODES =====
   const GEMINI_MODE_META = {
     text: {
@@ -2676,50 +3171,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       max: 3
     }
   };
-
-  const VIDEO_LAYOUT_OPTIONS = [
-    { value: 'portrait',  label: 'Portrait 9:16',  ratio: 'portrait_9_16' },
-    { value: 'landscape', label: 'Landscape 16:9', ratio: 'landscape_16_9' },
-    { value: 'square',    label: 'Square 1:1',     ratio: 'square_1_1' }
-  ];
-
-  const VIDEO_LAYOUT_TO_RATIO = VIDEO_LAYOUT_OPTIONS.reduce((acc, opt) => {
-    acc[opt.value] = opt.ratio;
-    return acc;
-  }, {});
-
-  const VIDEO_MODEL_DURATION_OPTIONS = {
-    wan480: { values: [4, 6, 10], default: 6, defaultLayout: 'portrait' },
-    wan720: { values: [4, 6, 10], default: 6, defaultLayout: 'portrait' },
-    seedancePro480: { values: [5, 10], default: 5, defaultLayout: 'portrait' },
-    seedancePro720: { values: [5, 10], default: 5, defaultLayout: 'portrait' },
-    seedancePro1080: { values: [5, 10], default: 5, defaultLayout: 'landscape' },
-    klingStd21: { values: [5, 8], default: 5, defaultLayout: 'portrait' },
-    kling25Pro: { values: [5, 8, 12], default: 5, defaultLayout: 'landscape' },
-    minimax1080: { values: [6, 12], default: 6, defaultLayout: 'landscape' },
-    _default: { values: [5], default: 5, defaultLayout: 'portrait' }
-  };
-
-  function mapVideoAspect(layoutKey) {
-    if (!layoutKey) return 'auto';
-    const key = String(layoutKey).toLowerCase();
-    return VIDEO_LAYOUT_TO_RATIO[key] || 'auto';
-  }
-
-  function applyVideoExtras(body, formData = {}) {
-    if (!body || typeof body !== 'object') return body;
-    const duration = formData.videoDuration;
-    if (typeof duration === 'number' && !Number.isNaN(duration) && duration > 0) {
-      body.duration = duration;
-    }
-    const ratio = mapVideoAspect(formData.videoLayout);
-    if (ratio && (ratio !== 'auto' || !body.aspect_ratio)) {
-      body.aspect_ratio = ratio;
-    } else if (!body.aspect_ratio) {
-      body.aspect_ratio = 'auto';
-    }
-    return body;
-  }
 
   // ===== MODEL CONFIG =====
   const MODEL_CONFIG = {
@@ -2759,27 +3210,48 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       buildBody: f => ({ prompt: f.prompt, num_images: f.numImages || 1 })
     },
     seedream4edit: {
-    id: 'seedream4edit',
-    label: 'Seedream 4 Edit',
-    type: 'image',
-    // WAJIB: pakai endpoint EDIT, bukan seedream-v4
-    path: '/v1/ai/text-to-image/seedream-v4-edit',
-    statusPath: taskId => `/v1/ai/text-to-image/seedream-v4-edit/${taskId}`,
-    buildBody: f => {
-      const refs = [];
-      // product images
-      if (Array.isArray(f.productImages)) refs.push(...f.productImages);
-      // model image optional
-      if (f.modelImage) refs.push(f.modelImage);
+      id: 'seedream4edit',
+      label: 'Seedream 4 Edit',
+      type: 'image',
+      // WAJIB: pakai endpoint EDIT, bukan seedream-v4
+      path: '/v1/ai/text-to-image/seedream-v4-edit',
+      statusPath: taskId => `/v1/ai/text-to-image/seedream-v4-edit/${taskId}`,
+      buildBody: f => {
+        const refs = [];
+        // product images
+        if (Array.isArray(f.productImages)) refs.push(...f.productImages);
+        // model image optional
+        if (f.modelImage) refs.push(f.modelImage);
 
-      return {
-        prompt: f.prompt,
-        aspect_ratio: f.aspect_ratio || 'square_1_1',
-        guidance_scale: 2.5,
-        reference_images: refs  // <== ini yang bikin produk mengikuti foto upload
-      };
-    }
-  },
+        return {
+          prompt: f.prompt,
+          aspect_ratio: f.aspect_ratio || 'square_1_1',
+          guidance_scale: 2.5,
+          reference_images: refs  // <== ini yang bikin produk mengikuti foto upload
+        };
+      }
+    },
+
+    geminiUgc: {
+      id: 'geminiUgc',
+      label: 'Gemini Flash 2.5 UGC',
+      type: 'image',
+      path: '/v1/ai/gemini-2-5-flash-image-preview',
+      statusPath: taskId => `/v1/ai/gemini-2-5-flash-image-preview/${taskId}`,
+      buildBody: f => {
+        const refs = [];
+        if (Array.isArray(f.productImages)) refs.push(...f.productImages);
+        if (f.modelImage) refs.push(f.modelImage);
+
+        const body = {
+          prompt: f.prompt,
+          num_images: f.numImages || 1,
+          aspect_ratio: f.aspect_ratio || 'square_1_1',
+          reference_images: refs
+        };
+        return body;
+      }
+    },
 
     fluxPro11: {
       id: 'fluxPro11',
@@ -3079,41 +3551,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
     renderJobs();
   }
-
-  const accountInfo = document.getElementById('accountInfo');
-  const accountName = document.getElementById('accountName');
-  const accountRole = document.getElementById('accountRole');
-  const accountPlan = document.getElementById('accountPlan');
-  const accountCoins = document.getElementById('accountCoins');
-  const authTriggerBtn = document.getElementById('authTriggerBtn');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const accountCardPrompt = document.getElementById('accountCardPrompt');
-  const accountStats = document.getElementById('accountStats');
-  const statUsername = document.getElementById('statUsername');
-  const statEmail = document.getElementById('statEmail');
-  const statRole = document.getElementById('statRole');
-  const statPlan = document.getElementById('statPlan');
-  const statGenerated = document.getElementById('statGenerated');
-  const statCoins = document.getElementById('statCoins');
-  const statIp = document.getElementById('statIp');
-  const statCreated = document.getElementById('statCreated');
-  const profileForm = document.getElementById('profileForm');
-  const profileDisplayNameInput = document.getElementById('profileDisplayName');
-  const profileBioInput = document.getElementById('profileBio');
-  const profileMessage = document.getElementById('profileMessage');
-  const authModal = document.getElementById('authModal');
-  const authCloseBtn = document.getElementById('authCloseBtn');
-  const loginForm = document.getElementById('loginForm');
-  const registerForm = document.getElementById('registerForm');
-  const loginMessage = document.getElementById('loginMessage');
-  const registerMessage = document.getElementById('registerMessage');
-  const loginEmailInput = document.getElementById('loginEmail');
-  const loginPasswordInput = document.getElementById('loginPassword');
-  const registerUsernameInput = document.getElementById('registerUsername');
-  const registerEmailInput = document.getElementById('registerEmail');
-  const registerPasswordInput = document.getElementById('registerPassword');
-  const registerDisplayInput = document.getElementById('registerDisplay');
-  const authModeButtons = document.querySelectorAll('[data-auth-mode]');
 
   const modelSelect = document.getElementById('modelSelect');
   const modelHint = document.getElementById('modelHint');
@@ -3727,7 +4164,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     } else if (['imagen3','seedream4','fluxPro11'].includes(id)) {
       modelHint.textContent = 'Text-to-image: wajib prompt. num_images opsional. Aspect ratio opsional.';
     } else if (id === 'seedream4edit') {
-      modelHint.textContent = 'Seedream 4 Edit: wajib prompt + image (URL). Direkomendasikan untuk workflow UGC.';
+      modelHint.textContent = 'Seedream 4 Edit: wajib prompt + image (URL). Cocok untuk workflow editing berbasis referensi.';
     } else if (['upscalerCreative','upscalePrecV1','upscalePrecV2'].includes(id)) {
       modelHint.textContent = 'Upscaler: wajib image URL. Prompt opsional.';
     } else if (id === 'removeBg') {
@@ -4742,9 +5179,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     audioUrlInput.value = '';
     numImagesInput.value = '1';
     aspectRatioInput.value = '';
-    if (videoDurationSelect && modelSelect) {
-      configureVideoControls(modelSelect.value);
-    }
     resetImageUploadArea();
     resetGeminiState(true);
     updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
@@ -5346,7 +5780,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     for (const item of pending) {
       try {
-        const { status, generated } = await fetchStatus('seedream4edit', item.taskId);
+        const { status, generated } = await fetchStatus('geminiUgc', item.taskId);
         if (status) item.status = status;
        if (generated && Array.isArray(generated) && generated.length && !item.imageUrl) {
   const remote = generated[0];
@@ -5432,7 +5866,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     ugcItems = [];
     renderUgcList();
 
-    const cfg = MODEL_CONFIG.seedream4edit;
+    const cfg = MODEL_CONFIG.geminiUgc;
     const refs = [];
     ugcProductImages.forEach(p => {
       refs.push(p.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
@@ -5456,7 +5890,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       ugcItems.push(item);
       renderUgcList();
 
-      const body = { prompt, reference_images: refs };
+      const body = {
+        prompt,
+        reference_images: refs,
+        num_images: 1,
+        aspect_ratio: 'square_1_1'
+      };
       try {
         const data = await callFreepik(cfg, body, 'POST');
         if (data && data.data) {
