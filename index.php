@@ -1405,6 +1405,136 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       justify-content:center;
       color:var(--muted);
     }
+    .ugc-style-picker {
+      position: relative;
+    }
+    .ugc-style-trigger {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #020617;
+      color: var(--text);
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+    .ugc-style-trigger.open {
+      border-color: rgba(129,140,248,0.8);
+      background: rgba(76,29,149,0.25);
+    }
+    .ugc-style-trigger-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-align: left;
+    }
+    .ugc-style-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(79,70,229,0.18);
+      font-size: 16px;
+    }
+    .ugc-style-trigger-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ugc-style-label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .ugc-style-description {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .ugc-style-caret {
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .ugc-style-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: #020617;
+      border-radius: 12px;
+      border: 1px solid rgba(71,85,105,0.8);
+      box-shadow: 0 18px 35px rgba(15,23,42,0.5);
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 10px 0;
+      z-index: 1200;
+    }
+    .ugc-style-group {
+      padding: 6px 12px 10px;
+    }
+    .ugc-style-group + .ugc-style-group {
+      border-top: 1px solid rgba(30,41,59,0.8);
+      margin-top: 4px;
+      padding-top: 10px;
+    }
+    .ugc-style-group-title {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.85);
+      margin-bottom: 8px;
+    }
+    .ugc-style-option {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .ugc-style-option:hover,
+    .ugc-style-option.active {
+      background: rgba(99,102,241,0.18);
+      color: #e0e7ff;
+    }
+    .ugc-style-option-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(129,140,248,0.18);
+      font-size: 15px;
+    }
+    .ugc-style-option-meta {
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+      gap: 2px;
+    }
+    .ugc-style-option-label {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .ugc-style-option-desc {
+      font-size: 10px;
+      color: rgba(148,163,184,0.85);
+    }
+    @media (max-width: 600px) {
+      .ugc-style-menu {
+        max-height: 300px;
+      }
+    }
     .asset-preview {
       position: fixed;
       inset: 0;
@@ -1894,12 +2024,20 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
       <div>
         <div class="small-label">Prompt Style</div>
-        <select id="ugcStyle">
-          <option value="basic">Basic – Diverse &amp; Flexible</option>
-          <option value="studio_review">Studio Fitting – Product Review</option>
-          <option value="outdoor_lifestyle">Outdoor Lifestyle</option>
-          <option value="flatlay_social">Flatlay / Social Content</option>
-        </select>
+        <div id="ugcStylePicker" class="ugc-style-picker">
+          <button type="button" id="ugcStyleTrigger" class="ugc-style-trigger">
+            <div class="ugc-style-trigger-main">
+              <span id="ugcStyleIcon" class="ugc-style-icon">✨</span>
+              <div class="ugc-style-trigger-text">
+                <div id="ugcStyleLabel" class="ugc-style-label">Basic</div>
+                <div id="ugcStyleDescription" class="ugc-style-description">Diverse &amp; Flexible contexts</div>
+              </div>
+            </div>
+            <span class="ugc-style-caret">▾</span>
+          </button>
+          <div id="ugcStyleMenu" class="ugc-style-menu hidden"></div>
+          <input type="hidden" id="ugcStyleValue" value="basic">
+        </div>
       </div>
 
       <div>
@@ -1912,7 +2050,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           Generate UGC
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
-          Sistem akan membuat 4 ide UGC beserta gambar dari Seedream 4 Edit.
+          Sistem akan membuat 5 ide UGC beserta gambar dari Gemini Flash 2.5.
           Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
         </div>
       </div>
@@ -2434,13 +2572,19 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   const ugcProductDrop    = document.getElementById('ugcProductDrop');
   const ugcProductInput   = document.getElementById('ugcProductInput');
   const ugcProductPreview = document.getElementById('ugcProductPreview');
-  const ugcModelDrop      = document.getElementById('ugcModelDrop');
-  const ugcModelInput     = document.getElementById('ugcModelInput');
-  const ugcModelIdle      = document.getElementById('ugcModelIdle');
-  const ugcModelPreview   = document.getElementById('ugcModelPreview');
-  const ugcStyleSelect    = document.getElementById('ugcStyle');
-  const ugcBriefInput     = document.getElementById('ugcBrief');
-  const ugcGenerateBtn    = document.getElementById('ugcGenerateBtn');
+  const ugcModelDrop       = document.getElementById('ugcModelDrop');
+  const ugcModelInput      = document.getElementById('ugcModelInput');
+  const ugcModelIdle       = document.getElementById('ugcModelIdle');
+  const ugcModelPreview    = document.getElementById('ugcModelPreview');
+  const ugcStylePicker     = document.getElementById('ugcStylePicker');
+  const ugcStyleTrigger    = document.getElementById('ugcStyleTrigger');
+  const ugcStyleMenu       = document.getElementById('ugcStyleMenu');
+  const ugcStyleValueInput = document.getElementById('ugcStyleValue');
+  const ugcStyleLabelEl    = document.getElementById('ugcStyleLabel');
+  const ugcStyleDescEl     = document.getElementById('ugcStyleDescription');
+  const ugcStyleIconEl     = document.getElementById('ugcStyleIcon');
+  const ugcBriefInput      = document.getElementById('ugcBrief');
+  const ugcGenerateBtn     = document.getElementById('ugcGenerateBtn');
 
   function setStatus(text, mode = 'idle') {
     statusText.textContent = text;
@@ -4050,21 +4194,176 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     filmGenerateBtn.disabled = false;
   });
 
-  // ===== UGC STATE & HANDLERS =====
+  const UGC_IDEA_COUNT = 5;
+
+  const UGC_STYLE_GROUPS = [
+    {
+      id: 'basic',
+      title: 'Basic – Diverse & Flexible',
+      styles: [
+        {
+          key: 'basic',
+          label: 'Basic',
+          description: 'Diverse & Flexible contexts',
+          icon: '✨',
+          prompt: 'balanced lifestyle composition highlighting the product naturally, creator-driven framing, warm ambient light'
+        }
+      ]
+    },
+    {
+      id: 'action',
+      title: 'Action with Product',
+      styles: [
+        { key: 'holding', label: 'Holding', description: 'Hand Positions & Grips', icon: '🤲', prompt: 'close-up of hands holding the product, showcasing grip, authentic user perspective, gentle focus on logo' },
+        { key: 'using', label: 'Using', description: 'Active Application', icon: '👐', prompt: 'real person actively using the product mid-action, dynamic pose, candid smile, motion-friendly blur, real environment' },
+        { key: 'unboxing', label: 'Unboxing', description: 'First Reveal', icon: '📦', prompt: 'first reveal moment with packaging being opened, excited reaction, tabletop context, natural daylight and product focus' },
+        { key: 'in_use', label: 'In-Use', description: 'Real Moments', icon: '🎬', prompt: 'real-life scenario capturing product in everyday use, documentary angle, genuine emotion, ambient background details' },
+        { key: 'quick_demo', label: 'Quick Demo', description: 'How-To Tutorial', icon: '🎥', prompt: 'step-by-step demonstration shot, clear view of key features, instructional framing, slightly angled top view' }
+      ]
+    },
+    {
+      id: 'showcase',
+      title: 'Showcase & Demos',
+      styles: [
+        { key: 'pointing', label: 'Pointing', description: 'Direct Attention', icon: '👉', prompt: 'creator pointing at the product or key detail, guiding viewer attention, mid-shot with confident gesture' },
+        { key: 'demo_review', label: 'Demo', description: 'Review Style', icon: '🎤', prompt: 'review-style presentation facing camera, product held near face, talk-to-camera energy, inviting smile' },
+        { key: 'hands_only', label: 'Hands Only', description: 'Product Focus', icon: '✋', prompt: 'hands-only macro focus with minimal background, product centered, soft diffused lighting, tactile emphasis' },
+        { key: 'size_compare', label: 'Size Compare', description: 'Scale Reference', icon: '📏', prompt: 'product side-by-side with familiar object to show scale, neutral background, overhead or eye-level perspective' }
+      ]
+    },
+    {
+      id: 'lifestyle',
+      title: 'Lifestyle',
+      styles: [
+        { key: 'home', label: 'Home', description: 'Indoor Cozy', icon: '🏡', prompt: 'cozy indoor home setting, warm lighting, soft furnishings, lifestyle moment featuring the product naturally' },
+        { key: 'outdoor', label: 'Outdoor', description: 'On-the-Go', icon: '🏞️', prompt: 'on-the-go outdoor lifestyle, natural sunlight, candid movement, engaging urban or nature backdrop' },
+        { key: 'workspace', label: 'Workspace', description: 'Productivity', icon: '💻', prompt: 'productive workspace scene, desk accessories, modern tech aesthetic, cool daylight, tidy composition' },
+        { key: 'routine', label: 'Routine', description: 'Step-by-Step', icon: '🔁', prompt: 'daily routine storytelling, sequential actions, clean bathroom or vanity setting, natural morning light' },
+        { key: 'travel', label: 'Travel', description: 'Portable & Compact', icon: '✈️', prompt: 'portable travel vibe with suitcase or travel props, aspirational destination lighting, compact packing view' },
+        { key: 'bedroom', label: 'Bedroom', description: 'Modern Lifestyle', icon: '🛏️', prompt: 'comfortable bedroom environment, soft textiles, morning glow, relaxed mood featuring the product' },
+        { key: 'studio_fitting', label: 'Studio Fitting', description: 'Product Review', icon: '👗', prompt: 'studio fitting setup with fashion rack or mirror, editorial lighting, model evaluating outfit with product' },
+        { key: 'getting_ready', label: 'Getting Ready', description: 'GRWM Routine', icon: '💄', prompt: 'get ready with me energy, mirror interaction, beauty station props, playful yet polished atmosphere' }
+      ]
+    },
+    {
+      id: 'flatlay',
+      title: 'Flat Lay',
+      styles: [
+        { key: 'flatlay_minimal', label: 'Minimal', description: 'Clean & Simple', icon: '⚪', prompt: 'minimalist flat lay on neutral surface, overhead view, generous negative space, soft shadow, curated props' },
+        { key: 'flatlay_styled', label: 'Styled', description: 'Editorial Props', icon: '🎀', prompt: 'editorial flat lay with styled props, colorful backdrop, layered textures, overhead composition with depth' }
+      ]
+    },
+    {
+      id: 'outfit',
+      title: 'Outfit & Variants',
+      styles: [
+        { key: 'outfit', label: 'Outfit', description: 'Fashion OOTD Layout', icon: '👚', prompt: 'full outfit moment or layout, fashion-forward styling, vertical framing, confident stance or neatly arranged pieces' },
+        { key: 'ingredients', label: 'Ingredients', description: 'Contents Focus', icon: '🥣', prompt: 'product components or ingredients arranged neatly, storytelling labels, tabletop lighting, organized composition' },
+        { key: 'color_variants', label: 'Color Variants', description: 'Options Showcase', icon: '🎨', prompt: 'multiple color variations displayed side-by-side, consistent spacing, vibrant yet controlled palette, clean backdrop' }
+      ]
+    },
+    {
+      id: 'closeup',
+      title: 'Close-Up',
+      styles: [
+        { key: 'detail', label: 'Detail', description: 'Feature Focus', icon: '🔍', prompt: 'macro detail close-up showcasing craftsmanship, shallow depth of field, crisp highlight on key feature' },
+        { key: 'texture', label: 'Texture', description: 'Material Feel', icon: '🧵', prompt: 'extreme close-up emphasizing material texture, directional lighting to reveal surface qualities' },
+        { key: 'swatches', label: 'Swatches', description: 'Texture Samples', icon: '🧩', prompt: 'product swatches or samples arranged in grid, clean background, color accuracy, top-down view' },
+        { key: 'packaging', label: 'Packaging', description: 'Design Focus', icon: '🎁', prompt: 'packaging hero shot, clean studio backdrop, professional lighting, crisp shadows highlighting structure' }
+      ]
+    }
+  ];
+
+  const DEFAULT_UGC_STYLE_KEY = 'basic';
+  const UGC_STYLE_LIBRARY = UGC_STYLE_GROUPS.reduce((acc, group) => {
+    group.styles.forEach(style => {
+      acc[style.key] = style;
+    });
+    return acc;
+  }, {});
+
   let ugcProductImages = [];
   let ugcModelImage = null;
   let ugcItems = [];
   let ugcPollTimer = null;
 
+  function getUgcStyle(key = DEFAULT_UGC_STYLE_KEY) {
+    return UGC_STYLE_LIBRARY[key] || UGC_STYLE_LIBRARY[DEFAULT_UGC_STYLE_KEY];
+  }
+
   function buildUgcImagePrompt(basePrompt, styleKey, index) {
-    const styleMap = {
-      basic: 'natural UGC photo, handheld shot, authentic feel, soft lighting',
-      studio_review: 'studio fitting shot, product review style, neutral background, clear view of product',
-      outdoor_lifestyle: 'outdoor lifestyle scene, candid moment, natural light, real-world usage',
-      flatlay_social: 'flatlay arrangement, social media content, clean background, styled props'
-    };
-    const style = styleMap[styleKey] || styleMap.basic;
-    return `UGC Image #${index}: ${basePrompt} | Photography style: ${style}`;
+    const style = getUgcStyle(styleKey);
+    const cleaned = (basePrompt || '').trim().replace(/\s+/g, ' ');
+    const promptBase = cleaned || 'Product UGC photo shot';
+    return `UGC Image #${index}: ${promptBase}. Style focus: ${style.label} — ${style.prompt}. Capture in square format with authentic creator energy.`;
+  }
+
+  function updateUgcStyleActiveState(activeKey) {
+    if (!ugcStyleMenu) return;
+    const options = ugcStyleMenu.querySelectorAll('.ugc-style-option');
+    options.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === activeKey);
+    });
+  }
+
+  function selectUgcStyle(key, closeMenu = true) {
+    const style = getUgcStyle(key);
+    if (ugcStyleValueInput) ugcStyleValueInput.value = style.key;
+    if (ugcStyleLabelEl) ugcStyleLabelEl.textContent = style.label;
+    if (ugcStyleDescEl) ugcStyleDescEl.textContent = style.description;
+    if (ugcStyleIconEl) ugcStyleIconEl.textContent = style.icon || '✨';
+    updateUgcStyleActiveState(style.key);
+    if (closeMenu) toggleUgcStyleMenu(false);
+  }
+
+  function renderUgcStyleMenu() {
+    if (!ugcStyleMenu) return;
+    ugcStyleMenu.innerHTML = '';
+    UGC_STYLE_GROUPS.forEach(group => {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'ugc-style-group';
+
+      const titleEl = document.createElement('div');
+      titleEl.className = 'ugc-style-group-title';
+      titleEl.textContent = group.title;
+      groupEl.appendChild(titleEl);
+
+      group.styles.forEach(style => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'ugc-style-option';
+        option.dataset.value = style.key;
+        option.innerHTML = `
+          <span class="ugc-style-option-icon">${style.icon || '✨'}</span>
+          <div class="ugc-style-option-meta">
+            <div class="ugc-style-option-label">${style.label}</div>
+            <div class="ugc-style-option-desc">${style.description}</div>
+          </div>
+        `;
+        option.addEventListener('click', () => {
+          selectUgcStyle(style.key);
+        });
+        groupEl.appendChild(option);
+      });
+
+      ugcStyleMenu.appendChild(groupEl);
+    });
+
+    const current = ugcStyleValueInput && ugcStyleValueInput.value ? ugcStyleValueInput.value : DEFAULT_UGC_STYLE_KEY;
+    updateUgcStyleActiveState(current);
+  }
+
+  function toggleUgcStyleMenu(forceOpen) {
+    if (!ugcStyleMenu || !ugcStyleTrigger) return;
+    const isHidden = ugcStyleMenu.classList.contains('hidden');
+    const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : isHidden;
+    if (shouldOpen) {
+      ugcStyleMenu.classList.remove('hidden');
+      ugcStyleTrigger.classList.add('open');
+    } else {
+      ugcStyleMenu.classList.add('hidden');
+      ugcStyleTrigger.classList.remove('open');
+    }
   }
 
   function renderUgcList() {
@@ -4232,7 +4531,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     for (const item of pending) {
       try {
-        const { status, generated } = await fetchStatus('seedream4edit', item.taskId);
+        const { status, generated } = await fetchStatus('gemini', item.taskId);
         if (status) item.status = status;
        if (generated && Array.isArray(generated) && generated.length && !item.imageUrl) {
   const remote = generated[0];
@@ -4306,28 +4605,51 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     reader.readAsDataURL(file);
   });
 
+  if (ugcStyleTrigger) {
+    ugcStyleTrigger.addEventListener('click', () => {
+      const shouldOpen = ugcStyleMenu ? ugcStyleMenu.classList.contains('hidden') : true;
+      toggleUgcStyleMenu(shouldOpen);
+    });
+  }
+
+  if (ugcStylePicker) {
+    document.addEventListener('click', event => {
+      if (!ugcStyleMenu || !ugcStyleTrigger) return;
+      if (!ugcStylePicker.contains(event.target)) {
+        toggleUgcStyleMenu(false);
+      }
+    });
+  }
+
+  renderUgcStyleMenu();
+  const initialUgcStyle = ugcStyleValueInput && ugcStyleValueInput.value ? ugcStyleValueInput.value : DEFAULT_UGC_STYLE_KEY;
+  selectUgcStyle(initialUgcStyle, false);
+
   async function ugcGenerate() {
     if (!ugcProductImages.length) {
       alert('Minimal upload 1 product image.');
       return;
     }
-    const styleKey = ugcStyleSelect.value || 'basic';
+    const styleKey = (ugcStyleValueInput && ugcStyleValueInput.value) || DEFAULT_UGC_STYLE_KEY;
     const brief = ugcBriefInput.value.trim() || 'Product UGC photo shot';
 
     ugcGenerateBtn.disabled = true;
     ugcItems = [];
     renderUgcList();
 
-    const cfg = MODEL_CONFIG.seedream4edit;
+    const cfg = MODEL_CONFIG.gemini;
+    const referenceLimit = 3;
     const refs = [];
     ugcProductImages.forEach(p => {
-      refs.push(p.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
+      if (refs.length < referenceLimit) {
+        refs.push(p.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
+      }
     });
-    if (ugcModelImage) {
+    if (ugcModelImage && refs.length < referenceLimit) {
       refs.push(ugcModelImage.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
     }
 
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
       const prompt = buildUgcImagePrompt(brief, styleKey, i);
       const item = {
         index: i,
@@ -4342,7 +4664,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       ugcItems.push(item);
       renderUgcList();
 
-      const body = { prompt, reference_images: refs };
+      const body = {
+        prompt,
+        num_images: 1,
+        aspect_ratio: 'square_1_1'
+      };
+      if (refs.length) {
+        body.reference_images = refs;
+      }
       try {
         const data = await callFreepik(cfg, body, 'POST');
         if (data && data.data) {
@@ -4486,8 +4815,11 @@ if (assetPreviewModal) {
 }
 
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && assetPreviewModal && !assetPreviewModal.classList.contains('hidden')) {
-    closeAssetPreview();
+  if (event.key === 'Escape') {
+    if (assetPreviewModal && !assetPreviewModal.classList.contains('hidden')) {
+      closeAssetPreview();
+    }
+    toggleUgcStyleMenu(false);
   }
 });
 
