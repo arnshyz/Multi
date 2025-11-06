@@ -1,5 +1,16 @@
 <?php
+require_once __DIR__ . '/auth.php';
+
+auth_session_start();
+
 $ADMIN_DATA_FILE = __DIR__ . '/admin-data.json';
+
+function admin_default_auth()
+{
+    $defaults = auth_default_credential_values();
+    $defaults['updated_at'] = null;
+    return $defaults;
+}
 
 function admin_default_data() {
     return [
@@ -8,6 +19,7 @@ function admin_default_data() {
         'meta' => [
             'rollingIndex' => 0,
         ],
+        'auth' => admin_default_auth(),
     ];
 }
 
@@ -26,25 +38,76 @@ function load_admin_data() {
 
     $json = @file_get_contents($path);
     if ($json === false) {
-        return admin_default_data();
+        $data = admin_default_data();
+        save_admin_data($data);
+        return $data;
     }
 
     $data = json_decode($json, true);
     if (!is_array($data)) {
         $data = admin_default_data();
+        save_admin_data($data);
+        return $data;
     }
+
+    $needsSave = false;
 
     if (!isset($data['users']) || !is_array($data['users'])) {
         $data['users'] = [];
+        $needsSave = true;
     }
     if (!isset($data['apiKeys']) || !is_array($data['apiKeys'])) {
         $data['apiKeys'] = [];
+        $needsSave = true;
     }
     if (!isset($data['meta']) || !is_array($data['meta'])) {
         $data['meta'] = [];
+        $needsSave = true;
     }
     if (!isset($data['meta']['rollingIndex']) || !is_numeric($data['meta']['rollingIndex'])) {
         $data['meta']['rollingIndex'] = 0;
+        $needsSave = true;
+    }
+
+    $authDefaults = admin_default_auth();
+    if (!isset($data['auth']) || !is_array($data['auth'])) {
+        $data['auth'] = $authDefaults;
+        $needsSave = true;
+    } else {
+        $auth = $data['auth'];
+        $username = isset($auth['username']) ? trim((string)$auth['username']) : '';
+        if ($username === '') {
+            $auth['username'] = $authDefaults['username'];
+            $needsSave = true;
+        } else {
+            $auth['username'] = $username;
+        }
+
+        $passwordHash = isset($auth['password_hash']) ? trim((string)$auth['password_hash']) : '';
+        if ($passwordHash === '' && isset($auth['password']) && $auth['password'] !== '') {
+            $passwordHash = password_hash((string)$auth['password'], PASSWORD_DEFAULT);
+            $needsSave = true;
+        }
+        if ($passwordHash === '') {
+            $passwordHash = $authDefaults['password_hash'];
+            $needsSave = true;
+        }
+        $auth['password_hash'] = $passwordHash;
+        if (isset($auth['password'])) {
+            unset($auth['password']);
+            $needsSave = true;
+        }
+
+        if (!isset($auth['updated_at'])) {
+            $auth['updated_at'] = $authDefaults['updated_at'];
+            $needsSave = true;
+        }
+
+        $data['auth'] = $auth;
+    }
+
+    if ($needsSave) {
+        save_admin_data($data);
     }
 
     return $data;
@@ -152,6 +215,10 @@ function ensure_user_defaults($user) {
 
 if (isset($_GET['api'])) {
     $action = $_GET['api'];
+
+    if (!auth_is_logged_in()) {
+        respond_error('Unauthorized', 401);
+    }
 
     switch ($action) {
         case 'state':
