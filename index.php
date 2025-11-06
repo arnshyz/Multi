@@ -779,6 +779,18 @@ if (!auth_is_logged_in()) {
       position: relative;
       overflow: hidden;
     }
+    body.auth-body::before {
+      content: "";
+      position: fixed;
+      inset: -40% -20%;
+      background: conic-gradient(from 120deg, rgba(59,130,246,0.3), rgba(236,72,153,0.22), rgba(34,211,238,0.28), rgba(59,130,246,0.3));
+      background-size: 160% 160%;
+      filter: blur(80px);
+      opacity: 0.65;
+      animation: auroraDrift 22s ease-in-out infinite;
+      z-index: 0;
+      pointer-events: none;
+    }
     .auth-background {
       position: absolute;
       inset: 0;
@@ -812,6 +824,11 @@ if (!auth_is_logged_in()) {
       0%, 100% { transform: translate3d(0,0,0) scale(1); }
       50% { transform: translate3d(40px, -30px, 0) scale(1.08); }
     }
+    @keyframes auroraDrift {
+      0% { transform: rotate(0deg) scale(1); opacity: 0.55; }
+      50% { transform: rotate(160deg) scale(1.12); opacity: 0.82; }
+      100% { transform: rotate(320deg) scale(1); opacity: 0.55; }
+    }
     .auth-shell {
       position: relative;
       z-index: 1;
@@ -834,9 +851,10 @@ if (!auth_is_logged_in()) {
       transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
     .auth-card.security {
-      background: linear-gradient(145deg, rgba(15,23,42,0.9), rgba(30,41,59,0.78));
-      color: #e2e8f0;
-      border: 1px solid rgba(96,165,250,0.35);
+      background: linear-gradient(168deg, rgba(30,41,59,0.95), rgba(124,45,18,0.86));
+      color: #fef3c7;
+      border: 1px solid rgba(251,191,36,0.48);
+      box-shadow: 0 46px 110px rgba(124,45,18,0.35);
     }
     .auth-card::before,
     .auth-card::after {
@@ -854,7 +872,7 @@ if (!auth_is_logged_in()) {
     .auth-card::before { top: -80px; right: -90px; }
     .auth-card::after { bottom: -90px; left: -70px; animation-delay: -8s; }
     .auth-card.security::before {
-      background: radial-gradient(circle, rgba(248,113,113,0.35), transparent 75%);
+      background: radial-gradient(circle, rgba(251,191,36,0.38), transparent 78%);
     }
     .auth-card > * { position: relative; z-index: 1; }
     .auth-card:hover { transform: translateY(-6px); box-shadow: 0 48px 120px rgba(15,23,42,0.32); }
@@ -863,25 +881,53 @@ if (!auth_is_logged_in()) {
       50% { transform: rotate(180deg) scale(1.05); }
       100% { transform: rotate(360deg) scale(1); }
     }
-    .security-card h1 {
-      margin: 0 0 14px;
-      font-size: 30px;
-      font-weight: 600;
-      letter-spacing: 0.015em;
+    .security-card {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
     }
-    .security-card p {
-      margin: 0 0 22px;
-      color: rgba(226, 232, 240, 0.78);
-      font-size: 15px;
+    .security-alert {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      border-radius: 20px;
+      background: rgba(248,113,113,0.16);
+      border: 1px solid rgba(251,191,36,0.45);
+      box-shadow: inset 0 0 0 1px rgba(248,250,252,0.06);
+    }
+    .security-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(250,204,21,0.28), rgba(248,113,113,0.34));
+      color: #fef3c7;
+      font-size: 26px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 18px 34px rgba(248,113,113,0.32);
+    }
+    .security-copy h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .security-copy p {
+      margin: 0;
+      color: rgba(248, 250, 252, 0.78);
+      font-size: 14px;
       line-height: 1.6;
     }
     .ip-panel {
-      border-radius: 18px;
-      border: 1px solid rgba(248, 113, 113, 0.35);
-      background: linear-gradient(135deg, rgba(248,113,113,0.22), rgba(248,150,30,0.15));
-      padding: 20px 22px;
-      margin-bottom: 24px;
+      border-radius: 20px;
+      border: 1px solid rgba(250, 204, 21, 0.45);
+      background: linear-gradient(140deg, rgba(30,41,59,0.65), rgba(124,45,18,0.52));
+      padding: 22px 24px;
       text-align: center;
+      box-shadow: inset 0 0 0 1px rgba(15,23,42,0.45);
     }
     .ip-label {
       display: block;
@@ -899,9 +945,9 @@ if (!auth_is_logged_in()) {
     }
     .ip-note {
       display: block;
-      margin-top: 12px;
+      margin-top: 10px;
       font-size: 12px;
-      color: rgba(248, 250, 252, 0.6);
+      color: rgba(248, 250, 252, 0.68);
     }
     .auth-header h1 {
       margin: 0 0 8px;
@@ -914,6 +960,28 @@ if (!auth_is_logged_in()) {
       color: rgba(15,23,42,0.65);
       font-size: 14px;
       line-height: 1.7;
+    }
+    .login-ip-stamp {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      background: rgba(59,130,246,0.12);
+      color: rgba(15,23,42,0.68);
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 22px;
+      box-shadow: 0 18px 34px rgba(59,130,246,0.14);
+    }
+    .login-ip-stamp .stamp-icon {
+      font-size: 16px;
+      color: #2563eb;
+    }
+    .login-ip-stamp .stamp-value {
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #1d4ed8;
     }
     .auth-tabs {
       display: inline-flex;
@@ -1075,9 +1143,14 @@ if (!auth_is_logged_in()) {
   </div>
   <?php $clientIp = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'; ?>
   <div class="auth-shell">
-    <section class="auth-card security" id="securityGate">
-      <h1>Security Check</h1>
-      <p>Validasi alamat IP kamu sebelum memasuki Freepik Multi Suite.</p>
+    <section class="auth-card security security-card" id="securityGate">
+      <div class="security-alert" role="alert">
+        <span class="security-icon" aria-hidden="true">⚠️</span>
+        <div class="security-copy">
+          <h1>Security Check</h1>
+          <p>Validasi alamat IP kamu sebelum memasuki Freepik Multi Suite.</p>
+        </div>
+      </div>
       <div class="ip-panel">
         <span class="ip-label">Your IP Address</span>
         <span class="ip-value" id="securityIp"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
@@ -1092,6 +1165,11 @@ if (!auth_is_logged_in()) {
         <h1>Freepik Multi Suite</h1>
         <p>Masuk dengan akun kamu atau registrasi cepat menggunakan Freepik API key aktif.</p>
       </header>
+      <div class="login-ip-stamp">
+        <span class="stamp-icon" aria-hidden="true">🔒</span>
+        <span>IP Kamu:</span>
+        <span class="stamp-value"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
+      </div>
       <div class="auth-tabs" role="tablist">
         <button type="button" class="tab active" data-target="login" aria-selected="true">Login</button>
         <button type="button" class="tab" data-target="register" aria-selected="false">Register</button>
@@ -1861,18 +1939,24 @@ body[data-theme="dark"] .profile-credit {
   background: var(--danger);
   box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.3);
 }
-.profile-topup {
-  border-radius: 12px;
-  border: 1px solid rgba(37, 99, 235, 0.35);
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(59, 130, 246, 0.92));
-  color: #f8fafc;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 9px 16px;
-  cursor: pointer;
-  box-shadow: 0 18px 32px rgba(37, 99, 235, 0.3);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
+    .profile-topup {
+      border-radius: 12px;
+      border: 1px solid rgba(37, 99, 235, 0.35);
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(59, 130, 246, 0.92));
+      color: #f8fafc;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 9px 16px;
+      cursor: pointer;
+      box-shadow: 0 18px 32px rgba(37, 99, 235, 0.3);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
 .profile-topup:hover {
   transform: translateY(-2px);
   box-shadow: 0 24px 40px rgba(37, 99, 235, 0.32);
@@ -2019,8 +2103,13 @@ body[data-theme="dark"] .profile-credit {
     border-radius: 22px;
     box-shadow: 0 18px 44px rgba(15, 23, 42, 0.1);
   }
-  .app {
-    gap: 16px;
+  .hub-app {
+    gap: 18px;
+    grid-template-columns: 1fr;
+  }
+  .hub-column,
+  .hub-side {
+    gap: 18px;
   }
   .card,
   .card-soft {
@@ -2039,7 +2128,14 @@ body[data-theme="dark"] .profile-credit {
     margin-bottom: 14px;
   }
   .two-col {
+    grid-template-columns: 1fr;
     gap: 14px;
+  }
+  .field-row {
+    flex-direction: column;
+  }
+  .field-row > div {
+    width: 100%;
   }
   .btn-group {
     flex-direction: column;
@@ -2116,6 +2212,13 @@ body[data-theme="dark"] .profile-credit {
   .feature-tabs {
     grid-template-columns: 1fr;
   }
+  .hub-app {
+    gap: 16px;
+  }
+  .hub-column,
+  .hub-side {
+    gap: 16px;
+  }
   .status-pill {
     width: 100%;
     text-align: center;
@@ -2148,23 +2251,48 @@ body[data-theme="dark"] .profile-credit {
   }
 }
 
-    .app {
+    .hub-app {
       display: grid;
-      grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
       gap: 24px;
       align-items: flex-start;
     }
-    .app > .card,
-    .app > .card.main-layout,
-    .app > .card-soft {
-      grid-column: 1;
+    .hub-column {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
     }
-    .app > .jobs-col {
-      grid-column: 2;
+    .hub-side {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
     }
+    .hub-model-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .hub-model-card .select-group {
+      margin: 0;
+    }
+    .hub-form-card form {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
     @media (max-width: 1200px) {
-      .app { grid-template-columns: 1fr; }
-      .app > * { grid-column: 1; }
+      .hub-app {
+        grid-template-columns: 1fr;
+      }
+      .hub-side {
+        order: 3;
+      }
     }
 
     .card {
@@ -2469,7 +2597,7 @@ body[data-theme="dark"] .profile-credit {
       flex-direction: column;
       gap: 10px;
     }
-    .preview-card { margin-top: 8px; }
+    .preview-card { margin-top: 0; }
     .preview-grid {
       display: flex;
       flex-wrap: wrap;
@@ -3449,7 +3577,7 @@ body[data-theme="dark"] .profile-credit {
         <span class="credit-value" id="profileCoins">0</span>
         <span class="credit-status"><span class="status-dot"></span><span id="profileStatusText">Live</span></span>
       </div>
-      <button type="button" class="profile-topup" id="profileTopup">Top Up Credit</button>
+      <a href="https://wa.me/62818404222" target="_blank" rel="noopener" class="profile-topup" id="profileTopup">Top Up Credit</a>
     </div>
     <button type="button" class="logout-btn" id="logoutButton">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M10 12h11l-3-3m3 3-3 3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
@@ -3468,7 +3596,7 @@ body[data-theme="dark"] .profile-credit {
           <p>Selamat datang kembali! Pantau progress generate konten dan saldo koin kamu.</p>
         </div>
         <div class="hero-actions">
-          <button type="button" class="profile-topup" id="heroTopup">Top Up Credit</button>
+          <a href="https://wa.me/62818404222" target="_blank" rel="noopener" class="profile-topup" id="heroTopup">Top Up Credit</a>
         </div>
       </section>
 
@@ -3497,75 +3625,74 @@ body[data-theme="dark"] .profile-credit {
     </div>
 
 <!-- ======================= AI HUB ======================= -->
-<div id="viewHub" class="app" style="display:none">
-  <div class="card">
-    <div class="header">
-      <div>
-        <div class="title">Freepik AI Studio</div>
-        <div class="subtitle">
-          <span id="featureLabel">Image Generator</span> · Single PHP • Multi model Freepik
+<div id="viewHub" class="hub-app" style="display:none">
+  <div class="hub-column">
+    <div class="card">
+      <div class="header">
+        <div>
+          <div class="title">Freepik AI Studio</div>
+          <div class="subtitle">
+            <span id="featureLabel">Image Generator</span> · Single PHP • Multi model Freepik
+          </div>
+        </div>
+        <div class="badge">
+          <span class="dot-large"></span>
+          <span>Proxy PHP aktif</span>
         </div>
       </div>
-      <div class="badge">
-        <span class="dot-large"></span>
-        <span>Proxy PHP aktif</span>
+    </div>
+
+    <div class="card-soft hub-model-card">
+      <div class="select-group">
+        <div class="model-group-label">Model</div>
+        <select id="modelSelect">
+          <optgroup label="Text → Image">
+            <option value="gemini">Gemini 2.5 Flash</option>
+            <option value="imagen3">Google Imagen 3</option>
+            <option value="seedream4">Seedream 4</option>
+            <option value="seedream4edit">Seedream 4 Edit</option>
+            <option value="fluxPro11">Flux Pro v1.1</option>
+          </optgroup>
+          <optgroup label="Upscale / Edit">
+            <option value="upscalerCreative">Upscaler Creative</option>
+            <option value="upscalePrecV1">Upscale Precision V1</option>
+            <option value="upscalePrecV2">Upscale Precision V2</option>
+            <option value="removeBg">Remove Background</option>
+          </optgroup>
+          <optgroup label="Image → Video">
+            <option value="wan480">Wan v2.2 – 480p</option>
+            <option value="wan720">Wan v2.2 – 720p</option>
+            <option value="seedancePro480">Seedance Pro – 480p</option>
+            <option value="seedancePro720">Seedance Pro – 720p</option>
+            <option value="seedancePro1080">Seedance Pro – 1080p</option>
+            <option value="klingStd21">Kling Std v2.1</option>
+            <option value="kling25Pro">Kling v2.5 Pro</option>
+            <option value="minimax1080">MiniMax Hailuo 02 – 1080p</option>
+          </optgroup>
+          <optgroup label="Lip Sync">
+            <option value="latentSync">Latent-Sync</option>
+          </optgroup>
+        </select>
       </div>
-    </div>
-
-
-    <div class="select-group">
-      <div class="model-group-label">Model</div>
-      <select id="modelSelect">
-        <optgroup label="Text → Image">
-          <option value="gemini">Gemini 2.5 Flash</option>
-          <option value="imagen3">Google Imagen 3</option>
-          <option value="seedream4">Seedream 4</option>
-          <option value="seedream4edit">Seedream 4 Edit</option>
-          <option value="fluxPro11">Flux Pro v1.1</option>
-        </optgroup>
-        <optgroup label="Upscale / Edit">
-          <option value="upscalerCreative">Upscaler Creative</option>
-          <option value="upscalePrecV1">Upscale Precision V1</option>
-          <option value="upscalePrecV2">Upscale Precision V2</option>
-          <option value="removeBg">Remove Background</option>
-        </optgroup>
-        <optgroup label="Image → Video">
-          <option value="wan480">Wan v2.2 – 480p</option>
-          <option value="wan720">Wan v2.2 – 720p</option>
-          <option value="seedancePro480">Seedance Pro – 480p</option>
-          <option value="seedancePro720">Seedance Pro – 720p</option>
-          <option value="seedancePro1080">Seedance Pro – 1080p</option>
-          <option value="klingStd21">Kling Std v2.1</option>
-          <option value="kling25Pro">Kling v2.5 Pro</option>
-          <option value="minimax1080">MiniMax Hailuo 02 – 1080p</option>
-        </optgroup>
-        <optgroup label="Lip Sync">
-          <option value="latentSync">Latent-Sync</option>
-        </optgroup>
-      </select>
-    </div>
-
-    <div class="card-soft">
       <div class="small-label">Hint input</div>
       <div id="modelHint" class="muted" style="font-size:11px">
-        Text→Image: cukup prompt.  
-        Upscale/remove BG: wajib image URL.  
-        Image→Video: image URL + prompt.  
+        Text→Image: cukup prompt.
+        Upscale/remove BG: wajib image URL.
+        Image→Video: image URL + prompt.
         Latent-Sync: video URL + audio URL.
       </div>
     </div>
-  </div>
 
-  <div class="card main-layout">
-    <form id="jobForm">
-      <div class="two-col">
-        <div id="rowPrompt">
-          <label for="prompt">Prompt</label>
-          <textarea id="prompt" placeholder="Deskripsikan gambar/video yang diinginkan"></textarea>
-        </div>
+    <div class="card hub-form-card">
+      <form id="jobForm">
+        <div class="two-col">
+          <div id="rowPrompt">
+            <label for="prompt">Prompt</label>
+            <textarea id="prompt" placeholder="Deskripsikan gambar/video yang diinginkan"></textarea>
+          </div>
 
-        <div>
-          <div id="fieldsTitle" class="form-section-title">Image Generator</div>
+          <div>
+            <div id="fieldsTitle" class="form-section-title">Image Generator</div>
 
           <div id="geminiModeSection" class="gemini-mode-section hidden">
             <div class="form-section-title">Gemini Flash Modes</div>
@@ -3675,17 +3802,18 @@ body[data-theme="dark"] .profile-credit {
         <button type="button" class="secondary" id="clearPromptBtn">Clear form</button>
       </div>
 
-      <div class="status-bar">
-        <div class="status-text" id="statusText">Siap.</div>
-        <div class="status-pill" id="statusPill">IDLE</div>
-        <div class="status-progress" id="statusProgressWrapper">
-          <div class="status-progress-label">Progress <span id="statusPercent">0%</span></div>
-          <div class="progress-track">
-            <div class="progress-fill" id="statusProgressFill"></div>
+        <div class="status-bar">
+          <div class="status-text" id="statusText">Siap.</div>
+          <div class="status-pill" id="statusPill">IDLE</div>
+          <div class="status-progress" id="statusProgressWrapper">
+            <div class="status-progress-label">Progress <span id="statusPercent">0%</span></div>
+            <div class="progress-track">
+              <div class="progress-fill" id="statusProgressFill"></div>
+            </div>
           </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </div>
 
     <div class="card-soft preview-card">
       <div class="header" style="margin-bottom:6px">
@@ -3714,7 +3842,7 @@ body[data-theme="dark"] .profile-credit {
     </div>
   </div>
 
-  <div class="jobs-col">
+  <div class="jobs-col hub-side">
     <div class="card-soft">
       <div class="header" style="margin-bottom:6px">
         <div>
@@ -3928,8 +4056,6 @@ body[data-theme="dark"] .profile-credit {
   const profileBadgeEl = document.getElementById('profileBadge');
   const profileAvatarEl = document.getElementById('profileAvatar');
   const profileStatusTextEl = document.getElementById('profileStatusText');
-  const profileTopupBtn = document.getElementById('profileTopup');
-  const heroTopupBtn = document.getElementById('heroTopup');
   const logoutButton = document.getElementById('logoutButton');
   const workspace = document.querySelector('.workspace');
   const sidebarToggle = document.getElementById('sidebarToggle');
@@ -4164,17 +4290,6 @@ body[data-theme="dark"] .profile-credit {
         applyTheme(previous);
       }
     });
-  }
-
-  const handleTopupClick = () => {
-    alert('Hubungi admin untuk melakukan top up credit.');
-  };
-
-  if (profileTopupBtn) {
-    profileTopupBtn.addEventListener('click', handleTopupClick);
-  }
-  if (heroTopupBtn) {
-    heroTopupBtn.addEventListener('click', handleTopupClick);
   }
 
   if (logoutButton) {
