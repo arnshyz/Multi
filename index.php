@@ -3938,15 +3938,21 @@ body[data-theme="dark"] .profile-credit {
       </div>
 
       <div>
-        <label for="filmStateSelect">Filmmaker State Custom</label>
-        <select id="filmStateSelect">
-          <option value="auto">AUTO STATE (Tidak Memilih · diproses oleh server)</option>
-          <option value="sceneLocation">Scene Lokasi</option>
-          <option value="lighting">Lighting Presets</option>
-          <option value="camera">Scene Camera Angles</option>
-          <option value="mood">Scene Moods</option>
-          <option value="narrative">Narrative Beats</option>
-        </select>
+        <div class="small-label">Filmmaker State Custom</div>
+        <div id="filmStatePicker" class="ugc-style-picker film-state-picker">
+          <button type="button" id="filmStateTrigger" class="ugc-style-trigger">
+            <div class="ugc-style-trigger-main">
+              <span id="filmStateIcon" class="ugc-style-icon">🎬</span>
+              <div class="ugc-style-trigger-text">
+                <div id="filmStateLabel" class="ugc-style-label">AUTO STATE</div>
+                <div id="filmStateDescription" class="ugc-style-description">Tidak Memilih · diproses oleh server</div>
+              </div>
+            </div>
+            <span class="ugc-style-caret">▾</span>
+          </button>
+          <div id="filmStateMenu" class="ugc-style-menu hidden"></div>
+          <input type="hidden" id="filmStateValue" value="auto">
+        </div>
       </div>
 
       <div>
@@ -4840,7 +4846,13 @@ body[data-theme="dark"] .profile-credit {
   const filmSceneCount = document.getElementById('filmSceneCount');
   const filmSceneCountLabel = document.getElementById('filmSceneCountLabel');
   const filmAspectButtons = document.querySelectorAll('[data-film-aspect]');
-  const filmStateSelect = document.getElementById('filmStateSelect');
+  const filmStatePicker = document.getElementById('filmStatePicker');
+  const filmStateTrigger = document.getElementById('filmStateTrigger');
+  const filmStateMenu = document.getElementById('filmStateMenu');
+  const filmStateValueInput = document.getElementById('filmStateValue');
+  const filmStateLabelEl = document.getElementById('filmStateLabel');
+  const filmStateDescEl = document.getElementById('filmStateDescription');
+  const filmStateIconEl = document.getElementById('filmStateIcon');
   const filmGenerateBtn = document.getElementById('filmGenerateBtn');
   const filmScenesEmpty = document.getElementById('filmScenesEmpty');
   const filmScenesContainer = document.getElementById('filmScenesContainer');
@@ -6283,6 +6295,133 @@ body[data-theme="dark"] .profile-credit {
     'Teaser for the next chapter, leaving a lingering question.'
   ];
 
+  const FILM_STATE_PRESETS = [
+    {
+      key: 'auto',
+      label: 'AUTO STATE',
+      description: 'Tidak Memilih · diproses oleh server',
+      icon: '🤖',
+      prompt: ''
+    },
+    {
+      key: 'vlogCasual',
+      label: 'Vlog Santai',
+      description: 'Casual Vlogger',
+      icon: '📹',
+      prompt: 'Handheld vlog energy with natural lighting, conversational pacing, everyday city backdrops, quick jump cuts, and first-person narration from the protagonist.'
+    },
+    {
+      key: 'filmCinematic',
+      label: 'Film Sinematik',
+      description: 'Cinematic Look',
+      icon: '🎞️',
+      prompt: 'High-end cinematic composition with dramatic lighting, widescreen framing, deliberate camera moves, rich color grading, and atmospheric sound design cues.'
+    },
+    {
+      key: 'socialFast',
+      label: 'Media Sosial Cepat',
+      description: 'Reels / TikTok',
+      icon: '⚡',
+      prompt: 'Snappy vertical pacing optimized for social media, tight framing, bold on-screen text beats, punchy transitions, and high-contrast visuals that pop on mobile.'
+    },
+    {
+      key: 'cleanDocu',
+      label: 'Dokumenter Bersih',
+      description: 'Clean Docu',
+      icon: '🎤',
+      prompt: 'Documentary clarity with tripod-stable framing, soft balanced lighting, crisp natural sound cues, lower-third style overlays, and authentic detail moments.'
+    },
+    {
+      key: 'ecomAd',
+      label: 'Iklan E-Commerce',
+      description: 'Product Spotlight',
+      icon: '🛍️',
+      prompt: 'Product-forward advertising energy with hero lighting, macro beauty shots, upbeat rhythm, benefits-focused overlays, and aspirational lifestyle cutaways.'
+    },
+    {
+      key: 'aiExplainer',
+      label: 'Video Explainer AI',
+      description: 'Futuristic Insight',
+      icon: '🤖',
+      prompt: 'Futuristic explainer tone blending holographic UI overlays, smooth dolly or orbit moves, clean gradients, and concise voiceover-ready storytelling beats.'
+    },
+    {
+      key: 'formalPresentation',
+      label: 'Presentasi YouTube',
+      description: 'Formal',
+      icon: '🧑‍🏫',
+      prompt: 'Professional presentation mood with studio lighting, center-framed speaker, slide-insert cutaways, minimal transitions, and calm confident pacing.'
+    },
+    {
+      key: 'cyberpunk',
+      label: 'CyberPunk',
+      description: 'Neon Noir',
+      icon: '🌌',
+      prompt: 'Cyberpunk worldbuilding drenched in neon, rain-soaked surfaces, holographic signage, kinetic camera moves, synth ambience, and magenta-teal color contrast.'
+    }
+  ];
+
+  const FILM_STATE_LIBRARY = FILM_STATE_PRESETS.reduce((map, preset) => {
+    map[preset.key] = preset;
+    return map;
+  }, {});
+
+  function getFilmStatePreset(key = 'auto') {
+    return FILM_STATE_LIBRARY[key] || FILM_STATE_LIBRARY.auto;
+  }
+
+  function updateFilmStateActiveState(activeKey) {
+    if (!filmStateMenu) return;
+    filmStateMenu.querySelectorAll('.ugc-style-option').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === activeKey);
+    });
+  }
+
+  function toggleFilmStateMenu(forceOpen) {
+    if (!filmStateMenu || !filmStateTrigger) return;
+    const shouldOpen = typeof forceOpen === 'boolean'
+      ? forceOpen
+      : filmStateMenu.classList.contains('hidden');
+    if (shouldOpen) {
+      filmStateMenu.classList.remove('hidden');
+      filmStateTrigger.classList.add('open');
+    } else {
+      filmStateMenu.classList.add('hidden');
+      filmStateTrigger.classList.remove('open');
+    }
+  }
+
+  function selectFilmState(key, closeMenu = true) {
+    const preset = getFilmStatePreset(key);
+    filmStateMode = preset.key;
+    if (filmStateValueInput) filmStateValueInput.value = preset.key;
+    if (filmStateLabelEl) filmStateLabelEl.textContent = preset.label;
+    if (filmStateDescEl) filmStateDescEl.textContent = preset.description;
+    if (filmStateIconEl) filmStateIconEl.textContent = preset.icon || '🎬';
+    updateFilmStateActiveState(preset.key);
+    if (closeMenu) toggleFilmStateMenu(false);
+  }
+
+  function renderFilmStateMenu() {
+    if (!filmStateMenu) return;
+    filmStateMenu.innerHTML = '';
+    FILM_STATE_PRESETS.forEach(preset => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'ugc-style-option';
+      option.dataset.value = preset.key;
+      option.innerHTML = `
+        <span class="ugc-style-option-icon">${preset.icon || '🎬'}</span>
+        <div class="ugc-style-option-meta">
+          <div class="ugc-style-option-label">${preset.label}</div>
+          <div class="ugc-style-option-desc">${preset.description}</div>
+        </div>
+      `;
+      option.addEventListener('click', () => selectFilmState(preset.key));
+      filmStateMenu.appendChild(option);
+    });
+  }
+
   function capitalizeFirst(text) {
     if (!text) return '';
     return text.charAt(0).toUpperCase() + text.slice(1);
@@ -6332,6 +6471,7 @@ body[data-theme="dark"] .profile-credit {
 
   function buildFilmScenePlans(brief, count) {
     const parts = extractStoryPartsForScenes(brief, count);
+    const preset = FILM_STATE_LIBRARY[filmStateMode] || FILM_STATE_LIBRARY.auto;
     return parts.map((part, idx) => {
       const index = idx + 1;
       const action = ensureSentence(capitalizeFirst(part), 'Describe the protagonist in action.');
@@ -6343,18 +6483,15 @@ body[data-theme="dark"] .profile-credit {
         ? 'Opening beat introducing the story.'
         : filmNarrativeBeats[(idx - 1) % filmNarrativeBeats.length];
 
-      const includeEnvironment = filmStateMode === 'auto' || filmStateMode === 'sceneLocation';
-      const includeLighting = filmStateMode === 'auto' || filmStateMode === 'lighting';
-      const includeCamera = filmStateMode === 'auto' || filmStateMode === 'camera';
-      const includeMood = filmStateMode === 'auto' || filmStateMode === 'mood';
-      const includeNarrative = filmStateMode === 'auto' || filmStateMode === 'narrative';
-
       const promptLines = [`Scene ${index}: ${action}`];
-      if (includeEnvironment) promptLines.push(`Setting/environment: ${environment}.`);
-      if (includeLighting) promptLines.push(`Lighting: ${lighting}.`);
-      if (includeCamera) promptLines.push(`Camera style: ${camera}.`);
-      if (includeMood) promptLines.push(`Mood: ${mood}.`);
-      if (includeNarrative) promptLines.push(`Narrative continuity: ${continuity}`);
+      promptLines.push(`Setting/environment: ${environment}.`);
+      promptLines.push(`Lighting: ${lighting}.`);
+      promptLines.push(`Camera style: ${camera}.`);
+      promptLines.push(`Mood: ${mood}.`);
+      promptLines.push(`Narrative continuity: ${continuity}`);
+      if (preset && preset.prompt) {
+        promptLines.push(`Overall filmmaking direction: ${preset.prompt}`);
+      }
       promptLines.push('Maintain the protagonist consistent with the uploaded character reference.');
 
       return {
@@ -6366,7 +6503,8 @@ body[data-theme="dark"] .profile-credit {
           lighting,
           camera,
           mood,
-          continuity
+          continuity,
+          theme: preset ? preset.label : 'AUTO STATE'
         }
       };
     });
@@ -6395,10 +6533,23 @@ body[data-theme="dark"] .profile-credit {
     filmSceneCountLabel.textContent = filmSceneCount.value + ' scenes';
   });
 
-  if (filmStateSelect) {
-    filmStateMode = filmStateSelect.value || 'auto';
-    filmStateSelect.addEventListener('change', () => {
-      filmStateMode = filmStateSelect.value || 'auto';
+  renderFilmStateMenu();
+  const initialFilmState = filmStateValueInput && filmStateValueInput.value ? filmStateValueInput.value : 'auto';
+  selectFilmState(initialFilmState, false);
+
+  if (filmStateTrigger) {
+    filmStateTrigger.addEventListener('click', () => {
+      const shouldOpen = filmStateMenu ? filmStateMenu.classList.contains('hidden') : true;
+      toggleFilmStateMenu(shouldOpen);
+    });
+  }
+
+  if (filmStatePicker) {
+    document.addEventListener('click', event => {
+      if (!filmStateMenu || !filmStateTrigger) return;
+      if (!filmStatePicker.contains(event.target)) {
+        toggleFilmStateMenu(false);
+      }
     });
   }
 
