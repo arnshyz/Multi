@@ -4537,6 +4537,43 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   let ugcItems = [];
   let ugcPollTimer = null;
 
+  function normalizeUgcReference(entry) {
+    if (!entry) return null;
+    if (typeof entry === 'string') {
+      return stripDataUrlPrefix(entry);
+    }
+    if (entry.dataUrl) {
+      return stripDataUrlPrefix(entry.dataUrl);
+    }
+    if (entry.url) {
+      return entry.url;
+    }
+    return null;
+  }
+
+  function buildUgcReferences() {
+    const referenceLimit = 3;
+    const productRefs = ugcProductImages
+      .map(img => normalizeUgcReference(img))
+      .filter(Boolean);
+
+    const refs = productRefs.slice(0, referenceLimit);
+    const modelRef = normalizeUgcReference(ugcModelImage);
+
+    if (modelRef) {
+      if (!productRefs.length) {
+        return [modelRef];
+      }
+      if (refs.length < referenceLimit) {
+        refs.push(modelRef);
+      } else {
+        refs[refs.length - 1] = modelRef;
+      }
+    }
+
+    return refs;
+  }
+
   function getUgcStyle(key = DEFAULT_UGC_STYLE_KEY) {
     return UGC_STYLE_LIBRARY[key] || UGC_STYLE_LIBRARY[DEFAULT_UGC_STYLE_KEY];
   }
@@ -4888,16 +4925,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     renderUgcList();
 
     const cfg = MODEL_CONFIG.gemini;
-    const referenceLimit = 3;
-    const refs = [];
-    ugcProductImages.forEach(p => {
-      if (refs.length < referenceLimit) {
-        refs.push(p.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
-      }
-    });
-    if (ugcModelImage && refs.length < referenceLimit) {
-      refs.push(ugcModelImage.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
-    }
+    const refs = buildUgcReferences();
 
     for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
       const prompt = buildUgcImagePrompt(brief, styleKey, i);
@@ -4920,7 +4948,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         aspect_ratio: 'square_1_1'
       };
       if (refs.length) {
-        body.reference_images = refs;
+        body.reference_images = refs.slice();
       }
       try {
         const data = await callFreepik(cfg, body, 'POST');
