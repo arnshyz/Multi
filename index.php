@@ -3938,6 +3938,18 @@ body[data-theme="dark"] .profile-credit {
       </div>
 
       <div>
+        <label for="filmStateSelect">Filmmaker State Custom</label>
+        <select id="filmStateSelect">
+          <option value="auto">AUTO STATE (Tidak Memilih · diproses oleh server)</option>
+          <option value="sceneLocation">Scene Lokasi</option>
+          <option value="lighting">Lighting Presets</option>
+          <option value="camera">Scene Camera Angles</option>
+          <option value="mood">Scene Moods</option>
+          <option value="narrative">Narrative Beats</option>
+        </select>
+      </div>
+
+      <div>
         <button type="button" id="filmGenerateBtn" style="width:100%;margin-top:4px;">
           Generate Scenes
         </button>
@@ -4828,6 +4840,7 @@ body[data-theme="dark"] .profile-credit {
   const filmSceneCount = document.getElementById('filmSceneCount');
   const filmSceneCountLabel = document.getElementById('filmSceneCountLabel');
   const filmAspectButtons = document.querySelectorAll('[data-film-aspect]');
+  const filmStateSelect = document.getElementById('filmStateSelect');
   const filmGenerateBtn = document.getElementById('filmGenerateBtn');
   const filmScenesEmpty = document.getElementById('filmScenesEmpty');
   const filmScenesContainer = document.getElementById('filmScenesContainer');
@@ -6213,6 +6226,7 @@ body[data-theme="dark"] .profile-credit {
   let filmAspect = '16:9';
   let filmScenes = [];
   let filmPollTimer = null;
+  let filmStateMode = 'auto';
 
   const filmSceneLocations = [
     'crowded street market filled with ambient details',
@@ -6329,15 +6343,19 @@ body[data-theme="dark"] .profile-credit {
         ? 'Opening beat introducing the story.'
         : filmNarrativeBeats[(idx - 1) % filmNarrativeBeats.length];
 
-      const promptLines = [
-        `Scene ${index}: ${action}`,
-        `Setting/environment: ${environment}.`,
-        `Lighting: ${lighting}.`,
-        `Camera style: ${camera}.`,
-        `Mood: ${mood}.`,
-        `Narrative continuity: ${continuity}`,
-        'Maintain the protagonist consistent with the uploaded character reference.'
-      ];
+      const includeEnvironment = filmStateMode === 'auto' || filmStateMode === 'sceneLocation';
+      const includeLighting = filmStateMode === 'auto' || filmStateMode === 'lighting';
+      const includeCamera = filmStateMode === 'auto' || filmStateMode === 'camera';
+      const includeMood = filmStateMode === 'auto' || filmStateMode === 'mood';
+      const includeNarrative = filmStateMode === 'auto' || filmStateMode === 'narrative';
+
+      const promptLines = [`Scene ${index}: ${action}`];
+      if (includeEnvironment) promptLines.push(`Setting/environment: ${environment}.`);
+      if (includeLighting) promptLines.push(`Lighting: ${lighting}.`);
+      if (includeCamera) promptLines.push(`Camera style: ${camera}.`);
+      if (includeMood) promptLines.push(`Mood: ${mood}.`);
+      if (includeNarrative) promptLines.push(`Narrative continuity: ${continuity}`);
+      promptLines.push('Maintain the protagonist consistent with the uploaded character reference.');
 
       return {
         index,
@@ -6376,6 +6394,13 @@ body[data-theme="dark"] .profile-credit {
   filmSceneCount.addEventListener('input', () => {
     filmSceneCountLabel.textContent = filmSceneCount.value + ' scenes';
   });
+
+  if (filmStateSelect) {
+    filmStateMode = filmStateSelect.value || 'auto';
+    filmStateSelect.addEventListener('change', () => {
+      filmStateMode = filmStateSelect.value || 'auto';
+    });
+  }
 
   filmAspectButtons.forEach(btn => {
     btn.addEventListener('click', () => {
