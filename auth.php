@@ -260,8 +260,15 @@ function auth_build_default_account(): array
         'username' => $defaults['username'],
         'email' => '',
         'role' => 'admin',
+        'display_name' => 'Administrator',
         'password_hash' => $defaults['password_hash'],
         'freepik_api_key' => null,
+        'subscription' => 'pro',
+        'coins' => 0,
+        'is_banned' => false,
+        'is_blocked' => false,
+        'theme' => 'dark',
+        'avatar_url' => null,
         'created_at' => $now,
         'updated_at' => $now,
         'last_login_at' => null,
@@ -295,6 +302,11 @@ function auth_normalize_account($account): array
     $account['id'] = isset($account['id']) && $account['id'] !== '' ? (string)$account['id'] : uniqid('acct_', true);
     $account['username'] = isset($account['username']) ? trim((string)$account['username']) : '';
     $account['email'] = isset($account['email']) ? trim((string)$account['email']) : '';
+    $account['display_name'] = isset($account['display_name']) ? trim((string)$account['display_name']) : '';
+    if ($account['display_name'] === '' && $account['username'] !== '') {
+        $pretty = str_replace(['.', '_', '-'], ' ', $account['username']);
+        $account['display_name'] = ucwords($pretty);
+    }
     $account['role'] = isset($account['role']) ? strtolower((string)$account['role']) : 'user';
     if ($account['role'] === '') {
         $account['role'] = 'user';
@@ -306,6 +318,21 @@ function auth_normalize_account($account): array
     }
     $account['freepik_api_key'] = isset($account['freepik_api_key']) && $account['freepik_api_key'] !== ''
         ? (string)$account['freepik_api_key']
+        : null;
+    $account['subscription'] = isset($account['subscription']) ? strtolower(trim((string)$account['subscription'])) : 'free';
+    if ($account['subscription'] === '') {
+        $account['subscription'] = 'free';
+    }
+    $account['coins'] = isset($account['coins']) ? max(0, (int)$account['coins']) : 0;
+    $account['is_banned'] = !empty($account['is_banned']);
+    $account['is_blocked'] = !empty($account['is_blocked']);
+    $theme = isset($account['theme']) ? strtolower((string)$account['theme']) : 'dark';
+    if (!in_array($theme, ['dark', 'light'], true)) {
+        $theme = 'dark';
+    }
+    $account['theme'] = $theme;
+    $account['avatar_url'] = isset($account['avatar_url']) && $account['avatar_url'] !== ''
+        ? (string)$account['avatar_url']
         : null;
     $account['created_at'] = isset($account['created_at']) ? (string)$account['created_at'] : gmdate('c');
     $account['updated_at'] = isset($account['updated_at']) ? (string)$account['updated_at'] : gmdate('c');
@@ -407,6 +434,10 @@ function auth_verify(string $username, string $password, ?array &$account = null
     }
 
     if (!password_verify($password, (string)$record['password_hash'])) {
+        return false;
+    }
+
+    if (!empty($record['is_banned']) || !empty($record['is_blocked'])) {
         return false;
     }
 
@@ -544,17 +575,18 @@ function auth_validate_freepik_api_key(string $key, ?string &$error = null): boo
 
 function auth_probe_freepik_api_key(string $key): array
 {
-    $error = null;
+    $url = 'https://api.freepik.com/v1/ai/models';
+    $userAgent = 'Freepik-Key-Validator/1.1';
 
     if (function_exists('curl_init')) {
-        $ch = curl_init('https://api.freepik.com/v2/resources?limit=1');
+        $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 8);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Authorization: Bearer ' . $key,
+            'x-freepik-api-key: ' . $key,
             'Accept: application/json',
         ]);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Freepik-Key-Validator/1.0');
+        curl_setopt($ch, CURLOPT_USERAGENT, $userAgent);
 
         $response = curl_exec($ch);
         if ($response === false) {
@@ -574,37 +606,42 @@ function auth_probe_freepik_api_key(string $key): array
             return [false, 'Freepik menolak API key (HTTP ' . $status . ').', false];
         }
 
-        return [false, 'Freepik mengembalikan HTTP ' . $status . '.', false];
+        if ($status === 404) {
+            return [false, 'Endpoint verifikasi Freepik tidak ditemukan (HTTP 404).', true];
+        }
+
+        return [false, 'Freepik mengembalikan HTTP ' . $status . '.', true];
     }
 
     // cURL not available, attempt using file_get_contents
     $context = stream_context_create([
         'http' => [
             'method' => 'GET',
-            'header' => "Authorization: Bearer {$key}\r\nAccept: application/json\r\nUser-Agent: Freepik-Key-Validator/1.0\r\n",
+            'header' => "x-freepik-api-key: {$key}\r\nAccept: application/json\r\nUser-Agent: {$userAgent}\r\n",
             'timeout' => 8,
         ],
     ]);
 
-    $result = @file_get_contents('https://api.freepik.com/v2/resources?limit=1', false, $context);
+    $result = @file_get_contents($url, false, $context);
     if ($result === false) {
         return [false, 'Tidak dapat menghubungi Freepik.', true];
     }
 
     if (isset($http_response_header) && is_array($http_response_header)) {
-        foreach ($http_response_header as $header) {
-            if (stripos($header, 'HTTP/') === 0) {
-                if (preg_match('/\s(\d{3})\s/', $header, $matches)) {
-                    $status = (int)$matches[1];
-                    if ($status >= 200 && $status < 300) {
-                        return [true, null, false];
-                    }
-                    if (in_array($status, [401, 403], true)) {
-                        return [false, 'Freepik menolak API key (HTTP ' . $status . ').', false];
-                    }
-
-                    return [false, 'Freepik mengembalikan HTTP ' . $status . '.', false];
+        foreach ($http_response_header as $headerLine) {
+            if (stripos($headerLine, 'HTTP/') === 0 && preg_match('/\s(\d{3})\s/', $headerLine, $matches)) {
+                $status = (int)$matches[1];
+                if ($status >= 200 && $status < 300) {
+                    return [true, null, false];
                 }
+                if (in_array($status, [401, 403], true)) {
+                    return [false, 'Freepik menolak API key (HTTP ' . $status . ').', false];
+                }
+                if ($status === 404) {
+                    return [false, 'Endpoint verifikasi Freepik tidak ditemukan (HTTP 404).', true];
+                }
+
+                return [false, 'Freepik mengembalikan HTTP ' . $status . '.', true];
             }
         }
     }
@@ -680,8 +717,15 @@ function auth_register_account(string $apiKey, string $username, string $email, 
         'username' => $username,
         'email' => $email,
         'role' => 'user',
+        'display_name' => ucwords(str_replace(['.', '_', '-'], ' ', $username)),
         'password_hash' => password_hash($password, PASSWORD_DEFAULT),
         'freepik_api_key' => $apiKey,
+        'subscription' => 'pro',
+        'coins' => 25,
+        'is_banned' => false,
+        'is_blocked' => false,
+        'theme' => 'dark',
+        'avatar_url' => null,
         'created_at' => $now,
         'updated_at' => $now,
         'last_login_at' => null,
@@ -720,6 +764,377 @@ function auth_register_account(string $apiKey, string $username, string $email, 
         'status' => 201,
         'account' => $account,
     ];
+}
+
+function auth_account_admin_view(array $account): array
+{
+    return [
+        'id' => $account['id'] ?? null,
+        'username' => $account['username'] ?? '',
+        'display_name' => $account['display_name'] ?? ($account['username'] ?? ''),
+        'email' => $account['email'] ?? '',
+        'role' => $account['role'] ?? 'user',
+        'subscription' => $account['subscription'] ?? 'free',
+        'coins' => (int)($account['coins'] ?? 0),
+        'freepik_api_key' => $account['freepik_api_key'] ?? null,
+        'is_banned' => !empty($account['is_banned']),
+        'is_blocked' => !empty($account['is_blocked']),
+        'theme' => $account['theme'] ?? 'dark',
+        'avatar_url' => $account['avatar_url'] ?? null,
+        'created_at' => $account['created_at'] ?? null,
+        'updated_at' => $account['updated_at'] ?? null,
+        'last_login_at' => $account['last_login_at'] ?? null,
+        'last_login_ip' => $account['last_login_ip'] ?? null,
+    ];
+}
+
+function auth_account_public_payload(array $account): array
+{
+    return [
+        'id' => $account['id'] ?? null,
+        'username' => $account['username'] ?? '',
+        'display_name' => $account['display_name'] ?? ($account['username'] ?? ''),
+        'email' => $account['email'] ?? '',
+        'role' => $account['role'] ?? 'user',
+        'subscription' => $account['subscription'] ?? 'free',
+        'coins' => (int)($account['coins'] ?? 0),
+        'freepik_api_key' => $account['freepik_api_key'] ?? null,
+        'theme' => $account['theme'] ?? 'dark',
+        'avatar_url' => $account['avatar_url'] ?? null,
+        'is_banned' => !empty($account['is_banned']),
+        'is_blocked' => !empty($account['is_blocked']),
+        'created_at' => $account['created_at'] ?? null,
+        'updated_at' => $account['updated_at'] ?? null,
+        'last_login_at' => $account['last_login_at'] ?? null,
+        'last_login_ip' => $account['last_login_ip'] ?? null,
+    ];
+}
+
+function auth_create_account_entry(array $input, array &$errors = []): ?array
+{
+    $errors = [];
+
+    $username = trim((string)($input['username'] ?? ''));
+    if ($username === '') {
+        $errors['username'] = 'Username wajib diisi.';
+    } elseif (!preg_match('/^[a-zA-Z0-9._-]{3,32}$/', $username)) {
+        $errors['username'] = 'Gunakan 3-32 karakter alfanumerik, titik, strip, atau garis bawah.';
+    }
+
+    $password = (string)($input['password'] ?? '');
+    if ($password === '') {
+        $errors['password'] = 'Password wajib diisi.';
+    } elseif (strlen($password) < 6) {
+        $errors['password'] = 'Password minimal 6 karakter.';
+    }
+
+    $email = trim((string)($input['email'] ?? ''));
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors['email'] = 'Format email tidak valid.';
+    }
+
+    $displayName = trim((string)($input['display_name'] ?? ''));
+    if ($displayName === '' && $username !== '') {
+        $displayName = ucwords(str_replace(['.', '_', '-'], ' ', $username));
+    }
+
+    $subscription = strtolower(trim((string)($input['subscription'] ?? 'free')));
+    if ($subscription === '') {
+        $subscription = 'free';
+    }
+
+    $role = strtolower(trim((string)($input['role'] ?? 'user')));
+    if (!in_array($role, ['user', 'admin'], true)) {
+        $role = 'user';
+    }
+
+    $coins = isset($input['coins']) ? max(0, (int)$input['coins']) : 0;
+
+    $freepikKey = trim((string)($input['freepik_api_key'] ?? ''));
+    if ($freepikKey === '') {
+        $freepikKey = null;
+    }
+
+    $theme = strtolower(trim((string)($input['theme'] ?? 'dark')));
+    if (!in_array($theme, ['dark', 'light'], true)) {
+        $theme = 'dark';
+    }
+
+    $avatar = trim((string)($input['avatar_url'] ?? ''));
+    if ($avatar === '') {
+        $avatar = null;
+    }
+
+    $data = auth_storage_read();
+    foreach ($data['accounts'] as $existing) {
+        if (!is_array($existing)) {
+            continue;
+        }
+        if ($username !== '' && isset($existing['username']) && strcasecmp((string)$existing['username'], $username) === 0) {
+            $errors['username'] = 'Username sudah digunakan.';
+        }
+        if ($email !== '' && isset($existing['email']) && $existing['email'] !== '' && strcasecmp((string)$existing['email'], $email) === 0) {
+            $errors['email'] = 'Email sudah terdaftar.';
+        }
+        if ($freepikKey !== null && isset($existing['freepik_api_key']) && $existing['freepik_api_key'] && hash_equals((string)$existing['freepik_api_key'], $freepikKey)) {
+            $errors['freepik_api_key'] = 'API key sudah digunakan akun lain.';
+        }
+    }
+
+    if ($errors) {
+        return null;
+    }
+
+    $now = gmdate('c');
+    $account = [
+        'id' => uniqid('acct_', true),
+        'username' => $username,
+        'display_name' => $displayName !== '' ? $displayName : $username,
+        'email' => $email,
+        'role' => $role,
+        'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+        'freepik_api_key' => $freepikKey,
+        'subscription' => $subscription,
+        'coins' => $coins,
+        'is_banned' => !empty($input['is_banned']),
+        'is_blocked' => !empty($input['is_blocked']),
+        'theme' => $theme,
+        'avatar_url' => $avatar,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'last_login_at' => null,
+        'last_login_ip' => null,
+        'ip_history' => [],
+        'source' => 'admin',
+    ];
+
+    $account = auth_normalize_account($account);
+    $data['accounts'][] = $account;
+
+    if (!auth_storage_write($data)) {
+        $errors['general'] = 'Gagal menyimpan akun.';
+        return null;
+    }
+
+    return $account;
+}
+
+function auth_update_account_entry(string $id, array $changes, array &$errors = []): ?array
+{
+    $errors = [];
+    $data = auth_storage_read();
+    $foundIndex = null;
+
+    foreach ($data['accounts'] as $index => $account) {
+        if (!is_array($account) || ($account['id'] ?? null) !== $id) {
+            continue;
+        }
+        $foundIndex = $index;
+        break;
+    }
+
+    if ($foundIndex === null) {
+        $errors['general'] = 'Akun tidak ditemukan.';
+        return null;
+    }
+
+    $original = $data['accounts'][$foundIndex];
+    $updated = $original;
+
+    if (array_key_exists('username', $changes)) {
+        $username = trim((string)$changes['username']);
+        if ($username === '') {
+            $errors['username'] = 'Username wajib diisi.';
+        } elseif (!preg_match('/^[a-zA-Z0-9._-]{3,32}$/', $username)) {
+            $errors['username'] = 'Gunakan 3-32 karakter alfanumerik, titik, strip, atau garis bawah.';
+        } else {
+            $updated['username'] = $username;
+        }
+    }
+
+    if (array_key_exists('display_name', $changes)) {
+        $updated['display_name'] = trim((string)$changes['display_name']);
+    }
+
+    if (array_key_exists('email', $changes)) {
+        $email = trim((string)$changes['email']);
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = 'Format email tidak valid.';
+        } else {
+            $updated['email'] = $email;
+        }
+    }
+
+    if (array_key_exists('subscription', $changes)) {
+        $sub = strtolower(trim((string)$changes['subscription']));
+        $updated['subscription'] = $sub === '' ? 'free' : $sub;
+    }
+
+    if (array_key_exists('role', $changes)) {
+        $role = strtolower(trim((string)$changes['role']));
+        if (!in_array($role, ['user', 'admin'], true)) {
+            $role = 'user';
+        }
+        $updated['role'] = $role;
+    }
+
+    if (array_key_exists('coins', $changes)) {
+        $coins = (int)$changes['coins'];
+        if ($coins < 0) {
+            $errors['coins'] = 'Koin tidak boleh negatif.';
+        } else {
+            $updated['coins'] = $coins;
+        }
+    }
+
+    if (array_key_exists('freepik_api_key', $changes)) {
+        $key = trim((string)$changes['freepik_api_key']);
+        $updated['freepik_api_key'] = $key === '' ? null : $key;
+    }
+
+    if (array_key_exists('is_banned', $changes)) {
+        $updated['is_banned'] = (bool)$changes['is_banned'];
+    }
+
+    if (array_key_exists('is_blocked', $changes)) {
+        $updated['is_blocked'] = (bool)$changes['is_blocked'];
+    }
+
+    if (array_key_exists('theme', $changes)) {
+        $theme = strtolower(trim((string)$changes['theme']));
+        if (!in_array($theme, ['dark', 'light'], true)) {
+            $theme = $original['theme'] ?? 'dark';
+        }
+        $updated['theme'] = $theme;
+    }
+
+    if (array_key_exists('avatar_url', $changes)) {
+        $avatar = trim((string)$changes['avatar_url']);
+        $updated['avatar_url'] = $avatar === '' ? null : $avatar;
+    }
+
+    if (array_key_exists('password', $changes)) {
+        $newPassword = (string)$changes['password'];
+        if ($newPassword !== '') {
+            if (strlen($newPassword) < 6) {
+                $errors['password'] = 'Password minimal 6 karakter.';
+            } else {
+                $updated['password_hash'] = password_hash($newPassword, PASSWORD_DEFAULT);
+            }
+        }
+    }
+
+    if ($errors) {
+        return null;
+    }
+
+    foreach ($data['accounts'] as $index => $account) {
+        if (($account['id'] ?? null) === $id) {
+            continue;
+        }
+        if (isset($updated['username']) && $updated['username'] !== '' && isset($account['username']) && strcasecmp((string)$account['username'], (string)$updated['username']) === 0) {
+            $errors['username'] = 'Username sudah digunakan.';
+        }
+        if (isset($updated['email']) && $updated['email'] !== '' && isset($account['email']) && $account['email'] !== '' && strcasecmp((string)$account['email'], (string)$updated['email']) === 0) {
+            $errors['email'] = 'Email sudah terdaftar.';
+        }
+        if (isset($updated['freepik_api_key']) && $updated['freepik_api_key'] !== null && isset($account['freepik_api_key']) && $account['freepik_api_key'] && hash_equals((string)$account['freepik_api_key'], (string)$updated['freepik_api_key'])) {
+            $errors['freepik_api_key'] = 'API key sudah digunakan akun lain.';
+        }
+    }
+
+    if ($errors) {
+        return null;
+    }
+
+    $updated['updated_at'] = gmdate('c');
+    $updated = auth_normalize_account($updated);
+    $data['accounts'][$foundIndex] = $updated;
+
+    if (!auth_storage_write($data)) {
+        $errors['general'] = 'Gagal menyimpan perubahan.';
+        return null;
+    }
+
+    return $updated;
+}
+
+function auth_delete_account_entry(string $id, array &$errors = []): bool
+{
+    $errors = [];
+    $data = auth_storage_read();
+    $accounts = $data['accounts'];
+    $filtered = [];
+    $deleted = false;
+
+    foreach ($accounts as $account) {
+        if (!is_array($account)) {
+            continue;
+        }
+        if (($account['id'] ?? null) === $id) {
+            if (($account['role'] ?? 'user') === 'admin') {
+                $errors['general'] = 'Tidak dapat menghapus akun admin.';
+                return false;
+            }
+            $deleted = true;
+            continue;
+        }
+        $filtered[] = $account;
+    }
+
+    if (!$deleted) {
+        $errors['general'] = 'Akun tidak ditemukan.';
+        return false;
+    }
+
+    $data['accounts'] = $filtered;
+    if (!auth_storage_write($data)) {
+        $errors['general'] = 'Gagal menghapus akun.';
+        return false;
+    }
+
+    return true;
+}
+
+function auth_adjust_account_coins(string $id, int $delta, array &$errors = [])
+{
+    $errors = [];
+    $data = auth_storage_read();
+    foreach ($data['accounts'] as $index => $account) {
+        if (!is_array($account) || ($account['id'] ?? null) !== $id) {
+            continue;
+        }
+        $coins = isset($account['coins']) ? (int)$account['coins'] : 0;
+        $newCoins = $coins + $delta;
+        if ($newCoins < 0) {
+            $errors['coins'] = 'Saldo koin tidak mencukupi.';
+            return null;
+        }
+        $account['coins'] = $newCoins;
+        $account['updated_at'] = gmdate('c');
+        $account = auth_normalize_account($account);
+        $data['accounts'][$index] = $account;
+        if (!auth_storage_write($data)) {
+            $errors['general'] = 'Gagal memperbarui koin.';
+            return null;
+        }
+        return $account;
+    }
+
+    $errors['general'] = 'Akun tidak ditemukan.';
+    return null;
+}
+
+function auth_set_account_theme(string $id, string $theme, array &$errors = [])
+{
+    $errors = [];
+    $theme = strtolower(trim($theme));
+    if (!in_array($theme, ['dark', 'light'], true)) {
+        $errors['theme'] = 'Tema tidak dikenal.';
+        return null;
+    }
+
+    return auth_update_account_entry($id, ['theme' => $theme], $errors);
 }
 
 function auth_record_security_check(): array

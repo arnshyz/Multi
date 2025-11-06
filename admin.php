@@ -136,6 +136,7 @@ if (isset($_GET['api'])) {
             $data = load_admin_data();
             respond_ok([
                 'users' => array_map('ensure_user_defaults', $data['users']),
+                'accounts' => array_map('auth_account_admin_view', $data['accounts']),
                 'apiKeys' => array_values($data['apiKeys']),
                 'meta' => $data['meta'],
                 'nextKey' => compute_next_key($data),
@@ -144,108 +145,67 @@ if (isset($_GET['api'])) {
             break;
 
         case 'addUser':
+        case 'addAccount':
             $payload = read_payload();
-            $name = trim($payload['name'] ?? '');
-            if ($name === '') {
-                respond_error('Nama wajib diisi', 422);
-            }
-            $email = trim($payload['email'] ?? '');
-            $coins = isset($payload['coins']) ? max(0, (int)$payload['coins']) : 0;
-            $subscription = trim($payload['subscription'] ?? 'free');
-            if ($subscription === '') {
-                $subscription = 'free';
-            }
-
-            $user = [
-                'id' => uniqid('user_', true),
-                'name' => $name,
-                'email' => $email,
-                'coins' => $coins,
-                'subscription' => $subscription,
-                'banned' => !empty($payload['banned']),
-                'blocked' => !empty($payload['blocked']),
-                'created_at' => gmdate('c'),
-                'updated_at' => gmdate('c'),
-            ];
-
-            $data = load_admin_data();
-            $data['users'][] = $user;
-            if (!save_admin_data($data)) {
-                respond_error('Gagal menyimpan data user', 500);
+            $errors = [];
+            $account = auth_create_account_entry($payload, $errors);
+            if (!$account) {
+                $status = isset($errors['general']) && count($errors) === 1 ? 500 : 422;
+                respond_json([
+                    'ok' => false,
+                    'status' => $status,
+                    'error' => $errors,
+                ], $status);
             }
 
-            respond_ok(['user' => $user], 201);
+            respond_ok(['account' => auth_account_admin_view($account)], 201);
             break;
 
         case 'updateUser':
+        case 'updateAccount':
             $payload = read_payload();
             $id = $payload['id'] ?? '';
             if (!$id) {
-                respond_error('ID user wajib diisi', 422);
+                respond_error('ID akun wajib diisi', 422);
             }
 
-            $data = load_admin_data();
-            $updated = null;
-
-            foreach ($data['users'] as &$user) {
-                if (!is_array($user) || ($user['id'] ?? null) !== $id) {
-                    continue;
-                }
-
-                if (array_key_exists('name', $payload)) {
-                    $user['name'] = trim((string)$payload['name']);
-                }
-                if (array_key_exists('email', $payload)) {
-                    $user['email'] = trim((string)$payload['email']);
-                }
-                if (array_key_exists('coins', $payload)) {
-                    $user['coins'] = max(0, (int)$payload['coins']);
-                }
-                if (array_key_exists('subscription', $payload)) {
-                    $subscription = trim((string)$payload['subscription']);
-                    $user['subscription'] = $subscription === '' ? 'free' : $subscription;
-                }
-                if (array_key_exists('banned', $payload)) {
-                    $user['banned'] = (bool)$payload['banned'];
-                }
-                if (array_key_exists('blocked', $payload)) {
-                    $user['blocked'] = (bool)$payload['blocked'];
-                }
-
-                $user['updated_at'] = gmdate('c');
-                $updated = $user;
-                break;
-            }
-            unset($user);
-
-            if (!$updated) {
-                respond_error('User tidak ditemukan', 404);
+            $errors = [];
+            $account = auth_update_account_entry($id, $payload, $errors);
+            if (!$account) {
+                $status = isset($errors['general']) && count($errors) === 1 ? 500 : 422;
+                respond_json([
+                    'ok' => false,
+                    'status' => $status,
+                    'error' => $errors,
+                ], $status);
             }
 
-            if (!save_admin_data($data)) {
-                respond_error('Gagal memperbarui user', 500);
-            }
-
-            respond_ok(['user' => $updated]);
+            respond_ok(['account' => auth_account_admin_view($account)]);
             break;
 
         case 'deleteUser':
+        case 'deleteAccount':
             $payload = read_payload();
             $id = $payload['id'] ?? '';
             if (!$id) {
-                respond_error('ID user wajib diisi', 422);
+                respond_error('ID akun wajib diisi', 422);
             }
-            $data = load_admin_data();
-            $before = count($data['users']);
-            $data['users'] = array_values(array_filter($data['users'], function ($user) use ($id) {
-                return is_array($user) && ($user['id'] ?? null) !== $id;
-            }));
-            if ($before === count($data['users'])) {
-                respond_error('User tidak ditemukan', 404);
+
+            $errors = [];
+            if (!auth_delete_account_entry($id, $errors)) {
+                $status = isset($errors['general']) && $errors['general'] === 'Akun tidak ditemukan.' ? 404 : 422;
+                if (isset($errors['general']) && $errors['general'] === 'Tidak dapat menghapus akun admin.') {
+                    $status = 403;
+                } elseif (isset($errors['general']) && $errors['general'] === 'Gagal menghapus akun.') {
+                    $status = 500;
+                }
+                respond_json([
+                    'ok' => false,
+                    'status' => $status,
+                    'error' => $errors,
+                ], $status);
             }
-            if (!save_admin_data($data)) {
-                respond_error('Gagal menghapus user', 500);
-            }
+
             respond_ok(['deleted' => true]);
             break;
 
@@ -454,6 +414,9 @@ if (isset($_GET['api'])) {
       border: 1px solid rgba(99,102,241,0.35);
       color: var(--text);
       font-size: 13px;
+      line-height: 1.4;
+      max-width: 360px;
+      white-space: pre-line;
       box-shadow: 0 10px 30px rgba(2,6,23,0.35);
       opacity: 0;
       transform: translateY(-10px);
@@ -488,20 +451,31 @@ if (isset($_GET['api'])) {
       flex-direction: column;
       gap: 20px;
     }
-    .panel header {
+    .panel header,
+    .panel-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       gap: 12px;
     }
-    .panel header h2 {
+    .panel header h2,
+    .panel-header h2 {
       margin: 0;
       font-size: 18px;
       font-weight: 600;
     }
-    .panel header span {
+    .panel-sub {
       font-size: 12px;
       color: var(--muted);
+      display: block;
+      margin-top: 4px;
+    }
+    .panel-meta {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: rgba(226,232,240,0.75);
+      max-width: 420px;
+      line-height: 1.5;
     }
     .form-grid {
       display: grid;
@@ -509,11 +483,33 @@ if (isset($_GET['api'])) {
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       align-items: end;
     }
+    .account-form .hint {
+      color: var(--danger);
+      font-weight: 600;
+      margin-left: 4px;
+    }
+    .account-grid {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
     .field label {
       display: block;
       font-size: 12px;
       color: var(--muted);
       margin-bottom: 4px;
+    }
+    .field.toggles {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      grid-column: 1 / -1;
+      padding: 4px 0 8px;
+    }
+    .toggle {
+      font-size: 12px;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
     .input {
       width: 100%;
@@ -583,6 +579,10 @@ if (isset($_GET['api'])) {
       flex-direction: column;
       gap: 14px;
     }
+    .account-card.is-admin {
+      border-color: rgba(250,204,21,0.35);
+      box-shadow: 0 0 0 1px rgba(250,204,21,0.25), 0 25px 60px rgba(250,204,21,0.08);
+    }
     .card-header {
       display: flex;
       justify-content: space-between;
@@ -632,10 +632,29 @@ if (isset($_GET['api'])) {
       border-color: rgba(129,140,248,0.45);
       color: #c7d2fe;
     }
+    .chip.info {
+      background: rgba(59,130,246,0.18);
+      border-color: rgba(59,130,246,0.35);
+      color: rgba(96,165,250,0.9);
+    }
+    .chip-admin {
+      border-color: rgba(250,204,21,0.35);
+      background: rgba(250,204,21,0.14);
+      color: rgba(250,204,21,0.9);
+    }
+    .chip-coins strong {
+      color: rgba(96,165,250,0.95);
+    }
     .card-body {
       display: flex;
       flex-direction: column;
       gap: 14px;
+    }
+    .chip-status {
+      margin: 12px 0 4px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
     .field-grid {
       display: grid;
@@ -696,36 +715,66 @@ if (isset($_GET['api'])) {
     <div id="toast" class="toast"></div>
 
     <section class="grid">
-      <article class="panel">
-        <header>
-          <h2>Manajemen User</h2>
-          <span id="userCount">0 user</span>
+      <article class="panel panel-accounts">
+        <header class="panel-header">
+          <div>
+            <h2>Manajemen Akun</h2>
+            <span id="accountCount" class="panel-sub">0 akun</span>
+          </div>
+          <p class="panel-meta">Registrasi manual, atur password, coins, subscription, dan Freepik API key.</p>
         </header>
 
-        <form id="addUserForm" class="form-grid">
+        <form id="addAccountForm" class="form-grid account-form">
           <div class="field">
-            <label for="newUserName">Nama</label>
-            <input id="newUserName" type="text" class="input" placeholder="Nama user" required>
+            <label for="newAccountDisplay">Display Name</label>
+            <input id="newAccountDisplay" type="text" class="input" placeholder="Nama tampilan">
           </div>
           <div class="field">
-            <label for="newUserEmail">Email</label>
-            <input id="newUserEmail" type="email" class="input" placeholder="user@example.com">
+            <label for="newAccountUsername">Username <span class="hint">*</span></label>
+            <input id="newAccountUsername" type="text" class="input" placeholder="username" required>
           </div>
           <div class="field">
-            <label for="newUserCoins">Koin</label>
-            <input id="newUserCoins" type="number" class="input" min="0" step="1" value="0">
+            <label for="newAccountEmail">Email</label>
+            <input id="newAccountEmail" type="email" class="input" placeholder="user@example.com">
           </div>
           <div class="field">
-            <label for="newUserSubscription">Subscription</label>
-            <input id="newUserSubscription" type="text" class="input" placeholder="free / pro / enterprise" value="free">
+            <label for="newAccountPassword">Password <span class="hint">*</span></label>
+            <input id="newAccountPassword" type="password" class="input" placeholder="Minimal 6 karakter" required>
+          </div>
+          <div class="field">
+            <label for="newAccountSubscription">Subscription</label>
+            <select id="newAccountSubscription" class="input">
+              <option value="free">Free</option>
+              <option value="pro" selected>Pro</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="newAccountCoins">Koin</label>
+            <input id="newAccountCoins" type="number" class="input" min="0" step="1" value="25">
+          </div>
+          <div class="field">
+            <label for="newAccountRole">Role</label>
+            <select id="newAccountRole" class="input">
+              <option value="user" selected>User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label for="newAccountApiKey">Freepik API Key</label>
+            <input id="newAccountApiKey" type="text" class="input" placeholder="Opsional, masukkan API key">
+          </div>
+          <div class="field toggles">
+            <label class="toggle"><input type="checkbox" id="newAccountBanned" style="accent-color:#f87171;"> Ban langsung</label>
+            <label class="toggle"><input type="checkbox" id="newAccountBlocked" style="accent-color:#facc15;"> Blok akses</label>
           </div>
           <div class="field" style="grid-column: 1 / -1; display:flex; justify-content:flex-end;">
-            <button type="submit" class="btn primary">Tambah User</button>
+            <button type="submit" class="btn primary">Tambah Akun</button>
           </div>
         </form>
 
-        <div id="userList" class="list">
-          <div class="empty">Belum ada user. Tambahkan user baru untuk mulai mengelola koin &amp; subscription.</div>
+        <div id="accountList" class="list account-list">
+          <div class="empty">Belum ada akun user. Tambahkan akun baru untuk mulai mengelola akses.</div>
         </div>
       </article>
 
@@ -764,7 +813,7 @@ if (isset($_GET['api'])) {
   <script>
     (function() {
       const state = {
-        users: [],
+        accounts: [],
         apiKeys: [],
         meta: { rollingIndex: 0 },
         nextKey: null,
@@ -772,13 +821,19 @@ if (isset($_GET['api'])) {
       };
 
       const toastEl = document.getElementById('toast');
-      const userList = document.getElementById('userList');
-      const userCount = document.getElementById('userCount');
-      const addUserForm = document.getElementById('addUserForm');
-      const newUserName = document.getElementById('newUserName');
-      const newUserEmail = document.getElementById('newUserEmail');
-      const newUserCoins = document.getElementById('newUserCoins');
-      const newUserSubscription = document.getElementById('newUserSubscription');
+      const accountList = document.getElementById('accountList');
+      const accountCount = document.getElementById('accountCount');
+      const addAccountForm = document.getElementById('addAccountForm');
+      const newAccountDisplay = document.getElementById('newAccountDisplay');
+      const newAccountUsername = document.getElementById('newAccountUsername');
+      const newAccountEmail = document.getElementById('newAccountEmail');
+      const newAccountPassword = document.getElementById('newAccountPassword');
+      const newAccountSubscription = document.getElementById('newAccountSubscription');
+      const newAccountCoins = document.getElementById('newAccountCoins');
+      const newAccountRole = document.getElementById('newAccountRole');
+      const newAccountApiKey = document.getElementById('newAccountApiKey');
+      const newAccountBanned = document.getElementById('newAccountBanned');
+      const newAccountBlocked = document.getElementById('newAccountBlocked');
       const keyList = document.getElementById('keyList');
       const keyMeta = document.getElementById('keyMeta');
       const rotationInfo = document.getElementById('rotationInfo');
@@ -801,6 +856,44 @@ if (isset($_GET['api'])) {
         toastTimer = setTimeout(() => {
           toastEl.classList.remove('show', 'success', 'error');
         }, 2600);
+      }
+
+      function formatErrorDetail(error) {
+        if (!error) return '';
+        if (typeof error === 'string') return error;
+        if (Array.isArray(error)) {
+          return error
+            .map(item => formatErrorDetail(item))
+            .filter(Boolean)
+            .join('\n');
+        }
+        if (typeof error === 'object') {
+          return Object.entries(error)
+            .map(([key, value]) => {
+              const prefix = key === 'general' ? '' : `${key}: `;
+              const detail = formatErrorDetail(value);
+              return `${prefix}${detail}`.trim();
+            })
+            .filter(Boolean)
+            .join('\n');
+        }
+        return String(error);
+      }
+
+      function resolveErrorMessage(err, fallback = 'Terjadi kesalahan') {
+        if (!err) return fallback;
+        if (err.details) {
+          const detail = formatErrorDetail(err.details);
+          if (detail) return detail;
+        }
+        if (err.message) return err.message;
+        if (err.status) return `${fallback} (HTTP ${err.status})`;
+        return fallback;
+      }
+
+      function handleApiError(err, fallback = 'Operasi gagal') {
+        console.error(err);
+        showToast(resolveErrorMessage(err, fallback), 'error');
       }
 
       function maskKey(key) {
@@ -832,10 +925,21 @@ if (isset($_GET['api'])) {
         try {
           json = JSON.parse(text);
         } catch (err) {
-          throw new Error('Respons server tidak valid');
+          const error = new Error('Respons server tidak valid');
+          error.status = res.status;
+          error.raw = text;
+          throw error;
         }
-        if (!json.ok) {
-          throw new Error(json.error || 'Operasi gagal');
+        if (!res.ok || !json.ok) {
+          const detail = json && json.error ? formatErrorDetail(json.error) : '';
+          const message = detail || `Operasi gagal (HTTP ${res.status})`;
+          const error = new Error(message);
+          error.status = json && json.status ? json.status : res.status;
+          if (json && Object.prototype.hasOwnProperty.call(json, 'error')) {
+            error.details = json.error;
+          }
+          error.payload = json;
+          throw error;
         }
         return json;
       }
@@ -844,65 +948,101 @@ if (isset($_GET['api'])) {
         try {
           const json = await apiCall('state', {}, 'GET');
           const data = json.data || {};
-          state.users = Array.isArray(data.users) ? data.users : [];
+          state.accounts = Array.isArray(data.accounts) ? data.accounts : [];
           state.apiKeys = Array.isArray(data.apiKeys) ? data.apiKeys : [];
           state.meta = data.meta || { rollingIndex: 0 };
           state.nextKey = data.nextKey || null;
           state.activeKeyCount = data.activeKeyCount || 0;
-          renderUsers();
+          renderAccounts();
           renderKeys();
         } catch (err) {
-          showToast(err.message || 'Gagal memuat data', 'error');
+          handleApiError(err, 'Gagal memuat data');
         }
       }
 
-      function renderUsers() {
-        if (!userList) return;
-        userList.innerHTML = '';
-        const count = state.users.length;
-        if (userCount) {
-          userCount.textContent = `${count} user${count !== 1 ? 's' : ''}`;
+      function renderAccounts() {
+        if (!accountList) return;
+        accountList.innerHTML = '';
+        const accounts = Array.isArray(state.accounts) ? state.accounts : [];
+        const count = accounts.length;
+        if (accountCount) {
+          accountCount.textContent = `${count} akun`;
         }
         if (!count) {
           const empty = document.createElement('div');
           empty.className = 'empty';
-          empty.textContent = 'Belum ada user. Tambahkan user baru untuk mulai mengelola koin & subscription.';
-          userList.appendChild(empty);
+          empty.textContent = 'Belum ada akun user. Tambahkan akun baru untuk mulai mengelola akses.';
+          accountList.appendChild(empty);
           return;
         }
 
-        state.users.forEach(user => {
+        accounts.forEach(account => {
+          if (!account || typeof account !== 'object') return;
           const card = document.createElement('div');
-          card.className = 'card user-card';
-          card.dataset.id = user.id;
+          card.className = 'card account-card';
+          card.dataset.id = account.id;
+          const isAdmin = (account.role || 'user') === 'admin';
+          if (isAdmin) {
+            card.classList.add('is-admin');
+          }
 
           card.innerHTML = `
             <div class="card-header">
               <div>
-                <div class="card-title user-name"></div>
-                <div class="card-meta user-meta"></div>
+                <div class="card-title account-name"></div>
+                <div class="card-meta account-meta"></div>
               </div>
-              <div class="chip-row"></div>
+              <div class="chip-row">
+                <span class="chip account-role"></span>
+                <span class="chip chip-coins"><strong class="account-coins"></strong> Coins</span>
+              </div>
             </div>
             <div class="card-body">
-              <div class="field-grid">
+              <div class="field-grid account-grid">
                 <div class="field">
-                  <label>Nama</label>
-                  <input type="text" class="input" data-field="name" placeholder="Nama user">
+                  <label>Display Name</label>
+                  <input type="text" class="input" data-field="display_name" placeholder="Nama tampilan">
+                </div>
+                <div class="field">
+                  <label>Username</label>
+                  <input type="text" class="input" data-field="username" placeholder="username">
                 </div>
                 <div class="field">
                   <label>Email</label>
                   <input type="email" class="input" data-field="email" placeholder="user@example.com">
                 </div>
                 <div class="field">
+                  <label>Subscription</label>
+                  <input type="text" class="input" data-field="subscription" placeholder="free / pro / enterprise">
+                </div>
+                <div class="field">
                   <label>Koin</label>
                   <input type="number" class="input" data-field="coins" min="0" step="1">
                 </div>
                 <div class="field">
-                  <label>Subscription</label>
-                  <input type="text" class="input" data-field="subscription" placeholder="free / pro / enterprise">
+                  <label>Role</label>
+                  <select class="input" data-field="role">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div class="field full">
+                  <label>Freepik API Key</label>
+                  <input type="text" class="input" data-field="freepik_api_key" placeholder="Opsional">
+                </div>
+                <div class="field">
+                  <label>Theme</label>
+                  <select class="input" data-field="theme">
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Password Baru</label>
+                  <input type="password" class="input" data-field="password" placeholder="Kosongkan jika tidak diubah">
                 </div>
               </div>
+              <div class="chip-row chip-status"></div>
               <div class="action-row">
                 <button type="button" class="btn primary" data-action="save">Simpan</button>
                 <button type="button" class="btn ghost" data-action="toggle-ban"></button>
@@ -912,49 +1052,72 @@ if (isset($_GET['api'])) {
             </div>
           `;
 
-          const nameEl = card.querySelector('.user-name');
-          const metaEl = card.querySelector('.user-meta');
-          const chips = card.querySelector('.chip-row');
-          const nameInput = card.querySelector('[data-field="name"]');
+          const nameEl = card.querySelector('.account-name');
+          const metaEl = card.querySelector('.account-meta');
+          const roleChip = card.querySelector('.account-role');
+          const coinsEl = card.querySelector('.account-coins');
+          const statusRow = card.querySelector('.chip-status');
+          const displayInput = card.querySelector('[data-field="display_name"]');
+          const usernameInput = card.querySelector('[data-field="username"]');
           const emailInput = card.querySelector('[data-field="email"]');
-          const coinsInput = card.querySelector('[data-field="coins"]');
           const subscriptionInput = card.querySelector('[data-field="subscription"]');
+          const coinsInput = card.querySelector('[data-field="coins"]');
+          const roleSelect = card.querySelector('[data-field="role"]');
+          const keyInput = card.querySelector('[data-field="freepik_api_key"]');
+          const themeSelect = card.querySelector('[data-field="theme"]');
+          const passwordInput = card.querySelector('[data-field="password"]');
           const banBtn = card.querySelector('[data-action="toggle-ban"]');
           const blockBtn = card.querySelector('[data-action="toggle-block"]');
+          const deleteBtn = card.querySelector('[data-action="delete"]');
 
-          if (nameEl) nameEl.textContent = user.name || '(Tanpa nama)';
-          if (metaEl) metaEl.textContent = `${user.email ? user.email : 'Tidak ada email'} · Dibuat ${formatDate(user.created_at)}`;
-
-          if (chips) {
-            if (user.banned) {
-              chips.appendChild(makeChip('Banned', 'danger'));
-            }
-            if (user.blocked) {
-              chips.appendChild(makeChip('Blocked', 'warning'));
-            }
-            if (!user.banned && !user.blocked) {
-              chips.appendChild(makeChip('Active', 'success'));
+          if (nameEl) {
+            nameEl.textContent = account.display_name || account.username || '(Tanpa nama)';
+          }
+          if (metaEl) {
+            const emailText = account.email && account.email !== '' ? account.email : 'Tidak ada email';
+            const created = account.created_at ? `Dibuat ${formatDate(account.created_at)}` : '';
+            const lastLogin = account.last_login_at ? `Login ${formatDate(account.last_login_at)}` : '';
+            const pieces = [emailText, `@${account.username || 'unknown'}`, String(account.subscription || 'free').toUpperCase()];
+            if (created) pieces.push(created);
+            if (lastLogin) pieces.push(lastLogin);
+            metaEl.textContent = pieces.join(' · ');
+          }
+          if (roleChip) {
+            roleChip.textContent = isAdmin ? 'Admin' : 'User';
+            if (isAdmin) {
+              roleChip.classList.add('chip-admin');
             }
           }
-
-          if (nameInput) nameInput.value = user.name || '';
-          if (emailInput) emailInput.value = user.email || '';
-          if (coinsInput) coinsInput.value = Number.isFinite(Number(user.coins)) ? Number(user.coins) : 0;
-          if (subscriptionInput) subscriptionInput.value = user.subscription || 'free';
-
+          if (coinsEl) {
+            coinsEl.textContent = Number.isFinite(Number(account.coins)) ? Number(account.coins) : 0;
+          }
+          if (statusRow) {
+            statusRow.innerHTML = '';
+            statusRow.appendChild(makeChip(account.is_banned ? 'Banned' : 'Active', account.is_banned ? 'danger' : 'success'));
+            statusRow.appendChild(makeChip(account.is_blocked ? 'Blocked' : 'Live', account.is_blocked ? 'warning' : 'info'));
+          }
+          if (displayInput) displayInput.value = account.display_name || '';
+          if (usernameInput) usernameInput.value = account.username || '';
+          if (emailInput) emailInput.value = account.email || '';
+          if (subscriptionInput) subscriptionInput.value = account.subscription || 'free';
+          if (coinsInput) coinsInput.value = Number.isFinite(Number(account.coins)) ? Number(account.coins) : 0;
+          if (roleSelect) roleSelect.value = isAdmin ? 'admin' : 'user';
+          if (keyInput) keyInput.value = account.freepik_api_key || '';
+          if (themeSelect) themeSelect.value = account.theme === 'light' ? 'light' : 'dark';
+          if (passwordInput) passwordInput.value = '';
           if (banBtn) {
-            banBtn.textContent = user.banned ? 'Unban' : 'Ban';
-            if (!user.banned) {
-              banBtn.classList.add('danger');
-            } else {
-              banBtn.classList.remove('danger');
-            }
+            banBtn.textContent = account.is_banned ? 'Unban' : 'Ban';
+            banBtn.classList.toggle('danger', !account.is_banned);
           }
           if (blockBtn) {
-            blockBtn.textContent = user.blocked ? 'Unblock' : 'Block';
+            blockBtn.textContent = account.is_blocked ? 'Unblock' : 'Block';
+          }
+          if (deleteBtn && isAdmin) {
+            deleteBtn.disabled = true;
+            deleteBtn.title = 'Tidak dapat menghapus akun admin';
           }
 
-          userList.appendChild(card);
+          accountList.appendChild(card);
         });
       }
 
@@ -1064,101 +1227,136 @@ if (isset($_GET['api'])) {
         if (tone === 'success') chip.classList.add('success');
         if (tone === 'danger') chip.classList.add('danger');
         if (tone === 'warning') chip.classList.add('warning');
+        if (tone === 'info') chip.classList.add('info');
         if (tone === 'accent') chip.classList.add('accent');
         chip.textContent = text;
         return chip;
       }
 
-      addUserForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const payload = {
-          name: newUserName.value.trim(),
-          email: newUserEmail.value.trim(),
-          coins: Number(newUserCoins.value || 0),
-          subscription: newUserSubscription.value.trim()
-        };
-        if (!payload.name) {
-          showToast('Nama wajib diisi', 'error');
-          return;
-        }
-        if (!Number.isFinite(payload.coins) || payload.coins < 0) {
-          payload.coins = 0;
-        }
-        try {
-          await apiCall('addUser', payload);
-          showToast('User berhasil ditambahkan', 'success');
-          addUserForm.reset();
-          newUserCoins.value = 0;
-          newUserSubscription.value = 'free';
-          await loadState();
-        } catch (err) {
-          showToast(err.message || 'Gagal menambah user', 'error');
-        }
-      });
+      if (addAccountForm) {
+        addAccountForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const payload = {
+            display_name: newAccountDisplay.value.trim(),
+            username: newAccountUsername.value.trim(),
+            email: newAccountEmail.value.trim(),
+            password: newAccountPassword.value,
+            subscription: newAccountSubscription.value,
+            coins: Number(newAccountCoins.value || 0),
+            role: newAccountRole.value,
+            freepik_api_key: newAccountApiKey.value.trim(),
+            is_banned: newAccountBanned.checked,
+            is_blocked: newAccountBlocked.checked
+          };
 
-      userList.addEventListener('click', async (event) => {
+          if (!payload.username) {
+            showToast('Username wajib diisi', 'error');
+            return;
+          }
+          if (!payload.password || payload.password.length < 6) {
+            showToast('Password minimal 6 karakter', 'error');
+            return;
+          }
+          if (!Number.isFinite(payload.coins) || payload.coins < 0) {
+            payload.coins = 0;
+          }
+          if (payload.freepik_api_key === '') {
+            delete payload.freepik_api_key;
+          }
+
+          try {
+            await apiCall('addAccount', payload);
+            showToast('Akun berhasil ditambahkan', 'success');
+            addAccountForm.reset();
+            if (newAccountCoins) newAccountCoins.value = 25;
+            if (newAccountSubscription) newAccountSubscription.value = 'pro';
+            if (newAccountRole) newAccountRole.value = 'user';
+            await loadState();
+          } catch (err) {
+            handleApiError(err, 'Gagal menambah akun');
+          }
+        });
+      }
+
+      if (accountList) accountList.addEventListener('click', async (event) => {
         const target = event.target;
         if (!(target instanceof HTMLElement)) return;
         const action = target.dataset.action;
         if (!action) return;
-        const card = target.closest('.user-card');
+        const card = target.closest('.account-card');
         if (!card) return;
         const id = card.dataset.id;
         if (!id) return;
-        const current = state.users.find(user => user.id === id);
+        const current = state.accounts.find(account => account.id === id);
         if (!current) return;
 
         if (action === 'save') {
-          const nameInput = card.querySelector('[data-field="name"]');
+          const displayInput = card.querySelector('[data-field="display_name"]');
+          const usernameInput = card.querySelector('[data-field="username"]');
           const emailInput = card.querySelector('[data-field="email"]');
           const coinsInput = card.querySelector('[data-field="coins"]');
           const subscriptionInput = card.querySelector('[data-field="subscription"]');
+          const roleSelect = card.querySelector('[data-field="role"]');
+          const keyInput = card.querySelector('[data-field="freepik_api_key"]');
+          const themeSelect = card.querySelector('[data-field="theme"]');
+          const passwordInput = card.querySelector('[data-field="password"]');
           const payload = {
             id,
-            name: nameInput ? nameInput.value.trim() : '',
+            display_name: displayInput ? displayInput.value.trim() : '',
+            username: usernameInput ? usernameInput.value.trim() : '',
             email: emailInput ? emailInput.value.trim() : '',
             coins: coinsInput ? Number(coinsInput.value || 0) : 0,
-            subscription: subscriptionInput ? subscriptionInput.value.trim() : ''
+            subscription: subscriptionInput ? subscriptionInput.value.trim() : '',
+            role: roleSelect ? roleSelect.value : undefined,
+            freepik_api_key: keyInput ? keyInput.value.trim() : '',
+            theme: themeSelect ? themeSelect.value : undefined,
+            password: passwordInput ? passwordInput.value : ''
           };
-          if (!payload.name) payload.name = '';
+          if (!payload.username) payload.username = current.username;
           if (!Number.isFinite(payload.coins) || payload.coins < 0) payload.coins = 0;
+          if (payload.freepik_api_key === '') {
+            payload.freepik_api_key = null;
+          }
+          if (payload.password === '') {
+            delete payload.password;
+          }
           try {
-            await apiCall('updateUser', payload);
-            showToast('User diperbarui', 'success');
+            await apiCall('updateAccount', payload);
+            showToast('Akun diperbarui', 'success');
             await loadState();
           } catch (err) {
-            showToast(err.message || 'Gagal memperbarui user', 'error');
+            handleApiError(err, 'Gagal memperbarui akun');
           }
         }
 
         if (action === 'toggle-ban') {
           try {
-            await apiCall('updateUser', { id, banned: !current.banned });
-            showToast(current.banned ? 'User di-unban' : 'User di-ban', 'success');
+            await apiCall('updateAccount', { id, is_banned: !current.is_banned });
+            showToast(current.is_banned ? 'Akun di-unban' : 'Akun di-ban', 'success');
             await loadState();
           } catch (err) {
-            showToast(err.message || 'Gagal mengubah status ban', 'error');
+            handleApiError(err, 'Gagal mengubah status ban');
           }
         }
 
         if (action === 'toggle-block') {
           try {
-            await apiCall('updateUser', { id, blocked: !current.blocked });
-            showToast(current.blocked ? 'User di-unblock' : 'User diblokir', 'success');
+            await apiCall('updateAccount', { id, is_blocked: !current.is_blocked });
+            showToast(current.is_blocked ? 'Akun di-unblock' : 'Akun diblokir', 'success');
             await loadState();
           } catch (err) {
-            showToast(err.message || 'Gagal mengubah status block', 'error');
+            handleApiError(err, 'Gagal mengubah status block');
           }
         }
 
         if (action === 'delete') {
-          if (!confirm('Hapus user ini? Tindakan tidak dapat dibatalkan.')) return;
+          if (!confirm('Hapus akun ini? Tindakan tidak dapat dibatalkan.')) return;
           try {
-            await apiCall('deleteUser', { id });
-            showToast('User dihapus', 'success');
+            await apiCall('deleteAccount', { id });
+            showToast('Akun dihapus', 'success');
             await loadState();
           } catch (err) {
-            showToast(err.message || 'Gagal menghapus user', 'error');
+            handleApiError(err, 'Gagal menghapus akun');
           }
         }
       });
@@ -1181,7 +1379,7 @@ if (isset($_GET['api'])) {
           newKeyActive.checked = true;
           await loadState();
         } catch (err) {
-          showToast(err.message || 'Gagal menambah API key', 'error');
+          handleApiError(err, 'Gagal menambah API key');
         }
       });
 
@@ -1214,7 +1412,7 @@ if (isset($_GET['api'])) {
             showToast('API key diperbarui', 'success');
             await loadState();
           } catch (err) {
-            showToast(err.message || 'Gagal memperbarui API key', 'error');
+            handleApiError(err, 'Gagal memperbarui API key');
           }
         }
 
@@ -1224,7 +1422,7 @@ if (isset($_GET['api'])) {
             showToast(!current.active ? 'API key diaktifkan' : 'API key dinonaktifkan', 'success');
             await loadState();
           } catch (err) {
-            showToast(err.message || 'Gagal mengubah status API key', 'error');
+            handleApiError(err, 'Gagal mengubah status API key');
           }
         }
 
@@ -1238,7 +1436,7 @@ if (isset($_GET['api'])) {
             showToast('Urutan rotasi diperbarui', 'success');
             await loadState();
           } catch (err) {
-            showToast(err.message || 'Gagal memperbarui rotasi', 'error');
+            handleApiError(err, 'Gagal memperbarui rotasi');
           }
         }
 
@@ -1249,7 +1447,7 @@ if (isset($_GET['api'])) {
             showToast('API key dihapus', 'success');
             await loadState();
           } catch (err) {
-            showToast(err.message || 'Gagal menghapus API key', 'error');
+            handleApiError(err, 'Gagal menghapus API key');
           }
         }
       });
