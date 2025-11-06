@@ -10,6 +10,145 @@ function auth_default_credential_values(): array
     ];
 }
 
+function auth_platform_default_generators(?string $now = null): array
+{
+    $now = $now ?: gmdate('c');
+
+    return [
+        'imageGen' => [
+            'key' => 'imageGen',
+            'label' => 'Image Generator',
+            'description' => 'Generate image assets dari prompt teks.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
+        'imageEdit' => [
+            'key' => 'imageEdit',
+            'label' => 'Image Editing',
+            'description' => 'Edit dan upscale image menggunakan Freepik tools.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
+        'videoGen' => [
+            'key' => 'videoGen',
+            'label' => 'Video Generator',
+            'description' => 'Buat video otomatis dari prompt dan referensi.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
+        'lipsync' => [
+            'key' => 'lipsync',
+            'label' => 'Lipsync Studio',
+            'description' => 'Sinkronisasi bibir otomatis dari video dan audio.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
+        'filmmaker' => [
+            'key' => 'filmmaker',
+            'label' => 'Filmmaker',
+            'description' => 'Generator rangkaian scene sinematik.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
+        'ugc' => [
+            'key' => 'ugc',
+            'label' => 'UGC Tool',
+            'description' => 'Generator ide konten UGC dan animasi.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
+    ];
+}
+
+function auth_platform_defaults(?string $now = null): array
+{
+    $now = $now ?: gmdate('c');
+
+    return [
+        'maintenance' => [
+            'active' => false,
+            'message' => 'Website sedang maintenance. Kami segera kembali!',
+            'updated_at' => $now,
+        ],
+        'generators' => auth_platform_default_generators($now),
+    ];
+}
+
+function auth_platform_normalize($platform, ?string $now = null): array
+{
+    $now = $now ?: gmdate('c');
+    $defaults = auth_platform_defaults($now);
+
+    if (!is_array($platform)) {
+        $platform = $defaults;
+    }
+
+    $normalized = [];
+
+    $maintenance = $platform['maintenance'] ?? [];
+    $message = isset($maintenance['message']) ? trim((string)$maintenance['message']) : '';
+    if ($message === '') {
+        $message = $defaults['maintenance']['message'];
+    }
+    $normalized['maintenance'] = [
+        'active' => !empty($maintenance['active']),
+        'message' => $message,
+        'updated_at' => isset($maintenance['updated_at']) && is_string($maintenance['updated_at']) && $maintenance['updated_at'] !== ''
+            ? $maintenance['updated_at']
+            : $now,
+    ];
+
+    $normalized['generators'] = [];
+    $existingGenerators = [];
+    if (isset($platform['generators']) && is_array($platform['generators'])) {
+        $existingGenerators = $platform['generators'];
+    }
+
+    foreach ($existingGenerators as $key => $item) {
+        if (is_array($item) && isset($item['key']) && is_string($item['key'])) {
+            $existingGenerators[$item['key']] = $item;
+        }
+    }
+
+    foreach ($defaults['generators'] as $key => $defaultItem) {
+        $item = $existingGenerators[$key] ?? [];
+        $label = isset($item['label']) && trim((string)$item['label']) !== ''
+            ? trim((string)$item['label'])
+            : $defaultItem['label'];
+        $description = isset($item['description']) && trim((string)$item['description']) !== ''
+            ? trim((string)$item['description'])
+            : ($defaultItem['description'] ?? '');
+        $enabled = isset($item['enabled']) ? (bool)$item['enabled'] : (bool)$defaultItem['enabled'];
+        $updatedAt = isset($item['updated_at']) && is_string($item['updated_at']) && $item['updated_at'] !== ''
+            ? $item['updated_at']
+            : $defaultItem['updated_at'];
+
+        $normalized['generators'][$key] = [
+            'key' => $key,
+            'label' => $label,
+            'description' => $description,
+            'enabled' => $enabled,
+            'updated_at' => $updatedAt,
+        ];
+    }
+
+    foreach ($existingGenerators as $key => $item) {
+        if (!isset($normalized['generators'][$key]) && is_array($item)) {
+            $normalized['generators'][$key] = [
+                'key' => is_string($key) ? $key : ($item['key'] ?? $key),
+                'label' => isset($item['label']) ? (string)$item['label'] : ($item['key'] ?? 'Generator'),
+                'description' => isset($item['description']) ? (string)$item['description'] : '',
+                'enabled' => isset($item['enabled']) ? (bool)$item['enabled'] : true,
+                'updated_at' => isset($item['updated_at']) && is_string($item['updated_at']) && $item['updated_at'] !== ''
+                    ? $item['updated_at']
+                    : $now,
+            ];
+        }
+    }
+
+    return $normalized;
+}
+
 function auth_storage_default(): array
 {
     $now = gmdate('c');
@@ -19,6 +158,7 @@ function auth_storage_default(): array
         'meta' => [
             'rollingIndex' => 0,
         ],
+        'platform' => auth_platform_defaults($now),
         'auth' => array_merge(
             auth_default_credential_values(),
             [
@@ -168,6 +308,17 @@ function auth_storage_read(bool $fresh = false): array
         $changed = true;
     }
 
+    if (!isset($data['platform']) || !is_array($data['platform'])) {
+        $data['platform'] = auth_platform_defaults();
+        $changed = true;
+    } else {
+        $normalizedPlatform = auth_platform_normalize($data['platform']);
+        if ($normalizedPlatform !== $data['platform']) {
+            $data['platform'] = $normalizedPlatform;
+            $changed = true;
+        }
+    }
+
     if (!isset($data['meta']) || !is_array($data['meta'])) {
         $data['meta'] = ['rollingIndex' => 0];
         $changed = true;
@@ -249,6 +400,104 @@ function auth_storage_read(bool $fresh = false): array
     }
 
     return $data;
+}
+
+function auth_platform_state(): array
+{
+    $data = auth_storage_read();
+    return auth_platform_normalize($data['platform'] ?? null);
+}
+
+function auth_platform_public_view(): array
+{
+    $platform = auth_platform_state();
+    $generators = [];
+    foreach ($platform['generators'] as $key => $item) {
+        $generators[$key] = [
+            'key' => $item['key'],
+            'label' => $item['label'],
+            'description' => $item['description'] ?? '',
+            'enabled' => !empty($item['enabled']),
+            'updated_at' => $item['updated_at'] ?? null,
+        ];
+    }
+
+    return [
+        'maintenance' => [
+            'active' => !empty($platform['maintenance']['active']),
+            'message' => $platform['maintenance']['message'] ?? '',
+            'updated_at' => $platform['maintenance']['updated_at'] ?? null,
+        ],
+        'generators' => $generators,
+    ];
+}
+
+function auth_platform_admin_view($platform = null): array
+{
+    $platform = auth_platform_normalize($platform);
+    $generators = [];
+    foreach ($platform['generators'] as $item) {
+        $generators[] = [
+            'key' => $item['key'],
+            'label' => $item['label'],
+            'description' => $item['description'] ?? '',
+            'enabled' => !empty($item['enabled']),
+            'updated_at' => $item['updated_at'] ?? null,
+        ];
+    }
+
+    return [
+        'maintenance' => [
+            'active' => !empty($platform['maintenance']['active']),
+            'message' => $platform['maintenance']['message'] ?? '',
+            'updated_at' => $platform['maintenance']['updated_at'] ?? null,
+        ],
+        'generators' => $generators,
+    ];
+}
+
+function auth_platform_set_generator(string $key, bool $enabled)
+{
+    $data = auth_storage_read();
+    $platform = auth_platform_normalize($data['platform'] ?? null);
+
+    if (!isset($platform['generators'][$key])) {
+        return null;
+    }
+
+    $platform['generators'][$key]['enabled'] = $enabled;
+    $platform['generators'][$key]['updated_at'] = gmdate('c');
+
+    $data['platform'] = $platform;
+    if (!auth_storage_write($data)) {
+        return null;
+    }
+
+    return $platform;
+}
+
+function auth_platform_set_maintenance(bool $active, ?string $message = null)
+{
+    $data = auth_storage_read();
+    $platform = auth_platform_normalize($data['platform'] ?? null);
+
+    $platform['maintenance']['active'] = $active;
+    if ($message !== null) {
+        $message = trim($message);
+        if ($message === '') {
+            $defaults = auth_platform_defaults();
+            $message = $defaults['maintenance']['message'];
+        }
+        $platform['maintenance']['message'] = $message;
+    }
+    $platform['maintenance']['updated_at'] = gmdate('c');
+
+    $data['platform'] = $platform;
+    if (!auth_storage_write($data)) {
+        return null;
+    }
+
+    return $platform;
 }
 
 function auth_build_default_account(): array

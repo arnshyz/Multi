@@ -374,10 +374,13 @@ if ($requestedApi === 'account') {
         ], 404);
     }
 
+    $payload = auth_account_public_payload($account);
+    $payload['platform'] = auth_platform_public_view();
+
     auth_json_response([
         'ok' => true,
         'status' => 200,
-        'data' => auth_account_public_payload($account),
+        'data' => $payload,
     ]);
 }
 
@@ -2013,6 +2016,15 @@ body[data-theme="light"] {
   color: var(--text);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
+.sidebar-link.locked {
+  opacity: 0.45;
+}
+.sidebar-link.locked .nav-label::after {
+  content: '•';
+  margin-left: 6px;
+  font-size: 12px;
+  color: rgba(248, 113, 113, 0.9);
+}
 .workspace.sidebar-collapsed .sidebar {
   padding: 28px 16px;
 }
@@ -2083,104 +2095,124 @@ body[data-theme="light"] {
   pointer-events: none;
 }
 .profile-card {
-  border-radius: 18px;
-  border: 1px solid rgba(37, 99, 235, 0.15);
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.08));
-  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.6);
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.18);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .profile-card::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.25), transparent 70%);
-  opacity: 0.4;
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.14), rgba(14, 165, 233, 0.08));
+  opacity: 0.6;
   pointer-events: none;
 }
 body[data-theme="light"] .profile-card {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(125, 211, 252, 0.08));
-  border-color: rgba(59, 130, 246, 0.22);
-  box-shadow: 0 18px 38px rgba(37, 99, 235, 0.14);
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(148, 163, 184, 0.32);
+  box-shadow: 0 12px 22px rgba(148, 163, 184, 0.22);
 }
 .profile-card--alert {
-  border-color: rgba(248, 113, 113, 0.55);
-  background: linear-gradient(135deg, rgba(248, 113, 113, 0.22), rgba(239, 68, 68, 0.18));
+  border-color: rgba(248, 113, 113, 0.45);
+  box-shadow: 0 18px 38px rgba(248, 113, 113, 0.12);
 }
-.profile-header {
+.profile-main {
   display: flex;
   align-items: center;
   gap: 12px;
+  position: relative;
+  z-index: 1;
 }
 .profile-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.75), rgba(14, 165, 233, 0.6));
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(96, 165, 250, 0.65));
   color: #f8fafc;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4);
-  position: relative;
-  z-index: 1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+body[data-theme="light"] .profile-avatar {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.75));
+}
+.profile-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .profile-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  position: relative;
-  z-index: 1;
 }
 .profile-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
+  gap: 6px;
+  padding: 2px 12px 2px 10px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 600;
-  background: rgba(250, 204, 21, 0.18);
-  color: #b45309;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  color: #1f2937;
+  background: linear-gradient(90deg, #f97316, #facc15);
+  box-shadow: 0 6px 16px rgba(250, 204, 21, 0.35);
+  overflow: hidden;
 }
-body[data-theme="dark"] .profile-badge {
-  background: rgba(250, 204, 21, 0.22);
-  color: #facc15;
+.profile-badge::before {
+  content: "\1F451";
+  font-size: 12px;
+}
+.profile-badge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  animation: badgeShine 2.8s linear infinite;
+}
+@keyframes badgeShine {
+  0% { left: -60%; }
+  60% { left: 120%; }
+  100% { left: 120%; }
 }
 .profile-username {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
-  position: relative;
-  z-index: 1;
 }
 .profile-credit {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(59, 130, 246, 0.25);
   position: relative;
   z-index: 1;
 }
 body[data-theme="light"] .profile-credit {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(59, 130, 246, 0.22);
-}
-body[data-theme="dark"] .profile-credit {
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(240, 249, 255, 0.9);
   border-color: rgba(59, 130, 246, 0.35);
 }
 .profile-credit .credit-label {
@@ -2190,7 +2222,7 @@ body[data-theme="dark"] .profile-credit {
   color: var(--muted);
 }
 .profile-credit .credit-value {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text);
 }
@@ -2206,33 +2238,39 @@ body[data-theme="dark"] .profile-credit {
   height: 8px;
   border-radius: 999px;
   background: var(--success);
-  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.25);
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.25);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 .profile-credit .status-dot.offline {
   background: var(--danger);
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.3);
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.35);
 }
-    .profile-topup {
-      border-radius: 12px;
-      border: 1px solid rgba(37, 99, 235, 0.35);
-      background: linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(59, 130, 246, 0.92));
-      color: #f8fafc;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 9px 16px;
-      cursor: pointer;
-      box-shadow: 0 18px 32px rgba(37, 99, 235, 0.3);
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      text-decoration: none;
-      white-space: nowrap;
-    }
+.profile-topup {
+  width: 100%;
+  border: none;
+  outline: none;
+  border-radius: 10px;
+  background: linear-gradient(120deg, rgba(249, 115, 22, 0.95), rgba(250, 204, 21, 0.85));
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(249, 115, 22, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
 .profile-topup:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 24px 40px rgba(37, 99, 235, 0.32);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(249, 115, 22, 0.32);
+}
+.profile-card--alert .profile-topup {
+  background: linear-gradient(120deg, rgba(248, 113, 113, 0.95), rgba(251, 191, 36, 0.8));
 }
 .logout-btn {
   border-radius: 12px;
@@ -2764,6 +2802,11 @@ body[data-theme="dark"] .profile-credit {
       transition: all 0.25s ease;
       position: relative;
       overflow: hidden;
+    }
+    .feature-tab.locked {
+      opacity: 0.5;
+      cursor: not-allowed;
+      border-style: dashed;
     }
     .feature-tab.active {
       background: linear-gradient(135deg, rgba(37,99,235,0.25), rgba(14,165,233,0.2));
@@ -3772,6 +3815,183 @@ body[data-theme="dark"] .profile-credit {
     .clickable-media {
       cursor: zoom-in;
     }
+    .progress-inline {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .progress-inline.active {
+      display: flex;
+    }
+    .progress-inline .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .progress-inline .progress-bar {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(148,163,184,0.25);
+      overflow: hidden;
+    }
+    .progress-inline .progress-fill {
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: linear-gradient(120deg, rgba(37,99,235,0.85), rgba(14,165,233,0.85));
+      transition: width 0.3s ease;
+    }
+    .maintenance-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      background: radial-gradient(circle at center, rgba(15,23,42,0.85), rgba(2,6,23,0.95));
+      z-index: 4000;
+    }
+    .maintenance-overlay::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(59,130,246,0.28), rgba(14,165,233,0.2), rgba(99,102,241,0.28));
+      opacity: 0.5;
+      animation: maintenanceGlow 12s ease-in-out infinite;
+    }
+    .maintenance-overlay.active {
+      display: flex;
+    }
+    .maintenance-overlay__content {
+      position: relative;
+      z-index: 1;
+      max-width: 420px;
+      width: 100%;
+      background: rgba(15,23,42,0.92);
+      border: 1px solid rgba(99,102,241,0.25);
+      border-radius: 20px;
+      padding: 32px 28px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(2,6,23,0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .maintenance-overlay__icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: rgba(96,165,250,0.2);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin: 0 auto 6px;
+    }
+    .maintenance-overlay__content h2 {
+      margin: 0;
+      font-size: 22px;
+      color: #e2e8f0;
+    }
+    .maintenance-overlay__content p {
+      margin: 0;
+      font-size: 13px;
+      color: rgba(226,232,240,0.75);
+      line-height: 1.5;
+    }
+    body.maintenance-active {
+      overflow: hidden;
+    }
+    .topup-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2,6,23,0.65);
+      backdrop-filter: blur(6px);
+      z-index: 5000;
+      padding: 20px;
+    }
+    .topup-modal.show {
+      display: flex;
+    }
+    .topup-modal__dialog {
+      background: var(--card);
+      border-radius: 18px;
+      border: 1px solid rgba(148,163,184,0.25);
+      width: min(360px, 100%);
+      padding: 20px 22px;
+      box-shadow: 0 24px 60px rgba(15,23,42,0.45);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .topup-modal__close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: none;
+      background: rgba(148,163,184,0.18);
+      color: var(--text);
+      font-size: 18px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .topup-modal__close:hover {
+      background: rgba(148,163,184,0.3);
+    }
+    .topup-modal__title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .topup-modal__options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .topup-option {
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.28);
+      background: var(--card-soft);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .topup-option:hover {
+      border-color: rgba(59,130,246,0.45);
+    }
+    .topup-option.active {
+      border-color: rgba(59,130,246,0.6);
+      background: linear-gradient(135deg, rgba(59,130,246,0.22), rgba(14,165,233,0.16));
+      color: var(--text);
+      box-shadow: 0 14px 28px rgba(59,130,246,0.18);
+    }
+    .topup-modal__confirm {
+      margin-top: 4px;
+    }
+    .topup-modal__hint {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+    }
+    @keyframes maintenanceGlow {
+      0% { transform: rotate(0deg) scale(1); opacity: 0.45; }
+      50% { transform: rotate(180deg) scale(1.04); opacity: 0.6; }
+      100% { transform: rotate(360deg) scale(1); opacity: 0.45; }
+    }
   </style>
 </head>
 <body data-theme="light">
@@ -3800,13 +4020,13 @@ body[data-theme="dark"] .profile-credit {
       </span>
       <span class="nav-label">Drive</span>
     </button>
-    <button class="sidebar-link" data-target="viewFilm">
+    <button class="sidebar-link" data-target="viewFilm" data-feature="filmmaker">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 0V4m4 2V4m4 2V4m4 2V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
       <span class="nav-label">Filmmaker</span>
     </button>
-    <button class="sidebar-link" data-target="viewUGC">
+    <button class="sidebar-link" data-target="viewUGC" data-feature="ugc">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
@@ -3856,7 +4076,7 @@ body[data-theme="dark"] .profile-credit {
         <span class="credit-value" id="profileCoins">0</span>
         <span class="credit-status"><span class="status-dot"></span><span id="profileStatusText">Live</span></span>
       </div>
-      <a href="https://wa.me/62818404222" target="_blank" rel="noopener" class="profile-topup" id="profileTopup">Top Up Credit</a>
+      <button type="button" class="profile-topup" id="profileTopup">Top Up Credit</button>
     </div>
     <button type="button" class="logout-btn" id="logoutButton">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M10 12h11l-3-3m3 3-3 3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
@@ -3875,7 +4095,7 @@ body[data-theme="dark"] .profile-credit {
           <p>Selamat datang kembali! Pantau progress generate konten dan saldo koin kamu.</p>
         </div>
         <div class="hero-actions">
-          <a href="https://wa.me/62818404222" target="_blank" rel="noopener" class="profile-topup" id="heroTopup">Top Up Credit</a>
+          <button type="button" class="profile-topup" id="heroTopup">Top Up Credit</button>
         </div>
       </section>
 
@@ -4283,6 +4503,12 @@ body[data-theme="dark"] .profile-credit {
         <div class="muted" style="font-size:10px;margin-top:6px;">
           Setiap scene akan memanggil model Gemini Flash 2.5 secara terpisah. Progress scene akan muncul di panel kiri.
         </div>
+        <div class="progress-inline" id="filmProgress">
+          <div class="progress-label"><span>Progress</span><span id="filmProgressValue">0%</span></div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="filmProgressFill"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -4370,6 +4596,12 @@ body[data-theme="dark"] .profile-credit {
           Sistem akan membuat 5 ide UGC beserta gambar dari Gemini Flash 2.5.
           Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
         </div>
+        <div class="progress-inline" id="ugcProgress">
+          <div class="progress-label"><span>Progress</span><span id="ugcProgressValue">0%</span></div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="ugcProgressFill"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -4383,6 +4615,24 @@ body[data-theme="dark"] .profile-credit {
     <button type="button" id="assetPreviewClose" class="asset-preview-close">&times;</button>
     <div id="assetPreviewBody" class="asset-preview-body"></div>
     <a id="assetPreviewDownload" class="asset-preview-download" href="#" download target="_blank">Download file</a>
+  </div>
+</div>
+
+<div class="maintenance-overlay" id="maintenanceOverlay">
+  <div class="maintenance-overlay__content">
+    <div class="maintenance-overlay__icon">🛠️</div>
+    <h2>Website Sedang Maintenance</h2>
+    <p id="maintenanceOverlayMessage">Kami sedang melakukan perawatan sistem. Silakan kembali beberapa saat lagi.</p>
+  </div>
+</div>
+
+<div class="topup-modal" id="topupModal">
+  <div class="topup-modal__dialog">
+    <button type="button" class="topup-modal__close" id="topupCloseBtn">&times;</button>
+    <h3 class="topup-modal__title">Pilih nominal Top Up</h3>
+    <div class="topup-modal__options" id="topupOptions"></div>
+    <button type="button" class="profile-topup topup-modal__confirm" id="topupConfirmBtn" disabled>Top Up via WhatsApp</button>
+    <div class="topup-modal__hint" id="topupHint">Pilih nominal untuk lanjut ke WhatsApp.</div>
   </div>
 </div>
 
@@ -4415,9 +4665,40 @@ body[data-theme="dark"] .profile-credit {
   const driveClearDateBtn = document.getElementById('driveClearDate');
   const driveTotalCountEl = document.getElementById('driveTotalCount');
   const driveTypeSummaryEl = document.getElementById('driveTypeSummary');
+  const maintenanceOverlayEl = document.getElementById('maintenanceOverlay');
+  const maintenanceOverlayMessageEl = document.getElementById('maintenanceOverlayMessage');
+  const topupModalEl = document.getElementById('topupModal');
+  const topupCloseBtn = document.getElementById('topupCloseBtn');
+  const topupOptionsEl = document.getElementById('topupOptions');
+  const topupConfirmBtn = document.getElementById('topupConfirmBtn');
+  const topupHintEl = document.getElementById('topupHint');
+  const topupOpeners = [
+    document.getElementById('profileTopup'),
+    document.getElementById('heroTopup')
+  ].filter(Boolean);
+  const filmProgressEl = document.getElementById('filmProgress');
+  const filmProgressFill = document.getElementById('filmProgressFill');
+  const filmProgressValue = document.getElementById('filmProgressValue');
+  const ugcProgressEl = document.getElementById('ugcProgress');
+  const ugcProgressFill = document.getElementById('ugcProgressFill');
+  const ugcProgressValue = document.getElementById('ugcProgressValue');
+
+  const TOPUP_AMOUNTS = [10, 20, 30, 40, 50, 100, 150, 200];
+  const TOPUP_WHATSAPP = 'https://wa.me/62818404222';
+  const PLATFORM_FEATURE_META = {
+    imageGen: { label: 'Image Generator' },
+    imageEdit: { label: 'Image Editing' },
+    videoGen: { label: 'Video Generator' },
+    lipsync: { label: 'Lipsync Studio' },
+    filmmaker: { label: 'Filmmaker' },
+    ugc: { label: 'UGC Tool' }
+  };
+  const HUB_FEATURE_KEYS = ['imageGen', 'imageEdit', 'videoGen', 'lipsync'];
 
   let currentAccount = null;
   let currentTheme = 'light';
+  let platformState = defaultPlatformState();
+  let selectedTopupAmount = null;
 
   const COIN_COST_STANDARD = 1;
   const COIN_COST_FILM_PER_SCENE = 1;
@@ -4427,6 +4708,266 @@ body[data-theme="dark"] .profile-credit {
   let driveItems = [];
   let driveLoaded = false;
   let driveLoading = false;
+
+  function defaultPlatformState() {
+    return {
+      maintenance: { active: false, message: '', updated_at: null },
+      generators: {}
+    };
+  }
+
+  function normalizePlatformState(platform) {
+    const state = defaultPlatformState();
+    if (!platform || typeof platform !== 'object') {
+      return state;
+    }
+    if (platform.maintenance && typeof platform.maintenance === 'object') {
+      const maint = platform.maintenance;
+      state.maintenance = {
+        active: !!maint.active,
+        message: maint.message ? String(maint.message) : '',
+        updated_at: maint.updated_at || null
+      };
+    }
+    const items = Array.isArray(platform.generators)
+      ? platform.generators
+      : (platform.generators && typeof platform.generators === 'object'
+          ? Object.values(platform.generators)
+          : []);
+    items.forEach(item => {
+      if (!item || typeof item !== 'object') return;
+      const key = item.key || item.id;
+      if (!key) return;
+      state.generators[key] = {
+        label: item.label || PLATFORM_FEATURE_META[key]?.label || key,
+        enabled: item.enabled !== false,
+        description: item.description || '',
+        updated_at: item.updated_at || null
+      };
+    });
+    return state;
+  }
+
+  function getFeatureLabel(featureKey) {
+    if (!featureKey) return 'Generator';
+    if (platformState.generators[featureKey] && platformState.generators[featureKey].label) {
+      return platformState.generators[featureKey].label;
+    }
+    return PLATFORM_FEATURE_META[featureKey]?.label || featureKey;
+  }
+
+  function featureAvailableForCurrentUser(featureKey) {
+    if (!featureKey) return true;
+    if (currentAccount && currentAccount.role === 'admin') {
+      return true;
+    }
+    const entry = platformState.generators[featureKey];
+    if (!entry) return true;
+    return entry.enabled !== false;
+  }
+
+  function showFeatureLockedMessage(featureKey) {
+    const label = getFeatureLabel(featureKey);
+    const message = platformState.maintenance.message || 'Generator sedang maintenance. Silakan coba lagi nanti.';
+    alert(`${label} tidak tersedia sementara untuk pengguna.\n${message}`);
+  }
+
+  function clampPercent(value) {
+    if (!Number.isFinite(value)) return 0;
+    if (value < 0) return 0;
+    if (value > 100) return 100;
+    return Math.round(value);
+  }
+
+  function summarizeTaskProgress(items, { isStarted, isCompleted }) {
+    if (!Array.isArray(items) || !items.length) {
+      return { total: 0, started: 0, completed: 0, percent: 0 };
+    }
+    let started = 0;
+    let completed = 0;
+    items.forEach(item => {
+      if (isStarted(item)) started += 1;
+      if (isCompleted(item)) completed += 1;
+    });
+    const total = items.length;
+    const inProgress = Math.max(0, started - completed);
+    const weighted = completed + inProgress * 0.5;
+    const percent = clampPercent((weighted / total) * 100);
+    return { total, started, completed, percent };
+  }
+
+  function setInlineProgressState(wrapper, fill, valueEl, percent, show, label) {
+    const pct = clampPercent(percent);
+    if (wrapper) wrapper.classList.toggle('active', !!show);
+    if (fill) fill.style.width = pct + '%';
+    if (valueEl) valueEl.textContent = label || (pct + '%');
+  }
+
+  function updateNavAvailability() {
+    if (!navButtons) return;
+    navButtons.forEach(btn => {
+      const featureKey = btn.dataset.feature;
+      if (!featureKey) {
+        btn.classList.remove('locked');
+        return;
+      }
+      const locked = !featureAvailableForCurrentUser(featureKey);
+      btn.classList.toggle('locked', locked);
+      if (typeof btn.disabled === 'boolean') {
+        btn.disabled = locked;
+      }
+      if (locked) {
+        btn.setAttribute('aria-disabled', 'true');
+        btn.title = `${getFeatureLabel(featureKey)} sementara tidak tersedia.`;
+      } else {
+        btn.removeAttribute('aria-disabled');
+        btn.removeAttribute('title');
+      }
+    });
+  }
+
+  function updateFeatureTabsAvailability() {
+    if (!featureTabs.length) return;
+    featureTabs.forEach(btn => {
+      const key = btn.dataset.feature;
+      if (!key) return;
+      const locked = !featureAvailableForCurrentUser(key);
+      btn.classList.toggle('locked', locked);
+      if (typeof btn.disabled === 'boolean') {
+        btn.disabled = locked;
+      }
+      if (locked) {
+        btn.setAttribute('aria-disabled', 'true');
+      } else {
+        btn.removeAttribute('aria-disabled');
+      }
+    });
+  }
+
+  function updateMaintenanceOverlay() {
+    if (!maintenanceOverlayEl) return;
+    const isLocked = platformState.maintenance.active && !(currentAccount && currentAccount.role === 'admin');
+    maintenanceOverlayEl.classList.toggle('active', isLocked);
+    if (isLocked) {
+      if (maintenanceOverlayMessageEl) {
+        maintenanceOverlayMessageEl.textContent = platformState.maintenance.message || 'Website sedang maintenance. Kami segera kembali!';
+      }
+      document.body.classList.add('maintenance-active');
+    } else {
+      document.body.classList.remove('maintenance-active');
+    }
+  }
+
+  function applyPlatformState(newState) {
+    platformState = normalizePlatformState(newState);
+    updateNavAvailability();
+    updateFeatureTabsAvailability();
+    updateMaintenanceOverlay();
+    if (!featureAvailableForCurrentUser(currentFeature)) {
+      const fallback = HUB_FEATURE_KEYS.find(key => featureAvailableForCurrentUser(key));
+      if (fallback) {
+        currentFeature = fallback;
+        if (viewHubSection && viewHubSection.style.display !== 'none') {
+          setFeature(fallback);
+        }
+      } else if (viewHubSection && viewHubSection.style.display !== 'none') {
+        showView('viewDashboard');
+      }
+    }
+
+    if (viewFilmSection && viewFilmSection.style.display !== 'none' && !featureAvailableForCurrentUser('filmmaker')) {
+      showFeatureLockedMessage('filmmaker');
+      showView('viewDashboard');
+    }
+
+    if (viewUGCSection && viewUGCSection.style.display !== 'none' && !featureAvailableForCurrentUser('ugc')) {
+      showFeatureLockedMessage('ugc');
+      showView('viewDashboard');
+    }
+  }
+
+  function getWhatsappMessage(amount) {
+    const username = currentAccount && currentAccount.username
+      ? `@${currentAccount.username}`
+      : (currentAccount && currentAccount.display_name) ? currentAccount.display_name : 'user';
+    return `Halo Admin, saya ${username}. Saya ingin top up ${amount} credit.`;
+  }
+
+  function refreshTopupConfirm() {
+    if (!topupConfirmBtn) return;
+    if (!selectedTopupAmount) {
+      topupConfirmBtn.disabled = true;
+      if (topupHintEl) topupHintEl.textContent = 'Pilih nominal untuk lanjut ke WhatsApp.';
+      return;
+    }
+    topupConfirmBtn.disabled = false;
+    if (topupHintEl) {
+      topupHintEl.textContent = `Konfirmasi top up ${selectedTopupAmount} credit via WhatsApp.`;
+    }
+  }
+
+  function handleTopupOption(amount) {
+    selectedTopupAmount = amount;
+    if (topupOptionsEl) {
+      topupOptionsEl.querySelectorAll('.topup-option').forEach(btn => {
+        const value = Number(btn.dataset.amount || '0');
+        btn.classList.toggle('active', value === amount);
+      });
+    }
+    refreshTopupConfirm();
+  }
+
+  function buildTopupOptions() {
+    if (!topupOptionsEl || !TOPUP_AMOUNTS.length) return;
+    if (topupOptionsEl.childElementCount) return;
+    TOPUP_AMOUNTS.forEach(amount => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'topup-option';
+      btn.dataset.amount = String(amount);
+      btn.textContent = `${amount} Credit`;
+      btn.addEventListener('click', () => handleTopupOption(amount));
+      topupOptionsEl.appendChild(btn);
+    });
+  }
+
+  function resetTopupSelection() {
+    selectedTopupAmount = null;
+    if (topupOptionsEl) {
+      topupOptionsEl.querySelectorAll('.topup-option').forEach(btn => btn.classList.remove('active'));
+    }
+  }
+
+  function openTopupModal() {
+    buildTopupOptions();
+    resetTopupSelection();
+    refreshTopupConfirm();
+    if (topupModalEl) {
+      topupModalEl.classList.add('show');
+    }
+    document.body.classList.add('modal-open');
+  }
+
+  function closeTopupModal() {
+    if (topupModalEl) {
+      topupModalEl.classList.remove('show');
+    }
+    const previewEl = document.querySelector('.asset-preview');
+    const activePreview = previewEl && !previewEl.classList.contains('hidden');
+    if (!activePreview) {
+      document.body.classList.remove('modal-open');
+    }
+    resetTopupSelection();
+    refreshTopupConfirm();
+  }
+
+  function launchTopupWhatsapp() {
+    if (!selectedTopupAmount) return;
+    const message = getWhatsappMessage(selectedTopupAmount);
+    const url = `${TOPUP_WHATSAPP}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank', 'noopener');
+    closeTopupModal();
+  }
 
   function closeSidebarOnMobile() {
     if (!workspace || !mobileSidebarQuery.matches) return;
@@ -4472,6 +5013,38 @@ body[data-theme="dark"] .profile-credit {
   if (sidebarOverlay) {
     sidebarOverlay.addEventListener('click', closeSidebarOnMobile);
   }
+
+  topupOpeners.forEach(btn => {
+    btn.addEventListener('click', () => {
+      openTopupModal();
+    });
+  });
+
+  if (topupCloseBtn) {
+    topupCloseBtn.addEventListener('click', () => {
+      closeTopupModal();
+    });
+  }
+
+  if (topupConfirmBtn) {
+    topupConfirmBtn.addEventListener('click', () => {
+      launchTopupWhatsapp();
+    });
+  }
+
+  if (topupModalEl) {
+    topupModalEl.addEventListener('click', event => {
+      if (event.target === topupModalEl) {
+        closeTopupModal();
+      }
+    });
+  }
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && topupModalEl && topupModalEl.classList.contains('show')) {
+      closeTopupModal();
+    }
+  });
 
   function updateDashboardStats() {
     if (statCoinsEl) {
@@ -4832,6 +5405,7 @@ body[data-theme="dark"] .profile-credit {
     try {
       const account = await fetchAccountState();
       currentAccount = account;
+      applyPlatformState(account.platform || null);
       applyTheme(account.theme || currentTheme);
       updateProfileCard(account);
       setDriveAccess(true);
@@ -4844,6 +5418,7 @@ body[data-theme="dark"] .profile-credit {
       console.warn('Tidak dapat memuat akun:', err);
       applyTheme(currentTheme);
       currentAccount = null;
+      applyPlatformState(null);
       driveItems = [];
       driveLoaded = false;
       setDriveAccess(false);
@@ -5814,12 +6389,20 @@ body[data-theme="dark"] .profile-credit {
   let currentFeature = 'imageGen';
 
   function setFeature(featureKey) {
+    if (!featureKey) return;
+    if (!featureAvailableForCurrentUser(featureKey)) {
+      showFeatureLockedMessage(featureKey);
+      updateFeatureTabsAvailability();
+      return;
+    }
     currentFeature = featureKey;
     if (featureTabs.length) {
       featureTabs.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.feature === featureKey);
       });
     }
+
+    updateFeatureTabsAvailability();
 
     const allowed = new Set(FEATURE_MODELS[featureKey] || []);
     const options = modelSelect.querySelectorAll('option');
@@ -6687,6 +7270,11 @@ body[data-theme="dark"] .profile-credit {
       return;
     }
 
+    if (!featureAvailableForCurrentUser(currentFeature)) {
+      showFeatureLockedMessage(currentFeature);
+      return;
+    }
+
     if (!currentAccount) {
       setStatus('Data akun belum siap, coba lagi sesaat lagi.', 'err');
       return;
@@ -6802,6 +7390,10 @@ body[data-theme="dark"] .profile-credit {
     featureTabs.forEach(btn => {
       btn.addEventListener('click', () => {
         const key = btn.dataset.feature;
+        if (!featureAvailableForCurrentUser(key)) {
+          showFeatureLockedMessage(key);
+          return;
+        }
         setFeature(key);
       });
     });
@@ -6830,6 +7422,10 @@ body[data-theme="dark"] .profile-credit {
   viewFilmSection = document.getElementById('viewFilm');
   viewUGCSection = document.getElementById('viewUGC');
 
+  updateNavAvailability();
+  updateFeatureTabsAvailability();
+  updateMaintenanceOverlay();
+
   function activateNav(target, featureKey) {
     navButtons.forEach(btn => {
       const isHub = btn.dataset.target === 'viewHub';
@@ -6839,6 +7435,24 @@ body[data-theme="dark"] .profile-credit {
   }
 
   function showView(target, featureKey) {
+    if (target === 'viewFilm' && !featureAvailableForCurrentUser('filmmaker')) {
+      showFeatureLockedMessage('filmmaker');
+      return;
+    }
+    if (target === 'viewUGC' && !featureAvailableForCurrentUser('ugc')) {
+      showFeatureLockedMessage('ugc');
+      return;
+    }
+
+    let resolvedFeatureKey = featureKey;
+    if (target === 'viewHub') {
+      resolvedFeatureKey = featureKey || currentFeature || 'imageGen';
+      if (!featureAvailableForCurrentUser(resolvedFeatureKey)) {
+        showFeatureLockedMessage(resolvedFeatureKey);
+        return;
+      }
+    }
+
     if (viewDashboardSection) viewDashboardSection.style.display = target === 'viewDashboard' ? '' : 'none';
     if (viewDriveSection) viewDriveSection.style.display = target === 'viewDrive' ? '' : 'none';
     if (viewHubSection) viewHubSection.style.display = target === 'viewHub' ? '' : 'none';
@@ -6846,13 +7460,13 @@ body[data-theme="dark"] .profile-credit {
     if (viewUGCSection) viewUGCSection.style.display = target === 'viewUGC' ? '' : 'none';
 
     if (target === 'viewHub') {
-      setFeature(featureKey || 'imageGen');
+      setFeature(resolvedFeatureKey || 'imageGen');
     }
     if (target === 'viewDrive') {
       loadDriveItems();
     }
 
-    activateNav(target, featureKey);
+    activateNav(target, resolvedFeatureKey);
     closeSidebarOnMobile();
   }
 
@@ -6863,6 +7477,10 @@ body[data-theme="dark"] .profile-credit {
       }
       const target = btn.dataset.target || 'viewDashboard';
       const featureKey = btn.dataset.feature || (target === 'viewHub' ? 'imageGen' : undefined);
+      if (featureKey && !featureAvailableForCurrentUser(featureKey)) {
+        showFeatureLockedMessage(featureKey);
+        return;
+      }
       showView(target, featureKey);
     });
   });
@@ -7280,10 +7898,23 @@ body[data-theme="dark"] .profile-credit {
     });
   });
 
+  function updateFilmProgressUI() {
+    if (!filmProgressEl) return;
+    const summary = summarizeTaskProgress(filmScenes, {
+      isStarted: scene => !!(scene && scene.taskId),
+      isCompleted: scene => !!(scene && finalStatus(scene.status))
+    });
+    const label = summary.total
+      ? `${summary.percent}% (${summary.completed}/${summary.total})`
+      : '0%';
+    setInlineProgressState(filmProgressEl, filmProgressFill, filmProgressValue, summary.percent, summary.total > 0, label);
+  }
+
   function renderFilmScenes() {
     if (!filmScenes.length) {
       filmScenesEmpty.style.display = 'flex';
       filmScenesContainer.innerHTML = '';
+      updateFilmProgressUI();
       return;
     }
     filmScenesEmpty.style.display = 'none';
@@ -7362,6 +7993,8 @@ body[data-theme="dark"] .profile-credit {
 
       filmScenesContainer.appendChild(card);
     });
+
+    updateFilmProgressUI();
   }
 
   async function pollFilmScenesOnce() {
@@ -7400,6 +8033,10 @@ body[data-theme="dark"] .profile-credit {
   }
 
   filmGenerateBtn.addEventListener('click', async () => {
+    if (!featureAvailableForCurrentUser('filmmaker')) {
+      showFeatureLockedMessage('filmmaker');
+      return;
+    }
     const brief = filmBriefInput.value.trim();
     const count = Number(filmSceneCount.value || '0');
 
@@ -7714,11 +8351,24 @@ body[data-theme="dark"] .profile-credit {
     }
   }
 
+  function updateUgcProgressUI() {
+    if (!ugcProgressEl) return;
+    const summary = summarizeTaskProgress(ugcItems, {
+      isStarted: item => !!(item && item.taskId),
+      isCompleted: item => !!(item && finalStatus(item.status))
+    });
+    const label = summary.total
+      ? `${summary.percent}% (${summary.completed}/${summary.total})`
+      : '0%';
+    setInlineProgressState(ugcProgressEl, ugcProgressFill, ugcProgressValue, summary.percent, summary.total > 0, label);
+  }
+
   function renderUgcList() {
     ugcList.innerHTML = '';
     if (!ugcItems.length) {
       ugcEmpty.style.display = 'flex';
       ugcList.appendChild(ugcEmpty);
+      updateUgcProgressUI();
       return;
     }
     ugcEmpty.style.display = 'none';
@@ -7871,6 +8521,8 @@ body[data-theme="dark"] .profile-credit {
 
       ugcList.appendChild(row);
     });
+
+    updateUgcProgressUI();
   }
 
   async function pollUgcOnce() {
@@ -7974,6 +8626,10 @@ body[data-theme="dark"] .profile-credit {
   selectUgcStyle(initialUgcStyle, false);
 
   async function ugcGenerate() {
+    if (!featureAvailableForCurrentUser('ugc')) {
+      showFeatureLockedMessage('ugc');
+      return;
+    }
     if (!ugcProductImages.length) {
       alert('Minimal upload 1 product image.');
       return;
@@ -8063,67 +8719,71 @@ body[data-theme="dark"] .profile-credit {
   ugcGenerateBtn.addEventListener('click', () => { ugcGenerate(); });
 
   async function ugcGenerateVideo(item) {
-  // WAJIB: pakai URL asli dari Freepik, bukan path lokal
-  if (!item.remoteUrl || !item.remoteUrl.startsWith('http')) {
-    alert('URL gambar untuk video belum valid.\n' +
-          'Pastikan UGC image sudah COMPLETED, lalu klik Generate Video lagi.');
-    return;
-  }
-
-  const cfg = MODEL_CONFIG.wan720;
-  const body = {
-    prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
-    image: item.remoteUrl,   // <-- PENTING
-    duration: 5,
-    aspect_ratio: 'auto'
-  };
-
-  try {
-    const data = await callFreepik(cfg, body, 'POST');
-    let taskId = null;
-    let status = 'CREATED';
-    let generated = null;
-
-    if (data && data.data) {
-      taskId = data.data.task_id || null;
-      status  = data.data.status   || status;
-      generated = data.data.generated || null;
+    if (!featureAvailableForCurrentUser('ugc')) {
+      showFeatureLockedMessage('ugc');
+      return;
+    }
+    // WAJIB: pakai URL asli dari Freepik, bukan path lokal
+    if (!item.remoteUrl || !item.remoteUrl.startsWith('http')) {
+      alert('URL gambar untuk video belum valid.\n' +
+            'Pastikan UGC image sudah COMPLETED, lalu klik Generate Video lagi.');
+      return;
     }
 
-    const jobId = uuid();
-    const job = {
-      id: jobId,
-      modelId: 'wan720',
-      type: 'video',
-      taskId,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      status,
-      generated: generated || [],
-      extraUrl: null,
-      prompt: body.prompt || null
+    const cfg = MODEL_CONFIG.wan720;
+    const body = {
+      prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
+      image: item.remoteUrl,   // <-- PENTING
+      duration: 5,
+      aspect_ratio: 'auto'
     };
-    jobs.unshift(job);
-    saveJobs();
-    renderJobs();
-    if (taskId && !finalStatus(status)) {
-      startJobProgress(job);
-      startPolling(job);
-    } else {
-      finishJobProgress(job);
-      if (job.generated && job.generated.length) {
-        await ensureLocalFiles(job);
-      }
-      await syncJobToDrive(job);
-    }
 
-    item.videoJobId = jobId;
-    renderUgcList();
-  } catch (e) {
-    console.error(e);
-    alert('Gagal membuat video: ' + e.message);
+    try {
+      const data = await callFreepik(cfg, body, 'POST');
+      let taskId = null;
+      let status = 'CREATED';
+      let generated = null;
+
+      if (data && data.data) {
+        taskId = data.data.task_id || null;
+        status  = data.data.status   || status;
+        generated = data.data.generated || null;
+      }
+
+      const jobId = uuid();
+      const job = {
+        id: jobId,
+        modelId: 'wan720',
+        type: 'video',
+        taskId,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        status,
+        generated: generated || [],
+        extraUrl: null,
+        prompt: body.prompt || null
+      };
+      jobs.unshift(job);
+      saveJobs();
+      renderJobs();
+      if (taskId && !finalStatus(status)) {
+        startJobProgress(job);
+        startPolling(job);
+      } else {
+        finishJobProgress(job);
+        if (job.generated && job.generated.length) {
+          await ensureLocalFiles(job);
+        }
+        await syncJobToDrive(job);
+      }
+
+      item.videoJobId = jobId;
+      renderUgcList();
+    } catch (e) {
+      console.error(e);
+      alert('Gagal membuat video: ' + e.message);
+    }
   }
-}
 
 
 const assetPreviewModal = document.getElementById('assetPreviewModal');
@@ -8212,6 +8872,8 @@ document.addEventListener('keydown', event => {
     activeJobId = lastCompleted.id;
     renderPreview(lastCompleted);
   }
+  updateFilmProgressUI();
+  updateUgcProgressUI();
   filmSceneCountLabel.textContent = filmSceneCount.value + ' scenes';
 </script>
 </body>
