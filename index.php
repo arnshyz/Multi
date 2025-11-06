@@ -1,7 +1,179 @@
 <?php
 // ====== CONFIG FREEPIK ======
-$FREEPIK_API_KEY  = 'FPSX06967c376cb6d87d9c551ccb33ed4d56'; // GANTI DI SINI
+$FREEPIK_API_KEYS = [
+    getenv('FREEPIK_API_KEY_1') ?: 'FPSX06967c376cb6d87d9c551ccb33ed4d56',
+    getenv('FREEPIK_API_KEY_2') ?: 'REPLACE_WITH_API_KEY_2',
+    getenv('FREEPIK_API_KEY_3') ?: 'REPLACE_WITH_API_KEY_3',
+    getenv('FREEPIK_API_KEY_4') ?: 'REPLACE_WITH_API_KEY_4',
+    getenv('FREEPIK_API_KEY_5') ?: 'REPLACE_WITH_API_KEY_5',
+];
+
 $FREEPIK_BASE_URL = 'https://api.freepik.com';
+
+$FREEPIK_REDIS_CONFIG = [
+    'host'     => getenv('FREEPIK_REDIS_HOST') ?: getenv('REDIS_HOST') ?: '127.0.0.1',
+    'port'     => (int)(getenv('FREEPIK_REDIS_PORT') ?: getenv('REDIS_PORT') ?: 6379),
+    'timeout'  => (float)(getenv('FREEPIK_REDIS_TIMEOUT') ?: getenv('REDIS_TIMEOUT') ?: 1.5),
+    'password' => getenv('FREEPIK_REDIS_PASSWORD') ?: getenv('REDIS_PASSWORD') ?: null,
+    'database' => (int)(getenv('FREEPIK_REDIS_DATABASE') ?: getenv('REDIS_DATABASE') ?: 0),
+    'key'      => getenv('FREEPIK_REDIS_KEY') ?: 'freepik:api-keys',
+];
+
+function freepik_normalize_api_keys($keys)
+{
+    $normalized = [];
+    foreach ((array)$keys as $key) {
+        if (!is_string($key)) {
+            continue;
+        }
+        $trimmed = trim($key);
+        if ($trimmed === '' || stripos($trimmed, 'REPLACE_WITH') !== false) {
+            continue;
+        }
+        $normalized[$trimmed] = true;
+    }
+
+    return array_keys($normalized);
+}
+
+function freepik_available_api_keys()
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    global $FREEPIK_API_KEYS;
+
+    $keys = [];
+
+    $single = getenv('FREEPIK_API_KEY');
+    if (is_string($single) && trim($single) !== '') {
+        $keys[] = $single;
+    }
+
+    for ($i = 1; $i <= 10; $i++) {
+        $envKey = getenv('FREEPIK_API_KEY_' . $i);
+        if (is_string($envKey) && trim($envKey) !== '') {
+            $keys[] = $envKey;
+        }
+    }
+
+    $keys = array_merge($keys, (array)$FREEPIK_API_KEYS);
+
+    $cached = freepik_normalize_api_keys($keys);
+
+    return $cached;
+}
+
+function freepik_redis_client()
+{
+    static $client = null;
+    static $initialized = false;
+
+    if ($initialized) {
+        return $client;
+    }
+
+    $initialized = true;
+
+    if (!class_exists('Redis')) {
+        return null;
+    }
+
+    global $FREEPIK_REDIS_CONFIG;
+
+    try {
+        $redis = new Redis();
+        $redis->connect(
+            $FREEPIK_REDIS_CONFIG['host'],
+            $FREEPIK_REDIS_CONFIG['port'],
+            $FREEPIK_REDIS_CONFIG['timeout']
+        );
+
+        if (!empty($FREEPIK_REDIS_CONFIG['password'])) {
+            $redis->auth($FREEPIK_REDIS_CONFIG['password']);
+        }
+
+        if (isset($FREEPIK_REDIS_CONFIG['database'])) {
+            $redis->select((int)$FREEPIK_REDIS_CONFIG['database']);
+        }
+
+        $client = $redis;
+    } catch (Throwable $e) {
+        $client = null;
+    }
+
+    return $client;
+}
+
+function freepik_ensure_redis_key_list($redis, $keys)
+{
+    if (!$redis || !$keys) {
+        return;
+    }
+
+    global $FREEPIK_REDIS_CONFIG;
+
+    $listKey = (string)$FREEPIK_REDIS_CONFIG['key'];
+    if ($listKey === '') {
+        $listKey = 'freepik:api-keys';
+    }
+
+    $hashKey = $listKey . ':hash';
+    $expectedHash = sha1(implode('|', $keys));
+
+    try {
+        $currentHash = $redis->get($hashKey);
+        if ($currentHash === $expectedHash) {
+            return;
+        }
+
+        $redis->multi();
+        $redis->del($listKey);
+        foreach ($keys as $key) {
+            $redis->rPush($listKey, $key);
+        }
+        $redis->set($hashKey, $expectedHash);
+        $redis->exec();
+    } catch (Throwable $e) {
+        // Ignore and allow fallback rotation.
+    }
+}
+
+function freepik_next_api_key()
+{
+    $keys = freepik_available_api_keys();
+    if (!$keys) {
+        return null;
+    }
+
+    $redis = freepik_redis_client();
+    $listKey = null;
+    if ($redis) {
+        global $FREEPIK_REDIS_CONFIG;
+        $listKey = (string)$FREEPIK_REDIS_CONFIG['key'];
+        if ($listKey === '') {
+            $listKey = 'freepik:api-keys';
+        }
+
+        freepik_ensure_redis_key_list($redis, $keys);
+
+        try {
+            $value = $redis->rPopLPush($listKey, $listKey);
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        } catch (Throwable $e) {
+            // fall through to PHP fallback rotation
+        }
+    }
+
+    static $index = 0;
+    $key = $keys[$index % count($keys)];
+    $index++;
+    return $key;
+}
 
 // ====== UPLOAD FILE: ?api=upload ======
 if (isset($_GET['api']) && $_GET['api'] === 'upload') {
@@ -182,11 +354,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
 if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     header('Content-Type: application/json; charset=utf-8');
 
-    if (!$FREEPIK_API_KEY || $FREEPIK_API_KEY === 'YOUR_FREEPIK_API_KEY') {
+    $selectedApiKey = freepik_next_api_key();
+    if (!$selectedApiKey) {
         echo json_encode([
             'ok'     => false,
             'status' => 500,
-            'error'  => 'FREEPIK_API_KEY belum di-set di file PHP'
+            'error'  => 'FREEPIK API key belum dikonfigurasi'
         ]);
         exit;
     }
@@ -224,7 +397,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
 
     $headers = [
-        'x-freepik-api-key: ' . $FREEPIK_API_KEY,
+        'x-freepik-api-key: ' . $selectedApiKey,
         'Accept: application/json'
     ];
 
