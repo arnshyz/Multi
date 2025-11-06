@@ -1211,6 +1211,76 @@ function auth_drive_append_items(string $accountId, array $items, array &$errors
     return $data['accounts'][$foundIndex]['drive_items'] ?? [];
 }
 
+function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $itemUrl, array &$errors = [])
+{
+    $errors = [];
+    $itemId = $itemId ? trim($itemId) : '';
+    $itemUrl = $itemUrl ? trim($itemUrl) : '';
+
+    if ($itemId === '' && $itemUrl === '') {
+        $errors['general'] = 'ID atau URL item wajib diisi.';
+        return null;
+    }
+
+    $data = auth_storage_read();
+    $foundIndex = null;
+    foreach ($data['accounts'] as $idx => $account) {
+        if (is_array($account) && ($account['id'] ?? null) === $accountId) {
+            $foundIndex = $idx;
+            break;
+        }
+    }
+
+    if ($foundIndex === null) {
+        $errors['account'] = 'Akun tidak ditemukan.';
+        return null;
+    }
+
+    $account = auth_normalize_account($data['accounts'][$foundIndex]);
+    $items = isset($account['drive_items']) && is_array($account['drive_items'])
+        ? $account['drive_items']
+        : [];
+
+    $filtered = [];
+    $removed = false;
+
+    foreach ($items as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $matches = false;
+        if ($itemId !== '' && isset($entry['id']) && (string)$entry['id'] === $itemId) {
+            $matches = true;
+        }
+        if (!$matches && $itemUrl !== '' && isset($entry['url']) && strcasecmp((string)$entry['url'], $itemUrl) === 0) {
+            $matches = true;
+        }
+
+        if ($matches) {
+            $removed = true;
+            continue;
+        }
+
+        $filtered[] = $entry;
+    }
+
+    if (!$removed) {
+        $errors['general'] = 'Item drive tidak ditemukan.';
+        return null;
+    }
+
+    $account['drive_items'] = array_values($filtered);
+    $account['updated_at'] = gmdate('c');
+    $data['accounts'][$foundIndex] = auth_normalize_account($account);
+
+    if (!auth_storage_write($data)) {
+        $errors['general'] = 'Gagal menyimpan perubahan drive.';
+        return null;
+    }
+
+    return $data['accounts'][$foundIndex]['drive_items'] ?? [];
+}
+
 function auth_create_account_entry(array $input, array &$errors = []): ?array
 {
     $errors = [];

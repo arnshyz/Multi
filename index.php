@@ -31,6 +31,52 @@ $FREEPIK_REDIS_CONFIG = [
     'key'      => getenv('FREEPIK_REDIS_KEY') ?: 'freepik:api-keys',
 ];
 
+function app_base_url(): string
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $scheme = 'http';
+    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+        $forwarded = explode(',', (string)$_SERVER['HTTP_X_FORWARDED_PROTO']);
+        $candidate = strtolower(trim($forwarded[0] ?? ''));
+        if ($candidate !== '') {
+            $scheme = $candidate;
+        }
+    } elseif (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        $scheme = 'https';
+    }
+
+    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
+    $host = $host ? trim((string)$host) : 'localhost';
+
+    if (strpos($host, ':') === false) {
+        $port = $_SERVER['HTTP_X_FORWARDED_PORT'] ?? $_SERVER['SERVER_PORT'] ?? '';
+        $port = trim((string)$port);
+        if ($port !== '' && !in_array($port, ['80', '443'], true)) {
+            $host .= ':' . $port;
+        }
+    }
+
+    $script = $_SERVER['SCRIPT_NAME'] ?? '';
+    $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
+    if ($dir === '/' || $dir === '.') {
+        $dir = '';
+    }
+
+    $cached = rtrim($scheme . '://' . $host . ($dir ? '/' . ltrim($dir, '/') : ''), '/');
+
+    return $cached;
+}
+
+function app_public_url(string $path): string
+{
+    $base = app_base_url();
+    return $base . '/' . ltrim($path, '/');
+}
+
 function freepik_normalize_api_keys($keys)
 {
     $normalized = [];
@@ -480,6 +526,134 @@ if ($requestedApi === 'account-coins') {
     ]);
 }
 
+if ($requestedApi === 'account-avatar') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk memperbarui avatar.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $avatar = '';
+    if (isset($payload['avatar'])) {
+        $avatar = (string)$payload['avatar'];
+    } elseif (isset($payload['avatarUrl'])) {
+        $avatar = (string)$payload['avatarUrl'];
+    }
+    $avatar = trim($avatar);
+
+    if ($avatar !== '' && !preg_match('/^https?:\/\//i', $avatar)) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => ['avatar' => 'Gunakan URL gambar yang valid (diawali http/https).']
+        ], 422);
+    }
+
+    $errors = [];
+    $updated = auth_update_account_entry($account['id'], ['avatar_url' => $avatar !== '' ? $avatar : null], $errors);
+    if (!$updated) {
+        $status = isset($errors['general']) ? 500 : 422;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Gagal memperbarui avatar.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => auth_account_public_payload($updated),
+    ]);
+}
+
+if ($requestedApi === 'account-password') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk mengganti password.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $current = trim((string)($payload['current'] ?? ($payload['currentPassword'] ?? '')));
+    $new     = (string)($payload['password'] ?? ($payload['newPassword'] ?? ''));
+    $confirm = (string)($payload['confirm'] ?? ($payload['confirmPassword'] ?? ''));
+
+    if ($new === '' || strlen($new) < 6) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => ['password' => 'Password baru minimal 6 karakter.']
+        ], 422);
+    }
+
+    if ($new !== $confirm) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => ['confirm' => 'Konfirmasi password tidak cocok.']
+        ], 422);
+    }
+
+    if (!auth_verify($account['username'] ?? '', $current, $verifiedAccount)) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 403,
+            'error' => ['current' => 'Password lama tidak sesuai.']
+        ], 403);
+    }
+
+    $errors = [];
+    $updated = auth_update_account_entry($account['id'], ['password' => $new], $errors);
+    if (!$updated) {
+        $status = isset($errors['general']) ? 500 : 422;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Gagal mengubah password.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'message' => 'Password berhasil diperbarui.'
+    ]);
+}
+
 if ($requestedApi === 'drive') {
     $account = auth_current_account();
     if (!$account) {
@@ -542,6 +716,61 @@ if ($requestedApi === 'drive') {
         'status' => 405,
         'error' => 'Metode tidak diizinkan untuk drive.'
     ], 405);
+}
+
+if ($requestedApi === 'drive-delete') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'DELETE') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST atau DELETE untuk menghapus drive.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
+    $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
+
+    if ($itemId === '' && $itemUrl === '') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'ID atau URL item wajib diisi.'
+        ], 422);
+    }
+
+    $errors = [];
+    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $errors);
+    if ($items === null) {
+        $status = isset($errors['general']) ? 500 : 404;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Item drive tidak ditemukan.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => [
+            'items' => $items,
+        ],
+    ]);
 }
 
 // ====== UPLOAD FILE: ?api=upload ======
@@ -640,7 +869,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         'ok'     => true,
         'status' => 200,
         'path'   => $publicPath,
-        'url'    => $publicPath,
+        'url'    => app_public_url($publicPath),
         'name'   => $file['name']
     ], JSON_UNESCAPED_SLASHES);
     exit;
@@ -714,7 +943,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         'ok'     => true,
         'status' => 200,
         'path'   => $publicPath,
-        'url'    => $publicPath
+        'url'    => app_public_url($publicPath)
     ], JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -1475,34 +1704,58 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
 :root {
   font-family: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color-scheme: light;
-  --surface: #f5f7fe;
-  --sidebar-bg: rgba(255, 255, 255, 0.97);
-  --sidebar-border: rgba(226, 232, 240, 0.9);
+  --surface: linear-gradient(135deg, #eef2ff 0%, #f9fbff 55%, #ffffff 100%);
+  --sidebar-bg: rgba(255, 255, 255, 0.95);
+  --sidebar-border: rgba(214, 226, 245, 0.75);
   --card: #ffffff;
-  --card-soft: #f9fbff;
-  --card-overlay: rgba(255, 255, 255, 0.94);
-  --border: rgba(226, 232, 240, 0.9);
+  --card-soft: #f6f8ff;
+  --card-overlay: rgba(255, 255, 255, 0.96);
+  --border: rgba(208, 217, 235, 0.7);
   --text: #0f172a;
-  --muted: rgba(71, 85, 105, 0.7);
-  --accent: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.16);
+  --muted: rgba(71, 85, 105, 0.72);
+  --accent: #3b82f6;
+  --accent-soft: rgba(59, 130, 246, 0.18);
   --danger: #ef4444;
   --success: #16a34a;
   --warning: #f59e0b;
   --shadow: rgba(15, 23, 42, 0.08);
-  --halo-primary: rgba(79, 70, 229, 0.14);
-  --halo-secondary: rgba(16, 185, 129, 0.12);
-  --glass: rgba(255, 255, 255, 0.7);
+  --halo-primary: rgba(79, 70, 229, 0.16);
+  --halo-secondary: rgba(14, 165, 233, 0.12);
+  --glass: rgba(255, 255, 255, 0.72);
   --input-bg: #ffffff;
-  --input-border: rgba(203, 213, 225, 0.8);
-  --sidebar-text-muted: rgba(100, 116, 139, 0.8);
-  --stat-bg: rgba(37, 99, 235, 0.08);
+  --input-border: rgba(203, 213, 225, 0.75);
+  --sidebar-text-muted: rgba(100, 116, 139, 0.75);
+  --stat-bg: rgba(59, 130, 246, 0.1);
 }
 body {
   margin: 0;
   background: var(--surface);
   color: var(--text);
   transition: background 0.35s ease, color 0.35s ease;
+}
+
+.app-view[hidden] {
+  display: none !important;
+}
+
+button,
+.drive-actions a {
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.18s ease, color 0.25s ease;
+}
+
+button:hover:not(:disabled),
+.drive-actions a:hover {
+  transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 body::before,
 body::after {
@@ -1553,28 +1806,28 @@ body[data-theme="dark"] {
 }
 body[data-theme="light"] {
   color-scheme: light;
-  --surface: #f5f7fe;
+  --surface: linear-gradient(135deg, #eef2ff 0%, #f7faff 60%, #ffffff 100%);
   --sidebar-bg: rgba(255, 255, 255, 0.97);
-  --sidebar-border: rgba(226, 232, 240, 0.92);
+  --sidebar-border: rgba(214, 226, 245, 0.85);
   --card: #ffffff;
-  --card-soft: #f9fbff;
-  --card-overlay: rgba(255, 255, 255, 0.95);
-  --border: rgba(226, 232, 240, 0.85);
+  --card-soft: #f7f9ff;
+  --card-overlay: rgba(255, 255, 255, 0.97);
+  --border: rgba(209, 220, 238, 0.75);
   --text: #0f172a;
-  --muted: rgba(71, 85, 105, 0.72);
+  --muted: rgba(71, 85, 105, 0.68);
   --accent: #2563eb;
   --accent-soft: rgba(37, 99, 235, 0.18);
   --danger: #ef4444;
   --success: #16a34a;
   --warning: #f59e0b;
   --shadow: rgba(15, 23, 42, 0.08);
-  --halo-primary: rgba(79, 70, 229, 0.12);
-  --halo-secondary: rgba(16, 185, 129, 0.12);
-  --glass: rgba(255, 255, 255, 0.68);
+  --halo-primary: rgba(79, 70, 229, 0.18);
+  --halo-secondary: rgba(16, 185, 129, 0.14);
+  --glass: rgba(255, 255, 255, 0.78);
   --input-bg: #ffffff;
-  --input-border: rgba(203, 213, 225, 0.8);
-  --sidebar-text-muted: rgba(100, 116, 139, 0.8);
-  --stat-bg: rgba(37, 99, 235, 0.08);
+  --input-border: rgba(205, 214, 231, 0.85);
+  --sidebar-text-muted: rgba(100, 116, 139, 0.7);
+  --stat-bg: rgba(37, 99, 235, 0.1);
 }
 * { box-sizing: border-box; }
 .workspace {
@@ -1624,6 +1877,46 @@ body[data-theme="light"] {
 .hero-actions .profile-topup {
   justify-self: auto;
   align-self: flex-start;
+}
+
+.mobile-coin-banner {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+  position: sticky;
+  top: 68px;
+  z-index: 5;
+}
+
+.mobile-coin-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mobile-coin-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.mobile-coin-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.mobile-coin-topup {
+  width: auto;
+  min-width: 110px;
+  padding: 10px 18px;
 }
 .stats-grid {
   display: grid;
@@ -1825,6 +2118,15 @@ body[data-theme="light"] {
   background: rgba(99, 102, 241, 0.2);
   border-color: rgba(129, 140, 248, 0.7);
 }
+.drive-actions .danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: var(--danger);
+}
+.drive-actions .danger:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.65);
+}
 .drive-clear-date {
   margin-left: auto;
 }
@@ -1869,12 +2171,243 @@ body[data-theme="light"] {
   font-size: 11px;
   color: var(--muted);
 }
+
+
+.account-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.account-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26px 28px;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(14,165,233,0.06));
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  gap: 18px;
+}
+
+.account-hero h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.account-hero p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.account-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.account-settings-card {
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.account-settings-card .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.account-settings-card .title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.account-settings-card .subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.account-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: var(--card-soft);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.account-form-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.avatar-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
+  align-items: center;
+}
+
+.avatar-preview {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 20px;
+  border: 1px dashed rgba(148, 163, 184, 0.55);
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+}
+
+.avatar-preview .avatar-initials {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 20px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.avatar-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.account-form input[type="url"],
+.account-form input[type="password"],
+.account-form input[type="text"] {
+  border-radius: 12px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  padding: 10px 12px;
+  font-size: 13px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.account-form input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.account-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-form-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.account-save-btn {
+  align-self: flex-start;
+  padding: 8px 16px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.6);
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.16), rgba(14, 165, 233, 0.18));
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.account-save-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(59, 130, 246, 0.18);
+}
+
+.account-form-status {
+  display: none;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--muted);
+}
+
+.account-form-status.ok {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--success);
+}
+
+.account-form-status.err {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+}
+
+.account-form-status.progress {
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--accent);
+}
+
+.account-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.account-form-grid input {
+  width: 100%;
+}
 .sidebar-toggle {
   position: fixed;
   top: 20px;
   left: calc(var(--sidebar-current-width) + 16px);
-  width: 42px;
-  height: 42px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 16px;
   border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--card);
@@ -1882,8 +2415,10 @@ body[data-theme="light"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  font-size: 0;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   cursor: pointer;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
@@ -1900,6 +2435,9 @@ body[data-theme="light"] {
   stroke-width: 1.8;
   fill: none;
   transition: transform 0.3s ease;
+}
+.sidebar-toggle-label {
+  display: none;
 }
 .workspace.sidebar-collapsed .sidebar-toggle svg {
   transform: rotate(180deg);
@@ -2115,6 +2653,9 @@ body[data-theme="light"] {
   opacity: 0.6;
   pointer-events: none;
 }
+.profile-card--mobile {
+  display: none;
+}
 body[data-theme="light"] .profile-card {
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(148, 163, 184, 0.32);
@@ -2143,6 +2684,12 @@ body[data-theme="light"] .profile-card {
   align-items: center;
   justify-content: center;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+.profile-avatar.profile-avatar--image {
+  background-size: cover;
+  background-position: center;
+  color: transparent;
+  text-indent: -9999px;
 }
 body[data-theme="light"] .profile-avatar {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.75));
@@ -2305,14 +2852,18 @@ body[data-theme="light"] .profile-credit {
   .sidebar-toggle {
     top: 16px;
     left: 16px;
-    width: 44px;
-    height: 44px;
-    border-radius: 16px;
-    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
+    min-width: 60px;
+    height: 52px;
+    border-radius: 18px;
+    box-shadow: 0 24px 46px rgba(15, 23, 42, 0.18);
+    font-size: 12px;
   }
   .sidebar-toggle svg {
     width: 20px;
     height: 20px;
+  }
+  .sidebar-toggle-label {
+    display: inline;
   }
   .sidebar {
     width: min(320px, calc(100vw - 32px));
@@ -2372,6 +2923,52 @@ body[data-theme="light"] .profile-credit {
   }
   .profile-card {
     display: none;
+  }
+  .profile-card--mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 22px;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+  }
+  .profile-card--mobile .profile-main {
+    align-items: center;
+  }
+  .profile-card--mobile .profile-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+  .mobile-coin-banner {
+    display: flex;
+  }
+  .account-view {
+    gap: 20px;
+  }
+  .account-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    padding: 22px 24px;
+  }
+  .account-settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .avatar-row {
+    grid-template-columns: 1fr;
+  }
+  .avatar-preview {
+    margin: 0 auto;
+    max-width: 140px;
+  }
+  .account-save-btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+    align-self: stretch;
   }
   .logout-btn {
     justify-content: center;
@@ -2882,7 +3479,7 @@ body[data-theme="light"] .profile-credit {
     }
     .progress-track {
       flex: 1;
-      height: 8px;
+      height: 5px;
       border-radius: 999px;
       background: rgba(148, 163, 184, 0.18);
       overflow: hidden;
@@ -2929,7 +3526,7 @@ body[data-theme="light"] .profile-credit {
     }
     .preview-progress.active { display: flex; }
     .preview-progress .progress-track {
-      height: 6px;
+      height: 4px;
     }
     .preview-item {
       background: var(--card);
@@ -2949,8 +3546,8 @@ body[data-theme="light"] .profile-credit {
     .preview-thumb {
       position: relative;
       width: 100%;
-      aspect-ratio: 1 / 1;
-      border-radius: 8px;
+      aspect-ratio: 9 / 16;
+      border-radius: 10px;
       overflow: hidden;
       background: #000;
       display: flex;
@@ -2963,7 +3560,7 @@ body[data-theme="light"] .profile-credit {
     .preview-thumb video {
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      object-fit: cover;
       background: #000;
     }
     .preview-meta {
@@ -3318,7 +3915,7 @@ body[data-theme="light"] .profile-credit {
       color: var(--muted);
     }
     .job-progress .progress-track {
-      height: 6px;
+      height: 4px;
     }
 
     .film-app {
@@ -3380,10 +3977,10 @@ body[data-theme="light"] .profile-credit {
     }
     .film-scene-thumb {
       width: 100%;
-      max-height: 220px;
-      border-radius: 8px;
-      object-fit: contain;
-      background: var(--card);
+      aspect-ratio: 9 / 16;
+      border-radius: 12px;
+      object-fit: cover;
+      background: #0f172a;
     }
     .film-scene-header {
       display: flex;
@@ -3533,8 +4130,8 @@ body[data-theme="light"] .profile-credit {
     }
     .ugc-media-card img {
       width: 100%;
-      max-height: 210px;
-      border-radius: 8px;
+      aspect-ratio: 9 / 16;
+      border-radius: 12px;
       object-fit: cover;
       background:#000;
     }
@@ -3563,9 +4160,10 @@ body[data-theme="light"] .profile-credit {
     }
     .ugc-video-card video {
       width: 100%;
-      max-height: 210px;
-      border-radius: 8px;
+      aspect-ratio: 9 / 16;
+      border-radius: 12px;
       background: #000;
+      object-fit: cover;
     }
     .ugc-video-actions {
       display: flex;
@@ -3832,7 +4430,7 @@ body[data-theme="light"] .profile-credit {
     }
     .progress-inline .progress-bar {
       width: 100%;
-      height: 6px;
+      height: 4px;
       border-radius: 999px;
       background: rgba(148,163,184,0.25);
       overflow: hidden;
@@ -4001,6 +4599,7 @@ body[data-theme="light"] .profile-credit {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 6h16M4 12h10M4 18h16" stroke-linecap="round" stroke-linejoin="round"></path>
     </svg>
+    <span class="sidebar-toggle-label">Menu</span>
   </button>
   <div class="sidebar">
   <div class="sidebar-brand">
@@ -4013,6 +4612,12 @@ body[data-theme="light"] .profile-credit {
         <svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
       <span class="nav-label">Dashboard</span>
+    </button>
+    <button class="sidebar-link" data-target="viewAccount">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M10.325 4.317a1 1 0 0 1 .987-.817h1.376a1 1 0 0 1 .987.817l.287 1.436a1 1 0 0 0 .96.804l1.45.055a1 1 0 0 1 .939.734l.345 1.31a1 1 0 0 1-.276.98l-1.07 1.026a1 1 0 0 0-.3.95l.332 1.406a1 1 0 0 1-.6 1.141l-1.307.522a1 1 0 0 0-.62.83l-.135 1.452a1 1 0 0 1-.995.915h-1.38a1 1 0 0 1-.994-.915l-.135-1.452a1 1 0 0 0-.62-.83l-1.307-.522a1 1 0 0 1-.6-1.141l.332-1.406a1 1 0 0 0-.3-.95l-1.07-1.026a1 1 0 0 1-.276-.98l.345-1.31a1 1 0 0 1 .939-.734l1.45-.055a1 1 0 0 0 .96-.804z" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="3" stroke-linecap="round" stroke-linejoin="round"></circle></svg>
+      </span>
+      <span class="nav-label">Pengaturan Akun</span>
     </button>
     <button class="sidebar-link hidden" data-target="viewDrive" id="driveNavButton">
       <span class="nav-icon" aria-hidden="true">
@@ -4088,7 +4693,14 @@ body[data-theme="light"] .profile-credit {
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
   <main class="workspace-main">
-    <div id="viewDashboard" class="dashboard-view">
+    <div class="mobile-coin-banner" id="mobileCoinBanner" role="status" aria-live="polite">
+      <div class="mobile-coin-info">
+        <span class="mobile-coin-label">Saldo Kredit</span>
+        <span class="mobile-coin-value" id="mobileCoinValue">0</span>
+      </div>
+      <button type="button" class="profile-topup mobile-coin-topup" id="mobileCoinTopup">Top Up</button>
+    </div>
+    <div id="viewDashboard" class="dashboard-view app-view">
       <section class="overview-hero">
         <div class="hero-text">
           <h1>Dashboard Overview</h1>
@@ -4121,9 +4733,28 @@ body[data-theme="light"] .profile-credit {
           <span class="stat-meta">Task yang masih diproses</span>
         </article>
       </section>
+
+      <div class="profile-card profile-card--mobile" id="profileCardMobile">
+        <div class="profile-main">
+          <div class="profile-avatar" id="profileAvatarMobile">FM</div>
+          <div class="profile-text">
+            <div class="profile-title">
+              <span class="profile-display" id="profileDisplayMobile">User</span>
+              <span class="profile-badge" id="profileBadgeMobile">PRO</span>
+            </div>
+            <div class="profile-username" id="profileUsernameMobile">@username</div>
+          </div>
+        </div>
+        <div class="profile-credit">
+          <span class="credit-label">Credit</span>
+          <span class="credit-value" id="profileCoinsMobile">0</span>
+          <span class="credit-status"><span class="status-dot"></span><span id="profileStatusMobile">Live</span></span>
+        </div>
+        <button type="button" class="profile-topup" id="profileTopupMobile">Top Up Credit</button>
+      </div>
     </div>
 
-    <div id="viewDrive" class="drive-view" style="display:none">
+    <div id="viewDrive" class="drive-view app-view" hidden>
       <section class="drive-header">
         <div>
           <h1>Creative Drive</h1>
@@ -4165,8 +4796,69 @@ body[data-theme="light"] .profile-credit {
       </section>
     </div>
 
+    <div id="viewAccount" class="account-view app-view" hidden>
+      <section class="account-hero">
+        <div>
+          <h1>Pengaturan Akun</h1>
+          <p>Kelola foto profil dan keamanan password kamu dari satu tempat.</p>
+        </div>
+      </section>
+
+      <section class="account-settings" aria-labelledby="accountSettingsTitle">
+        <div class="card-soft account-settings-card">
+          <div class="header" id="accountSettingsTitle">
+            <div>
+              <div class="title" style="font-size:16px">Profil &amp; Keamanan</div>
+              <div class="subtitle">Perbarui avatar serta ubah password secara aman.</div>
+            </div>
+          </div>
+
+          <div class="account-settings-grid">
+            <form id="avatarForm" class="account-form" novalidate>
+              <h3 class="account-form-title">Foto Profil</h3>
+              <div class="avatar-row">
+                <div class="avatar-preview" id="avatarPreview" aria-hidden="true">
+                  <span class="avatar-initials" id="avatarPreviewInitials">FM</span>
+                  <img id="avatarPreviewImage" alt="Preview foto profil" loading="lazy">
+                </div>
+                <div class="avatar-fields">
+                  <label class="account-label" for="avatarUrlInput">Link gambar</label>
+                  <input type="url" id="avatarUrlInput" placeholder="https://contoh.com/avatar.jpg" autocomplete="off">
+                  <div class="account-form-actions">
+                    <input type="file" id="avatarFileInput" accept="image/*" style="display:none">
+                    <button type="button" class="secondary small" id="avatarUploadBtn">Upload foto</button>
+                    <button type="button" class="secondary small" id="avatarRemoveBtn">Hapus</button>
+                  </div>
+                  <p class="account-form-hint">Disarankan gambar persegi minimal 200×200px.</p>
+                  <button type="submit" class="account-save-btn">Simpan Avatar</button>
+                  <div class="account-form-status" id="avatarFormStatus" role="status"></div>
+                </div>
+              </div>
+            </form>
+
+            <form id="passwordForm" class="account-form" novalidate>
+              <h3 class="account-form-title">Ganti Password</h3>
+              <div class="account-form-grid">
+                <label class="account-label" for="currentPasswordInput">Password saat ini</label>
+                <input type="password" id="currentPasswordInput" autocomplete="current-password" required>
+
+                <label class="account-label" for="newPasswordInput">Password baru</label>
+                <input type="password" id="newPasswordInput" autocomplete="new-password" minlength="6" required>
+
+                <label class="account-label" for="confirmPasswordInput">Konfirmasi password</label>
+                <input type="password" id="confirmPasswordInput" autocomplete="new-password" minlength="6" required>
+              </div>
+              <p class="account-form-hint">Gunakan minimal 6 karakter kombinasi huruf & angka.</p>
+              <button type="submit" class="account-save-btn">Update Password</button>
+              <div class="account-form-status" id="passwordFormStatus" role="status"></div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </div>
+
 <!-- ======================= AI HUB ======================= -->
-<div id="viewHub" class="hub-app" style="display:none">
+<div id="viewHub" class="hub-app app-view" hidden>
   <div class="hub-column">
     <div class="card">
       <div class="header">
@@ -4411,7 +5103,7 @@ body[data-theme="light"] .profile-credit {
 </div>
 
 <!-- ======================= FILMMAKER ======================= -->
-<div id="viewFilm" class="film-app" style="display:none">
+<div id="viewFilm" class="film-app app-view" hidden>
   <div class="card">
     <div class="header">
       <div>
@@ -4515,7 +5207,7 @@ body[data-theme="light"] .profile-credit {
 </div>
 
 <!-- ======================= UGC TOOL ======================= -->
-<div id="viewUGC" class="ugc-app" style="display:none">
+<div id="viewUGC" class="ugc-app app-view" hidden>
   <div class="card-soft">
     <div class="header" style="margin-bottom:6px">
       <div>
@@ -4645,6 +5337,29 @@ body[data-theme="light"] .profile-credit {
   const profileBadgeEl = document.getElementById('profileBadge');
   const profileAvatarEl = document.getElementById('profileAvatar');
   const profileStatusTextEl = document.getElementById('profileStatusText');
+  const profileCardMobile = document.getElementById('profileCardMobile');
+  const profileDisplayMobile = document.getElementById('profileDisplayMobile');
+  const profileUsernameMobile = document.getElementById('profileUsernameMobile');
+  const profileBadgeMobile = document.getElementById('profileBadgeMobile');
+  const profileAvatarMobile = document.getElementById('profileAvatarMobile');
+  const profileCoinsMobile = document.getElementById('profileCoinsMobile');
+  const profileStatusMobileEl = document.getElementById('profileStatusMobile');
+  const mobileCoinBanner = document.getElementById('mobileCoinBanner');
+  const mobileCoinValue = document.getElementById('mobileCoinValue');
+  const mobileCoinTopup = document.getElementById('mobileCoinTopup');
+  const avatarForm = document.getElementById('avatarForm');
+  const avatarUrlInput = document.getElementById('avatarUrlInput');
+  const avatarFileInput = document.getElementById('avatarFileInput');
+  const avatarUploadBtn = document.getElementById('avatarUploadBtn');
+  const avatarRemoveBtn = document.getElementById('avatarRemoveBtn');
+  const avatarFormStatus = document.getElementById('avatarFormStatus');
+  const avatarPreviewImage = document.getElementById('avatarPreviewImage');
+  const avatarPreviewInitials = document.getElementById('avatarPreviewInitials');
+  const passwordForm = document.getElementById('passwordForm');
+  const currentPasswordInput = document.getElementById('currentPasswordInput');
+  const newPasswordInput = document.getElementById('newPasswordInput');
+  const confirmPasswordInput = document.getElementById('confirmPasswordInput');
+  const passwordFormStatus = document.getElementById('passwordFormStatus');
   const logoutButton = document.getElementById('logoutButton');
   const workspace = document.querySelector('.workspace');
   const sidebarToggle = document.getElementById('sidebarToggle');
@@ -4674,7 +5389,9 @@ body[data-theme="light"] .profile-credit {
   const topupHintEl = document.getElementById('topupHint');
   const topupOpeners = [
     document.getElementById('profileTopup'),
-    document.getElementById('heroTopup')
+    document.getElementById('heroTopup'),
+    mobileCoinTopup,
+    document.getElementById('profileTopupMobile')
   ].filter(Boolean);
   const filmProgressEl = document.getElementById('filmProgress');
   const filmProgressFill = document.getElementById('filmProgressFill');
@@ -4801,6 +5518,84 @@ body[data-theme="light"] .profile-credit {
     if (wrapper) wrapper.classList.toggle('active', !!show);
     if (fill) fill.style.width = pct + '%';
     if (valueEl) valueEl.textContent = label || (pct + '%');
+  }
+
+  function ensureAbsoluteUrl(url) {
+    if (!url || typeof url !== 'string') {
+      return '';
+    }
+    try {
+      return new URL(url, window.location.origin).href;
+    } catch (err) {
+      return url;
+    }
+  }
+
+  function showInlineStatus(el, message, mode) {
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.remove('ok', 'err', 'progress');
+    if (!message) {
+      el.style.display = 'none';
+      return;
+    }
+    if (mode) {
+      el.classList.add(mode);
+    }
+    el.style.display = 'block';
+  }
+
+  function applyAvatarToElement(el, avatarUrl, initials) {
+    if (!el) return;
+    const hasImage = avatarUrl && /^https?:\/\//i.test(avatarUrl);
+    if (hasImage) {
+      el.style.backgroundImage = `url('${avatarUrl.replace(/'/g, "\\'")}')`;
+      el.classList.add('profile-avatar--image');
+      el.textContent = '';
+    } else {
+      el.style.backgroundImage = 'none';
+      el.classList.remove('profile-avatar--image');
+      el.textContent = initials || '';
+    }
+  }
+
+  function updateAvatarPreview(avatarUrl, initials) {
+    if (avatarPreviewImage) {
+      const valid = avatarUrl && /^https?:\/\//i.test(avatarUrl);
+      if (valid) {
+        avatarPreviewImage.src = avatarUrl;
+        avatarPreviewImage.style.display = 'block';
+      } else {
+        avatarPreviewImage.removeAttribute('src');
+        avatarPreviewImage.style.display = 'none';
+      }
+    }
+    if (avatarPreviewInitials) {
+      avatarPreviewInitials.textContent = initials || '';
+      avatarPreviewInitials.style.display = avatarPreviewImage && avatarPreviewImage.style.display === 'block' ? 'none' : 'flex';
+    }
+  }
+
+  function pickErrorMessage(err) {
+    if (!err) return 'Terjadi kesalahan.';
+    if (typeof err === 'string') return err;
+    if (Array.isArray(err)) {
+      return err.find(item => typeof item === 'string' && item.trim() !== '') || 'Terjadi kesalahan.';
+    }
+    if (typeof err === 'object') {
+      const values = Object.values(err);
+      for (const value of values) {
+        if (!value) continue;
+        if (typeof value === 'string' && value.trim() !== '') {
+          return value;
+        }
+        if (Array.isArray(value)) {
+          const found = value.find(item => typeof item === 'string' && item.trim() !== '');
+          if (found) return found;
+        }
+      }
+    }
+    return 'Terjadi kesalahan.';
   }
 
   function updateNavAvailability() {
@@ -5216,6 +6011,13 @@ body[data-theme="light"] .profile-credit {
       downloadLink.setAttribute('download', '');
       actions.appendChild(downloadLink);
 
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'danger';
+      deleteBtn.textContent = 'Hapus';
+      deleteBtn.addEventListener('click', () => deleteDriveEntry(item, deleteBtn));
+      actions.appendChild(deleteBtn);
+
       card.appendChild(thumb);
       card.appendChild(footer);
       card.appendChild(actions);
@@ -5273,6 +6075,179 @@ body[data-theme="light"] .profile-credit {
     driveLoaded = true;
     renderDriveItems();
     return driveItems;
+  }
+
+  async function saveSceneToDrive(scene, button) {
+    if (!scene || !scene.url) {
+      alert('Scene belum memiliki gambar.');
+      return;
+    }
+
+    const url = ensureAbsoluteUrl(scene.url);
+    if (!/^https?:\/\//i.test(url)) {
+      alert('URL scene belum siap disimpan.');
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menyimpan…';
+    }
+
+    const entry = {
+      type: 'image',
+      url,
+      model: scene.modelId || 'filmmaker',
+      prompt: scene.prompt || null,
+      created_at: nowIso()
+    };
+
+    try {
+      await persistDriveItems([entry]);
+      if (button) {
+        button.textContent = 'Tersimpan ✓';
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = 'Simpan ke Drive';
+        }, 1800);
+      }
+    } catch (err) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Simpan ke Drive';
+      }
+      alert('Gagal menyimpan scene ke drive: ' + (err.message || err));
+    }
+  }
+
+  async function saveUgcImageToDrive(item, button) {
+    if (!item || !item.imageUrl) {
+      alert('Gambar UGC belum siap.');
+      return;
+    }
+
+    const url = ensureAbsoluteUrl(item.imageUrl || item.remoteUrl);
+    if (!/^https?:\/\//i.test(url)) {
+      alert('URL gambar tidak valid.');
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menyimpan…';
+    }
+
+    const entry = {
+      type: 'image',
+      url,
+      model: 'ugc-image',
+      prompt: item.prompt || null,
+      created_at: nowIso()
+    };
+
+    try {
+      await persistDriveItems([entry]);
+      if (button) {
+        button.textContent = 'Tersimpan ✓';
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = 'Simpan ke Drive';
+        }, 1800);
+      }
+    } catch (err) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Simpan ke Drive';
+      }
+      alert('Gagal menyimpan gambar ke drive: ' + (err.message || err));
+    }
+  }
+
+  async function saveUgcVideoToDrive(item, button) {
+    if (!item || !item.videoUrl) {
+      alert('Video UGC belum siap.');
+      return;
+    }
+
+    const url = ensureAbsoluteUrl(item.videoUrl);
+    if (!/^https?:\/\//i.test(url)) {
+      alert('URL video tidak valid.');
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menyimpan…';
+    }
+
+    const entry = {
+      type: 'video',
+      url,
+      model: 'ugc-video',
+      prompt: item.videoPrompt || item.prompt || null,
+      created_at: nowIso()
+    };
+
+    const thumb = ensureAbsoluteUrl(item.imageUrl || item.remoteUrl || '');
+    if (/^https?:\/\//i.test(thumb)) {
+      entry.thumbnail_url = thumb;
+    }
+
+    try {
+      await persistDriveItems([entry]);
+      if (button) {
+        button.textContent = 'Tersimpan ✓';
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = 'Simpan Video';
+        }, 1800);
+      }
+    } catch (err) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Simpan Video';
+      }
+      alert('Gagal menyimpan video ke drive: ' + (err.message || err));
+    }
+  }
+
+  async function deleteDriveEntry(item, button) {
+    if (!item) return;
+    const payload = {};
+    if (item.id) payload.id = item.id;
+    if (item.url) payload.url = item.url;
+    if (!payload.id && !payload.url) {
+      alert('Item drive tidak valid.');
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menghapus…';
+    }
+
+    try {
+      const res = await fetch(DRIVE_DELETE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(pickErrorMessage(data && data.error));
+      }
+      driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      driveLoaded = true;
+      renderDriveItems();
+    } catch (err) {
+      alert('Gagal menghapus file: ' + (err.message || err));
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Hapus';
+      }
+    }
   }
 
   async function syncJobToDrive(job) {
@@ -5334,6 +6309,13 @@ body[data-theme="light"] .profile-credit {
     return letters.join('').toUpperCase();
   }
 
+  function currentAccountInitials() {
+    if (currentAccount) {
+      return initialsFrom(currentAccount.display_name || currentAccount.username || 'User', currentAccount.username);
+    }
+    return initialsFrom('User', 'user');
+  }
+
   function formatSubscriptionLabel(subscription) {
     if (!subscription) return 'FREE';
     return String(subscription).toUpperCase();
@@ -5347,12 +6329,25 @@ body[data-theme="light"] .profile-credit {
     const subscription = formatSubscriptionLabel(account.subscription);
     const isBanned = !!account.is_banned;
     const isBlocked = !!account.is_blocked;
+    const formattedCoins = coins.toLocaleString('id-ID');
+    const initials = initialsFrom(display, account.username);
 
     if (profileDisplayEl) profileDisplayEl.textContent = display;
     if (profileUsernameEl) profileUsernameEl.textContent = username;
-    if (profileCoinsEl) profileCoinsEl.textContent = coins;
+    if (profileCoinsEl) profileCoinsEl.textContent = formattedCoins;
     if (profileBadgeEl) profileBadgeEl.textContent = subscription;
-    if (profileAvatarEl) profileAvatarEl.textContent = initialsFrom(display, account.username);
+    applyAvatarToElement(profileAvatarEl, account.avatar_url, initials);
+
+    if (profileDisplayMobile) profileDisplayMobile.textContent = display;
+    if (profileUsernameMobile) profileUsernameMobile.textContent = username;
+    if (profileBadgeMobile) profileBadgeMobile.textContent = subscription;
+    if (profileCoinsMobile) profileCoinsMobile.textContent = formattedCoins;
+    applyAvatarToElement(profileAvatarMobile, account.avatar_url, initials);
+    if (mobileCoinValue) mobileCoinValue.textContent = formattedCoins;
+    if (avatarUrlInput) {
+      avatarUrlInput.value = account.avatar_url || '';
+    }
+    updateAvatarPreview(account.avatar_url || '', initials);
 
     if (profileStatusTextEl) {
       if (isBanned) {
@@ -5364,9 +6359,27 @@ body[data-theme="light"] .profile-credit {
       }
     }
 
+    if (profileStatusMobileEl) {
+      if (isBanned) {
+        profileStatusMobileEl.textContent = 'Banned';
+      } else if (isBlocked) {
+        profileStatusMobileEl.textContent = 'Blocked';
+      } else {
+        profileStatusMobileEl.textContent = 'Live';
+      }
+    }
+
     const statusDot = profileCard.querySelector('.status-dot');
     if (statusDot) {
       statusDot.classList.toggle('offline', isBanned || isBlocked);
+    }
+
+    if (profileCardMobile) {
+      const mobileDot = profileCardMobile.querySelector('.status-dot');
+      if (mobileDot) {
+        mobileDot.classList.toggle('offline', isBanned || isBlocked);
+      }
+      profileCardMobile.classList.toggle('profile-card--alert', isBanned || isBlocked);
     }
 
     profileCard.classList.toggle('profile-card--alert', isBanned || isBlocked);
@@ -5499,6 +6512,138 @@ body[data-theme="light"] .profile-credit {
       } finally {
         logoutButton.classList.remove('loading');
       }
+    });
+  }
+
+  if (avatarUploadBtn && avatarFileInput) {
+    avatarUploadBtn.addEventListener('click', () => avatarFileInput.click());
+  }
+
+  if (avatarRemoveBtn) {
+    avatarRemoveBtn.addEventListener('click', () => {
+      if (avatarUrlInput) {
+        avatarUrlInput.value = '';
+      }
+      updateAvatarPreview('', currentAccountInitials());
+      showInlineStatus(avatarFormStatus, 'Avatar akan dihapus setelah disimpan.', 'progress');
+    });
+  }
+
+  if (avatarUrlInput) {
+    avatarUrlInput.addEventListener('input', () => {
+      const value = avatarUrlInput.value.trim();
+      updateAvatarPreview(value, currentAccountInitials());
+      showInlineStatus(avatarFormStatus, '', null);
+    });
+  }
+
+  if (avatarFileInput) {
+    avatarFileInput.addEventListener('change', async event => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      if (!file.type || !file.type.startsWith('image/')) {
+        showInlineStatus(avatarFormStatus, 'File harus gambar (PNG/JPG/WEBP).', 'err');
+        avatarFileInput.value = '';
+        return;
+      }
+
+      showInlineStatus(avatarFormStatus, `Mengunggah ${file.name}…`, 'progress');
+      try {
+        const result = await uploadFileToServer(file);
+        if (!result || !result.url) {
+          throw new Error('Upload gagal.');
+        }
+        if (avatarUrlInput) {
+          avatarUrlInput.value = result.url;
+        }
+        updateAvatarPreview(result.url, currentAccountInitials());
+        showInlineStatus(avatarFormStatus, 'Upload berhasil, klik Simpan Avatar untuk menyimpan.', 'ok');
+      } catch (err) {
+        showInlineStatus(avatarFormStatus, err.message || 'Upload gagal.', 'err');
+      } finally {
+        avatarFileInput.value = '';
+      }
+    });
+  }
+
+  if (avatarForm) {
+    avatarForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!currentAccount) {
+        alert('Data akun belum siap. Muat ulang halaman.');
+        return;
+      }
+
+      const avatarValue = avatarUrlInput ? avatarUrlInput.value.trim() : '';
+      if (avatarValue && !/^https?:\/\//i.test(avatarValue)) {
+        showInlineStatus(avatarFormStatus, 'Gunakan URL gambar yang diawali http/https.', 'err');
+        return;
+      }
+
+      showInlineStatus(avatarFormStatus, 'Menyimpan avatar…', 'progress');
+      try {
+        const res = await fetch(ACCOUNT_AVATAR_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ avatar: avatarValue })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(pickErrorMessage(data && data.error));
+        }
+
+        if (!currentAccount) currentAccount = {};
+        currentAccount = Object.assign({}, currentAccount, data.data || {});
+        updateProfileCard(currentAccount);
+        showInlineStatus(avatarFormStatus, 'Avatar diperbarui.', 'ok');
+      } catch (err) {
+        showInlineStatus(avatarFormStatus, err.message || 'Gagal menyimpan avatar.', 'err');
+      }
+    });
+  }
+
+  if (passwordForm) {
+    passwordForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const current = currentPasswordInput ? currentPasswordInput.value : '';
+      const next = newPasswordInput ? newPasswordInput.value : '';
+      const confirm = confirmPasswordInput ? confirmPasswordInput.value : '';
+
+      if (!next || next.length < 6) {
+        showInlineStatus(passwordFormStatus, 'Password baru minimal 6 karakter.', 'err');
+        return;
+      }
+      if (next !== confirm) {
+        showInlineStatus(passwordFormStatus, 'Konfirmasi password harus sama.', 'err');
+        return;
+      }
+
+      showInlineStatus(passwordFormStatus, 'Memperbarui password…', 'progress');
+      try {
+        const res = await fetch(ACCOUNT_PASSWORD_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ current, password: next, confirm })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(pickErrorMessage(data && data.error));
+        }
+
+        if (currentPasswordInput) currentPasswordInput.value = '';
+        if (newPasswordInput) newPasswordInput.value = '';
+        if (confirmPasswordInput) confirmPasswordInput.value = '';
+        showInlineStatus(passwordFormStatus, data.message || 'Password berhasil diperbarui.', 'ok');
+      } catch (err) {
+        showInlineStatus(passwordFormStatus, err.message || 'Gagal memperbarui password.', 'err');
+      }
+    });
+
+    [currentPasswordInput, newPasswordInput, confirmPasswordInput].forEach(input => {
+      if (!input) return;
+      input.addEventListener('input', () => showInlineStatus(passwordFormStatus, '', null));
     });
   }
 
@@ -5775,6 +6920,9 @@ body[data-theme="light"] .profile-credit {
 
   const STORAGE_KEY = 'freepik_jobs_v1';
   const DRIVE_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive';
+  const DRIVE_DELETE_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive-delete';
+  const ACCOUNT_AVATAR_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-avatar';
+  const ACCOUNT_PASSWORD_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-password';
   jobs = loadJobs();
   updateDashboardStats();
   let activeJobId = null;
@@ -5998,6 +7146,8 @@ body[data-theme="light"] .profile-credit {
   let viewHubSection = null;
   let viewFilmSection = null;
   let viewUGCSection = null;
+  let viewAccountSection = null;
+  let viewSections = {};
 
   const rowPrompt      = document.getElementById('rowPrompt');
   const rowImageUrl    = document.getElementById('rowImageUrl');
@@ -7106,6 +8256,25 @@ body[data-theme="light"] .profile-credit {
       aspectRatio: aspectRatioInput.value || null
     };
 
+    if (formData.imageUrl) {
+      formData.imageUrl = ensureAbsoluteUrl(formData.imageUrl);
+      if (imageUrlInput) {
+        imageUrlInput.value = formData.imageUrl;
+      }
+    }
+    if (formData.videoUrl) {
+      formData.videoUrl = ensureAbsoluteUrl(formData.videoUrl);
+      if (videoUrlInput) {
+        videoUrlInput.value = formData.videoUrl;
+      }
+    }
+    if (formData.audioUrl) {
+      formData.audioUrl = ensureAbsoluteUrl(formData.audioUrl);
+      if (audioUrlInput) {
+        audioUrlInput.value = formData.audioUrl;
+      }
+    }
+
     const requireImageModels = [
       'upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg',
       'wan480','wan720','seedancePro480','seedancePro720','seedancePro1080',
@@ -7421,6 +8590,15 @@ body[data-theme="light"] .profile-credit {
   viewHubSection = document.getElementById('viewHub');
   viewFilmSection = document.getElementById('viewFilm');
   viewUGCSection = document.getElementById('viewUGC');
+  viewAccountSection = document.getElementById('viewAccount');
+  viewSections = {
+    viewDashboard: viewDashboardSection,
+    viewAccount: viewAccountSection,
+    viewDrive: viewDriveSection,
+    viewHub: viewHubSection,
+    viewFilm: viewFilmSection,
+    viewUGC: viewUGCSection
+  };
 
   updateNavAvailability();
   updateFeatureTabsAvailability();
@@ -7431,6 +8609,20 @@ body[data-theme="light"] .profile-credit {
       const isHub = btn.dataset.target === 'viewHub';
       const matches = btn.dataset.target === target && (!isHub || (btn.dataset.feature || 'imageGen') === (featureKey || 'imageGen'));
       btn.classList.toggle('active', matches);
+    });
+  }
+
+  function setActiveView(target) {
+    Object.entries(viewSections).forEach(([key, el]) => {
+      if (!el) return;
+      const isActive = key === target;
+      if (isActive) {
+        el.style.display = '';
+        el.removeAttribute('hidden');
+      } else {
+        el.style.display = 'none';
+        el.setAttribute('hidden', '');
+      }
     });
   }
 
@@ -7453,11 +8645,7 @@ body[data-theme="light"] .profile-credit {
       }
     }
 
-    if (viewDashboardSection) viewDashboardSection.style.display = target === 'viewDashboard' ? '' : 'none';
-    if (viewDriveSection) viewDriveSection.style.display = target === 'viewDrive' ? '' : 'none';
-    if (viewHubSection) viewHubSection.style.display = target === 'viewHub' ? '' : 'none';
-    if (viewFilmSection) viewFilmSection.style.display = target === 'viewFilm' ? '' : 'none';
-    if (viewUGCSection) viewUGCSection.style.display = target === 'viewUGC' ? '' : 'none';
+    setActiveView(target);
 
     if (target === 'viewHub') {
       setFeature(resolvedFeatureKey || 'imageGen');
@@ -7971,6 +9159,14 @@ body[data-theme="light"] .profile-credit {
         previewBtn.addEventListener('click', () => openAssetPreview(scene.url, 'image'));
         actions.appendChild(previewBtn);
 
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'small secondary';
+        saveBtn.textContent = 'Simpan ke Drive';
+        saveBtn.disabled = !scene.url;
+        saveBtn.addEventListener('click', () => saveSceneToDrive(scene, saveBtn));
+        actions.appendChild(saveBtn);
+
         const a = document.createElement('a');
         a.href = scene.url;
         a.target = '_blank';
@@ -8435,6 +9631,13 @@ body[data-theme="light"] .profile-credit {
         videoDownloadLink.appendChild(videoDownloadBtn);
         actions.appendChild(videoDownloadLink);
 
+        const videoSaveBtn = document.createElement('button');
+        videoSaveBtn.type = 'button';
+        videoSaveBtn.className = 'small secondary';
+        videoSaveBtn.textContent = 'Simpan Video';
+        videoSaveBtn.addEventListener('click', () => saveUgcVideoToDrive(item, videoSaveBtn));
+        actions.appendChild(videoSaveBtn);
+
         videoCard.appendChild(title);
         videoCard.appendChild(video);
         videoCard.appendChild(actions);
@@ -8499,6 +9702,15 @@ body[data-theme="light"] .profile-credit {
         });
       }
 
+      const saveImgBtn = document.createElement('button');
+      saveImgBtn.type = 'button';
+      saveImgBtn.className = 'small secondary';
+      saveImgBtn.textContent = 'Simpan ke Drive';
+      saveImgBtn.disabled = !item.imageUrl;
+      if (item.imageUrl) {
+        saveImgBtn.addEventListener('click', () => saveUgcImageToDrive(item, saveImgBtn));
+      }
+
       const vidBtn = document.createElement('button');
       vidBtn.type = 'button';
       vidBtn.className = 'small';
@@ -8508,6 +9720,7 @@ body[data-theme="light"] .profile-credit {
 
       btnRow.appendChild(previewImgBtn);
       btnRow.appendChild(dlBtn);
+      btnRow.appendChild(saveImgBtn);
       btnRow.appendChild(vidBtn);
 
       right.appendChild(pLabel);
