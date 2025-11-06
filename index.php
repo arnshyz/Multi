@@ -356,6 +356,127 @@ if ($requestedApi !== null && !in_array($requestedApi, ['login', 'register', 'se
     ], 401);
 }
 
+if ($requestedApi === 'account') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode GET untuk mengambil data akun.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 404,
+            'error' => 'Akun tidak ditemukan.'
+        ], 404);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => auth_account_public_payload($account),
+    ]);
+}
+
+if ($requestedApi === 'account-theme') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk memperbarui tema.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $theme = isset($payload['theme']) ? (string)$payload['theme'] : '';
+    $errors = [];
+    $updated = auth_set_account_theme($account['id'], $theme, $errors);
+    if (!$updated) {
+        $status = isset($errors['theme']) ? 422 : 500;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Gagal memperbarui tema.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => auth_account_public_payload($updated),
+    ]);
+}
+
+if ($requestedApi === 'account-coins') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk memperbarui koin.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $amount = isset($payload['amount']) ? (int)$payload['amount'] : 0;
+    if ($amount <= 0) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'Jumlah koin harus lebih besar dari 0.'
+        ], 422);
+    }
+
+    $errors = [];
+    $updated = auth_adjust_account_coins($account['id'], -$amount, $errors);
+    if (!$updated) {
+        $status = isset($errors['coins']) ? 409 : (isset($errors['general']) ? 500 : 422);
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Gagal memperbarui koin.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => [
+            'coins' => (int)$updated['coins'],
+        ],
+    ]);
+}
+
 // ====== UPLOAD FILE: ?api=upload ======
 if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     header('Content-Type: application/json; charset=utf-8');
@@ -632,6 +753,7 @@ if (!auth_is_logged_in()) {
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-store, max-age=0');
     ?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -640,238 +762,335 @@ if (!auth_is_logged_in()) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root {
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      color-scheme: dark;
+      font-family: 'Poppins', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color-scheme: light;
     }
-    body {
+    body.auth-body {
       margin: 0;
       min-height: 100vh;
-      background: radial-gradient(circle at top, rgba(59,130,246,0.35), transparent 55%),
-                  radial-gradient(circle at bottom, rgba(56,189,248,0.18), transparent 50%),
-                  #020617;
-      color: #f9fafb;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 32px 20px;
+      padding: 48px 20px;
+      background: radial-gradient(120% 120% at 20% 0%, rgba(99,102,241,0.22), transparent),
+                  radial-gradient(110% 110% at 80% 100%, rgba(34,211,238,0.18), transparent),
+                  linear-gradient(160deg, #0f172a 0%, #1e1b4b 35%, #0b1120 100%);
+      color: #f8fafc;
+      position: relative;
+      overflow: hidden;
     }
-    .auth-layout {
-      width: min(960px, 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 24px;
+    .auth-background {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
     }
-    .security-card,
+    .auth-background .orb {
+      position: absolute;
+      width: 420px;
+      height: 420px;
+      border-radius: 50%;
+      filter: blur(140px);
+      opacity: 0.6;
+      animation: floatOrb 16s ease-in-out infinite;
+      background: radial-gradient(circle, rgba(165,180,252,0.75), transparent 70%);
+    }
+    .auth-background .orb-one { top: -120px; left: -120px; }
+    .auth-background .orb-two {
+      bottom: -160px;
+      right: -80px;
+      background: radial-gradient(circle, rgba(94,234,212,0.6), transparent 70%);
+      animation-delay: -6s;
+    }
+    .auth-background .orb-three {
+      top: 40%;
+      right: 35%;
+      background: radial-gradient(circle, rgba(56,189,248,0.5), transparent 70%);
+      animation-delay: -3s;
+    }
+    @keyframes floatOrb {
+      0%, 100% { transform: translate3d(0,0,0) scale(1); }
+      50% { transform: translate3d(40px, -30px, 0) scale(1.08); }
+    }
+    .auth-shell {
+      position: relative;
+      z-index: 1;
+      width: min(1000px, 100%);
+      display: grid;
+      gap: 28px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      align-items: stretch;
+    }
     .auth-card {
-      width: min(460px, 100%);
-      background: rgba(15, 23, 42, 0.88);
-      border: 1px solid rgba(59, 130, 246, 0.25);
-      border-radius: 20px;
-      padding: 32px 30px;
-      box-shadow: 0 35px 80px rgba(2, 6, 23, 0.55);
-      backdrop-filter: blur(18px);
+      position: relative;
+      border-radius: 28px;
+      padding: 36px 34px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.85), rgba(232,249,255,0.72));
+      color: #0f172a;
+      border: 1px solid rgba(148,163,184,0.25);
+      box-shadow: 0 40px 90px rgba(15,23,42,0.28);
+      overflow: hidden;
+      backdrop-filter: blur(22px);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .auth-card.security {
+      background: linear-gradient(145deg, rgba(15,23,42,0.9), rgba(30,41,59,0.78));
+      color: #e2e8f0;
+      border: 1px solid rgba(96,165,250,0.35);
+    }
+    .auth-card::before,
+    .auth-card::after {
+      content: "";
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(56,189,248,0.25), transparent 72%);
+      filter: blur(10px);
+      opacity: 0.65;
+      z-index: 0;
+      animation: cardGlow 18s linear infinite;
+    }
+    .auth-card::before { top: -80px; right: -90px; }
+    .auth-card::after { bottom: -90px; left: -70px; animation-delay: -8s; }
+    .auth-card.security::before {
+      background: radial-gradient(circle, rgba(248,113,113,0.35), transparent 75%);
+    }
+    .auth-card > * { position: relative; z-index: 1; }
+    .auth-card:hover { transform: translateY(-6px); box-shadow: 0 48px 120px rgba(15,23,42,0.32); }
+    @keyframes cardGlow {
+      0% { transform: rotate(0deg) scale(1); }
+      50% { transform: rotate(180deg) scale(1.05); }
+      100% { transform: rotate(360deg) scale(1); }
     }
     .security-card h1 {
-      margin: 0 0 12px;
-      font-size: 28px;
+      margin: 0 0 14px;
+      font-size: 30px;
       font-weight: 600;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.015em;
     }
     .security-card p {
-      margin: 0 0 20px;
+      margin: 0 0 22px;
       color: rgba(226, 232, 240, 0.78);
       font-size: 15px;
       line-height: 1.6;
     }
     .ip-panel {
-      border-radius: 16px;
+      border-radius: 18px;
       border: 1px solid rgba(248, 113, 113, 0.35);
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
-      padding: 18px 20px 20px;
-      margin-bottom: 20px;
+      background: linear-gradient(135deg, rgba(248,113,113,0.22), rgba(248,150,30,0.15));
+      padding: 20px 22px;
+      margin-bottom: 24px;
       text-align: center;
     }
     .ip-label {
       display: block;
-      font-size: 13px;
+      font-size: 12px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: rgba(248, 250, 252, 0.6);
-      margin-bottom: 6px;
+      color: rgba(248, 250, 252, 0.66);
+      margin-bottom: 8px;
     }
     .ip-value {
-      font-size: 26px;
+      font-size: 30px;
       font-weight: 700;
-      color: #f97316;
-      letter-spacing: 0.04em;
+      color: #fbbf24;
+      letter-spacing: 0.05em;
     }
     .ip-note {
       display: block;
-      margin-top: 10px;
+      margin-top: 12px;
       font-size: 12px;
-      color: rgba(248, 250, 252, 0.55);
+      color: rgba(248, 250, 252, 0.6);
     }
-    .security-card button,
-    .auth-card button[type="submit"] {
-      width: 100%;
-      border-radius: 12px;
+    .auth-header h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .auth-header p {
+      margin: 0 0 22px;
+      color: rgba(15,23,42,0.65);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .auth-tabs {
+      display: inline-flex;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.65);
+      border: 1px solid rgba(148,163,184,0.35);
+      padding: 4px;
+      gap: 4px;
+      margin-bottom: 24px;
+      position: relative;
+    }
+    .auth-tabs .tab {
       border: none;
-      padding: 12px 18px;
+      border-radius: 999px;
+      padding: 10px 22px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      background: transparent;
+      color: rgba(15,23,42,0.55);
+      transition: all 0.25s ease;
+    }
+    .auth-tabs .tab.active {
+      background: linear-gradient(135deg, #6366f1, #0ea5e9);
+      color: #f8fafc;
+      box-shadow: 0 16px 36px rgba(14,165,233,0.35);
+    }
+    .auth-content { display: none; animation: fadeIn 0.3s ease; }
+    .auth-content.active { display: block; }
+    label {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 6px;
+      letter-spacing: 0.02em;
+      color: rgba(15,23,42,0.58);
+    }
+    input[type="text"], input[type="email"], input[type="password"] {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(148,163,184,0.3);
+      background: rgba(255,255,255,0.9);
+      color: #0f172a;
+      padding: 12px 16px;
+      font-size: 14px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+    input:focus {
+      outline: none;
+      border-color: rgba(99,102,241,0.55);
+      box-shadow: 0 16px 30px rgba(99,102,241,0.18);
+      transform: translateY(-1px);
+      background: rgba(255,255,255,0.96);
+    }
+    .form-note {
+      font-size: 11px;
+      color: rgba(15,23,42,0.5);
+      margin: 8px 0 14px;
+    }
+    button.gradient {
+      width: 100%;
+      border-radius: 14px;
+      border: none;
+      padding: 14px 18px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      color: #f8fafc;
+      background: linear-gradient(120deg, #6366f1, #0ea5e9, #34d399);
+      background-size: 200% 200%;
+      box-shadow: 0 28px 60px rgba(99,102,241,0.38);
+      transition: transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    button.gradient::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent, rgba(255,255,255,0.35), transparent);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    button.gradient:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 32px 70px rgba(99,102,241,0.4);
+    }
+    button.gradient:hover::after { opacity: 1; }
+    button.gradient.loading { opacity: 0.6; cursor: wait; }
+    .security-card button {
+      width: 100%;
+      border-radius: 14px;
+      border: none;
+      padding: 14px 18px;
       font-size: 15px;
       font-weight: 600;
       letter-spacing: 0.02em;
       cursor: pointer;
       color: #0f172a;
-      background: linear-gradient(135deg, #ef4444, #f97316);
-      box-shadow: 0 22px 48px rgba(239, 68, 68, 0.35);
-      transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+      background: linear-gradient(120deg, #f97316, #fb7185);
+      box-shadow: 0 28px 56px rgba(248,113,113,0.32);
+      transition: transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
+      position: relative;
+      overflow: hidden;
     }
-    .auth-card button[type="submit"] {
-      background: linear-gradient(135deg, #6366f1, #22c55e);
-      box-shadow: 0 22px 48px rgba(79, 70, 229, 0.35);
+    .security-card button::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent, rgba(255,255,255,0.35), transparent);
+      opacity: 0;
+      transition: opacity 0.25s ease;
     }
-    .security-card button:hover,
-    .auth-card button[type="submit"]:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 28px 56px rgba(94, 234, 212, 0.25);
+    .security-card button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 34px 70px rgba(248,113,113,0.35);
     }
+    .security-card button:hover::after { opacity: 1; }
     .security-card button:disabled,
-    .auth-card button[type="submit"].loading {
-      opacity: 0.6;
+    button.gradient.loading {
+      opacity: 0.55;
       cursor: wait;
+      transform: none;
     }
     .security-status,
     .form-status {
       margin-top: 16px;
       font-size: 13px;
-      min-height: 18px;
+      min-height: 20px;
       text-align: center;
+      color: rgba(15,23,42,0.65);
     }
-    .auth-header h1 {
-      margin: 0 0 6px;
-      font-size: 26px;
-      font-weight: 600;
-    }
-    .auth-header p {
-      margin: 0 0 18px;
-      color: rgba(148, 163, 184, 0.82);
-      font-size: 14px;
-      line-height: 1.6;
-    }
-    .auth-tabs {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 18px;
-      background: rgba(15, 23, 42, 0.55);
-      padding: 6px;
-      border-radius: 12px;
-    }
-    .auth-tabs .tab {
-      border: none;
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 0.015em;
-      cursor: pointer;
-      color: rgba(226, 232, 240, 0.75);
-      background: transparent;
-      transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-    }
-    .auth-tabs .tab.active {
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(45, 212, 191, 0.18));
-      color: #f8fafc;
-      box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.45);
-    }
-    .auth-content {
-      display: none;
-      animation: fadeIn 0.25s ease forwards;
-    }
-    .auth-content.active {
-      display: block;
-    }
-    label {
-      display: block;
-      font-size: 13px;
-      margin-bottom: 6px;
-      color: rgba(226, 232, 240, 0.86);
-      letter-spacing: 0.01em;
-    }
-    input[type="text"],
-    input[type="email"],
-    input[type="password"] {
-      width: 100%;
-      border-radius: 12px;
-      border: 1px solid rgba(148, 163, 184, 0.28);
-      background: rgba(2, 6, 23, 0.92);
-      color: #f9fafb;
-      font-size: 14px;
-      padding: 11px 14px;
-      margin-bottom: 16px;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    input[type="text"]:focus,
-    input[type="email"]:focus,
-    input[type="password"]:focus {
-      outline: none;
-      border-color: rgba(99, 102, 241, 0.8);
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
-    }
-    .form-note {
-      margin-top: -8px;
-      margin-bottom: 16px;
-      font-size: 12px;
-      color: rgba(148, 163, 184, 0.7);
-    }
-    .hidden {
-      display: none !important;
-    }
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(6px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    .security-card .security-status { color: rgba(226,232,240,0.85); }
+    .form-status.info,
+    .security-status.info { color: rgba(148, 163, 184, 0.9); }
+    .form-status.success,
+    .security-status.success { color: #34d399; }
+    .form-status.error,
+    .security-status.error { color: #f87171; }
+    .hidden { display: none !important; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px);} to { opacity: 1; transform: translateY(0);} }
+    @media (max-width: 720px) {
+      .auth-card { padding: 28px 26px; border-radius: 22px; }
+      .auth-shell { gap: 20px; }
     }
     @media (max-width: 480px) {
-      .security-card,
-      .auth-card {
-        padding: 26px 22px;
-        border-radius: 16px;
-      }
-      .security-card h1 {
-        font-size: 24px;
-      }
-      .ip-value {
-        font-size: 22px;
-      }
+      body.auth-body { padding: 32px 18px; }
+      .security-card h1 { font-size: 24px; }
+      .ip-value { font-size: 24px; }
     }
   </style>
 </head>
-<body>
+<body class="auth-body">
+  <div class="auth-background">
+    <span class="orb orb-one"></span>
+    <span class="orb orb-two"></span>
+    <span class="orb orb-three"></span>
+  </div>
   <?php $clientIp = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'; ?>
-  <div class="auth-layout">
-    <section class="security-card" id="securityGate">
+  <div class="auth-shell">
+    <section class="auth-card security" id="securityGate">
       <h1>Security Check</h1>
-      <p>Memverifikasi alamat IP kamu sebelum mengakses Freepik Multi Suite.</p>
+      <p>Validasi alamat IP kamu sebelum memasuki Freepik Multi Suite.</p>
       <div class="ip-panel">
         <span class="ip-label">Your IP Address</span>
         <span class="ip-value" id="securityIp"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
-        <span class="ip-note">IP ini akan dipantau untuk pembagian yang tidak sah.</span>
+        <span class="ip-note">Aktivitas login dipantau untuk mencegah pembagian tidak sah.</span>
       </div>
-      <button type="button" id="securityContinue">Continue</button>
+      <button type="button" id="securityContinue">Lanjutkan</button>
       <div class="security-status" id="securityStatus"></div>
     </section>
 
-    <main class="auth-card hidden" id="authPanel">
+    <main class="auth-card main hidden" id="authPanel">
       <header class="auth-header">
         <h1>Freepik Multi Suite</h1>
-        <p>Masuk dengan akun kamu atau daftar menggunakan API key Freepik yang valid.</p>
+        <p>Masuk dengan akun kamu atau registrasi cepat menggunakan Freepik API key aktif.</p>
       </header>
       <div class="auth-tabs" role="tablist">
         <button type="button" class="tab active" data-target="login" aria-selected="true">Login</button>
@@ -883,7 +1102,7 @@ if (!auth_is_logged_in()) {
           <input type="text" id="loginUsername" name="username" autocomplete="username" required>
           <label for="loginPassword">Password</label>
           <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
-          <button type="submit" id="loginSubmit">Masuk</button>
+          <button type="submit" class="gradient" id="loginSubmit">Masuk</button>
         </form>
         <div class="form-status" id="loginStatus"></div>
       </section>
@@ -891,175 +1110,208 @@ if (!auth_is_logged_in()) {
         <form id="registerForm" autocomplete="off">
           <label for="registerApiKey">Freepik API Key</label>
           <input type="text" id="registerApiKey" name="freepik_api_key" autocomplete="off" required>
-          <div class="form-note">Pastikan API key aktif dan belum digunakan akun lain.</div>
+          <div class="form-note">Pastikan API key aktif dan belum pernah ditautkan ke akun lain.</div>
           <label for="registerUsername">Username</label>
           <input type="text" id="registerUsername" name="username" autocomplete="new-username" required>
           <label for="registerEmail">Email</label>
           <input type="email" id="registerEmail" name="email" autocomplete="email" required>
           <label for="registerPassword">Password</label>
           <input type="password" id="registerPassword" name="password" autocomplete="new-password" required>
-          <button type="submit" id="registerSubmit">Daftar</button>
+          <button type="submit" class="gradient" id="registerSubmit">Daftar</button>
         </form>
         <div class="form-status" id="registerStatus"></div>
-      </section>
-    </main>
+    </section>
+  </main>
   </div>
 
   <script>
-    const securityGate = document.getElementById('securityGate');
-    const authPanel = document.getElementById('authPanel');
-    const securityContinue = document.getElementById('securityContinue');
-    const securityStatus = document.getElementById('securityStatus');
-    const loginForm = document.getElementById('loginForm');
-    const registerForm = document.getElementById('registerForm');
-    const loginStatus = document.getElementById('loginStatus');
-    const registerStatus = document.getElementById('registerStatus');
-    const loginSubmit = document.getElementById('loginSubmit');
-    const registerSubmit = document.getElementById('registerSubmit');
-    const tabs = document.querySelectorAll('.auth-tabs .tab');
-    const panels = document.querySelectorAll('.auth-content');
+    document.addEventListener('DOMContentLoaded', () => {
+      const securityGate = document.getElementById('securityGate');
+      const authPanel = document.getElementById('authPanel');
+      const securityContinue = document.getElementById('securityContinue');
+      const securityStatus = document.getElementById('securityStatus');
+      const loginForm = document.getElementById('loginForm');
+      const registerForm = document.getElementById('registerForm');
+      const loginStatus = document.getElementById('loginStatus');
+      const registerStatus = document.getElementById('registerStatus');
+      const loginSubmit = document.getElementById('loginSubmit');
+      const registerSubmit = document.getElementById('registerSubmit');
+      const tabs = document.querySelectorAll('.auth-tabs .tab');
+      const panels = document.querySelectorAll('.auth-content');
 
-    function setStatus(el, message, isError = true) {
-      if (!el) return;
-      el.textContent = message || '';
-      el.style.color = isError ? '#f97373' : '#4ade80';
-    }
+      const ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>';
 
-    function formatErrors(error) {
-      if (!error) {
-        return 'Terjadi kesalahan. Coba lagi.';
+      function setStatus(el, message, type = 'info') {
+        if (!el) return;
+        el.textContent = message || '';
+        el.classList.remove('info', 'success', 'error');
+        el.classList.add(type);
       }
-      if (typeof error === 'string') {
-        return error;
-      }
-      if (Array.isArray(error)) {
-        return error.join('\n');
-      }
-      if (typeof error === 'object') {
-        return Object.entries(error)
-          .map(([key, value]) => `${key}: ${value}`)
-          .join('\n');
-      }
-      return String(error);
-    }
 
-    tabs.forEach((tab) => {
-      tab.addEventListener('click', () => {
-        const target = tab.dataset.target;
-        tabs.forEach((btn) => {
-          const isActive = btn === tab;
-          btn.classList.toggle('active', isActive);
-          btn.setAttribute('aria-selected', String(isActive));
-        });
-        panels.forEach((panel) => {
-          panel.classList.toggle('active', panel.dataset.panel === target);
-        });
-      });
-    });
+      function toggleAuthPanel(show) {
+        if (!securityGate || !authPanel) return;
+        if (show) {
+          securityGate.classList.add('hidden');
+          authPanel.classList.remove('hidden');
+          const username = document.getElementById('loginUsername');
+          if (username) username.focus();
+        } else {
+          authPanel.classList.add('hidden');
+          securityGate.classList.remove('hidden');
+        }
+      }
 
-    if (securityContinue) {
-      securityContinue.addEventListener('click', async () => {
+      async function runSecurityCheck() {
+        if (!securityContinue) return;
+        if (securityContinue.disabled) return;
+
         securityContinue.disabled = true;
-        setStatus(securityStatus, 'Memverifikasi IP...', false);
+        securityContinue.classList.add('loading');
+        setStatus(securityStatus, 'Memvalidasi alamat IP…', 'info');
+
         try {
-          const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=security-check', {
+          const res = await fetch(`${ENDPOINT}?api=security-check`, {
             method: 'POST',
+            credentials: 'same-origin'
           });
           const data = await res.json();
-          if (!res.ok || !data.ok) {
-            throw new Error(data.error || 'Security check gagal.');
+          if (!res.ok || !data || !data.ok) {
+            const err = (data && (data.error || data.message)) || `HTTP ${res.status}`;
+            throw new Error(typeof err === 'string' ? err : JSON.stringify(err));
           }
-          const ipValue = document.getElementById('securityIp');
-          if (ipValue && data.ip) {
-            ipValue.textContent = data.ip;
-          }
-          setStatus(securityStatus, 'IP tervalidasi. Silakan lanjut.', false);
-          setTimeout(() => {
-            securityGate?.classList.add('hidden');
-            authPanel?.classList.remove('hidden');
-            setStatus(securityStatus, '');
-          }, 400);
-        } catch (error) {
-          setStatus(securityStatus, formatErrors(error.message), true);
+          setStatus(securityStatus, 'IP terverifikasi. Silakan login.', 'success');
+          toggleAuthPanel(true);
+        } catch (err) {
+          console.error('Security check gagal', err);
+          setStatus(securityStatus, `Security check gagal: ${err.message}`, 'error');
+        } finally {
+          securityContinue.classList.remove('loading');
           securityContinue.disabled = false;
         }
-      });
-    }
+      }
 
-    if (loginForm) {
-      loginForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (!loginSubmit) return;
-        setStatus(loginStatus, '');
-        loginSubmit.classList.add('loading');
-        loginSubmit.disabled = true;
-        try {
-          const formData = new FormData(loginForm);
-          const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=login', {
-            method: 'POST',
-            body: formData,
+      if (securityContinue) {
+        securityContinue.addEventListener('click', runSecurityCheck);
+      }
+
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const target = tab.dataset.target;
+          tabs.forEach(btn => {
+            btn.classList.toggle('active', btn === tab);
+            btn.setAttribute('aria-selected', btn === tab ? 'true' : 'false');
           });
-          const data = await res.json();
-          if (!res.ok || !data.ok) {
-            const error = data.error || 'Login gagal. Periksa kembali data kamu.';
-            setStatus(loginStatus, formatErrors(error), true);
+          panels.forEach(panel => {
+            panel.classList.toggle('active', panel.dataset.panel === target);
+          });
+        });
+      });
+
+      function formDataFrom(form) {
+        const out = {};
+        if (!form) return out;
+        new FormData(form).forEach((value, key) => {
+          if (typeof value === 'string') {
+            out[key] = value.trim();
           } else {
-            setStatus(loginStatus, 'Login berhasil! Mengalihkan...', false);
-            setTimeout(() => window.location.reload(), 600);
+            out[key] = value;
           }
-        } catch (err) {
-          setStatus(loginStatus, 'Terjadi kesalahan jaringan. Coba lagi.', true);
-        } finally {
-          loginSubmit.classList.remove('loading');
-          loginSubmit.disabled = false;
-        }
-      });
-    }
+        });
+        return out;
+      }
 
-    if (registerForm) {
-      registerForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (!registerSubmit) return;
-        setStatus(registerStatus, '');
-        registerSubmit.classList.add('loading');
-        registerSubmit.disabled = true;
-        try {
-          const formData = new FormData(registerForm);
-          const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=register', {
-            method: 'POST',
-            body: formData,
-          });
-          const data = await res.json();
-          if (!res.ok || !data.ok) {
-            const error = data.error || 'Registrasi gagal.';
-            setStatus(registerStatus, formatErrors(error), true);
-          } else {
-            setStatus(registerStatus, 'Registrasi berhasil! Silakan login.', false);
-            const loginUser = document.getElementById('loginUsername');
-            if (loginUser && registerForm.username) {
-              loginUser.value = registerForm.username.value;
-            }
-            tabs.forEach((tab) => {
-              const isLogin = tab.dataset.target === 'login';
-              tab.classList.toggle('active', isLogin);
-              tab.setAttribute('aria-selected', String(isLogin));
+      if (loginForm && loginSubmit) {
+        loginForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (loginSubmit.disabled) return;
+
+          const payload = formDataFrom(loginForm);
+          if (!payload.username || !payload.password) {
+            setStatus(loginStatus, 'Isi username dan password kamu.', 'error');
+            return;
+          }
+
+          loginSubmit.disabled = true;
+          loginSubmit.classList.add('loading');
+          setStatus(loginStatus, 'Memproses login…', 'info');
+
+          try {
+            const res = await fetch(`${ENDPOINT}?api=login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify(payload)
             });
-            panels.forEach((panel) => {
+            const data = await res.json();
+            if (!res.ok || !data || !data.ok) {
+              const err = data && (data.error || data.message) ? data.error || data.message : `HTTP ${res.status}`;
+              throw new Error(typeof err === 'string' ? err : JSON.stringify(err));
+            }
+            setStatus(loginStatus, 'Login berhasil! Mengarahkan…', 'success');
+            setTimeout(() => window.location.reload(), 650);
+          } catch (err) {
+            console.error('Login gagal', err);
+            setStatus(loginStatus, err.message || 'Login gagal. Coba lagi.', 'error');
+          } finally {
+            loginSubmit.disabled = false;
+            loginSubmit.classList.remove('loading');
+          }
+        });
+      }
+
+      if (registerForm && registerSubmit) {
+        registerForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (registerSubmit.disabled) return;
+
+          const payload = formDataFrom(registerForm);
+          if (!payload.freepik_api_key || !payload.username || !payload.email || !payload.password) {
+            setStatus(registerStatus, 'Lengkapi seluruh field registrasi.', 'error');
+            return;
+          }
+
+          registerSubmit.disabled = true;
+          registerSubmit.classList.add('loading');
+          setStatus(registerStatus, 'Memvalidasi API key…', 'info');
+
+          try {
+            const res = await fetch(`${ENDPOINT}?api=register`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok || !data || !data.ok) {
+              const err = data && (data.error || data.message) ? data.error || data.message : `HTTP ${res.status}`;
+              throw new Error(typeof err === 'string' ? err : JSON.stringify(err));
+            }
+            setStatus(registerStatus, 'Registrasi berhasil! Silakan login.', 'success');
+            registerForm.reset();
+            tabs.forEach(btn => {
+              const isLogin = btn.dataset.target === 'login';
+              btn.classList.toggle('active', isLogin);
+              btn.setAttribute('aria-selected', isLogin ? 'true' : 'false');
+            });
+            panels.forEach(panel => {
               panel.classList.toggle('active', panel.dataset.panel === 'login');
             });
-            registerForm.reset();
+          } catch (err) {
+            console.error('Registrasi gagal', err);
+            setStatus(registerStatus, err.message || 'Registrasi gagal. Periksa data kamu.', 'error');
+          } finally {
+            registerSubmit.disabled = false;
+            registerSubmit.classList.remove('loading');
           }
-        } catch (err) {
-          setStatus(registerStatus, 'Terjadi kesalahan jaringan. Coba lagi.', true);
-        } finally {
-          registerSubmit.classList.remove('loading');
-          registerSubmit.disabled = false;
-        }
-      });
-    }
+        });
+      }
+
+      if (!securityGate) {
+        authPanel?.classList.remove('hidden');
+      }
+    });
   </script>
-</body>
-</html>
+
 <?php
     exit;
 }
@@ -1073,231 +1325,528 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
   <title>Freepik Multi Suite – AI Hub + Filmmaker + UGC</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    :root {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color-scheme: dark;
-      --bg: #050509;
-      --card: #11121a;
-      --card-soft: #181926;
-      --accent: #6366f1;
-      --accent-soft: rgba(99, 102, 241, 0.15);
-      --border: #202236;
-      --text: #f9fafb;
-      --muted: #9ca3af;
-      --danger: #f97373;
-      --success: #4ade80;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: radial-gradient(circle at top, #1f2937 0, #02030a 55%, #000 100%);
-      color: var(--text);
-    }
-    body::before,
-    body::after {
-      content: "";
-      position: fixed;
-      inset: -40vh -40vw;
-      pointer-events: none;
-      background: radial-gradient(circle at center, rgba(99,102,241,0.18), transparent 55%);
-      opacity: 0.6;
-      filter: blur(60px);
-      animation: orbitGlow 28s linear infinite;
-      z-index: 0;
-    }
-    body::after {
-      animation-duration: 36s;
-      animation-direction: reverse;
-      background: radial-gradient(circle at center, rgba(34,197,94,0.18), transparent 55%);
-    }
-    @keyframes orbitGlow {
-      from { transform: rotate(0deg) scale(1.05); }
-      50% { transform: rotate(180deg) scale(1.15); }
-      to { transform: rotate(360deg) scale(1.05); }
-    }
 
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      padding: 10px 16px 6px;
-      background: rgba(5,5,12,0.96);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid rgba(31,41,55,0.7);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      column-gap: 12px;
-      row-gap: 10px;
-      flex-wrap: wrap;
-    }
-    .topbar-brand {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .topbar-title {
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-    }
-    .topbar-sub {
-      font-size: 11px;
-      color: var(--muted);
-    }
-    .topbar-tabs {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      justify-content: center;
-      flex: 1;
-    }
-    .topbar-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-left: auto;
-    }
-    .topbar-user {
-      font-size: 12px;
-      color: var(--muted);
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: rgba(148, 163, 184, 0.12);
-      border: 1px solid rgba(148, 163, 184, 0.18);
-    }
-    .logout-btn {
-      border-radius: 999px;
-      border: 1px solid rgba(99,102,241,0.35);
-      background: rgba(15,23,42,0.9);
-      color: var(--text);
-      font-size: 12px;
-      padding: 6px 14px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .logout-btn:hover {
-      border-color: rgba(129,140,248,0.7);
-      color: #e0e7ff;
-      box-shadow: 0 8px 22px rgba(79,70,229,0.35);
-    }
-    .logout-btn.loading {
-      opacity: 0.65;
-      pointer-events: none;
-    }
-    @media (max-width: 768px) {
-      .topbar {
-        justify-content: flex-start;
-      }
-      .topbar-actions {
-        width: 100%;
-        justify-content: flex-end;
-      }
-      .topbar-tabs {
-        width: 100%;
-        justify-content: flex-start;
-      }
-    }
-    .top-tab {
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: #020617;
-      color: var(--muted);
-      padding: 6px 14px;
-      font-size: 12px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      transition: all 0.25s ease;
-    }
-    .top-tab.active {
-      background: linear-gradient(135deg, #6366f1, #22c55e);
-      color: #020617;
-      border-color: transparent;
-      box-shadow: 0 8px 26px rgba(79,70,229,0.55);
-    }
-    .top-tab:not(.active):hover {
-      border-color: rgba(99,102,241,0.6);
-      color: var(--text);
-      box-shadow: 0 8px 26px rgba(79,70,229,0.25);
-    }
-    .top-tab .dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: var(--success);
-    }
+:root {
+  font-family: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: light;
+  --surface: #f3f5fb;
+  --sidebar-bg: rgba(255, 255, 255, 0.95);
+  --sidebar-border: rgba(226, 232, 240, 0.9);
+  --card: #ffffff;
+  --card-soft: #f8fafc;
+  --card-overlay: rgba(255, 255, 255, 0.92);
+  --border: rgba(226, 232, 240, 0.9);
+  --text: #0f172a;
+  --muted: rgba(71, 85, 105, 0.7);
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.16);
+  --danger: #ef4444;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --shadow: rgba(15, 23, 42, 0.08);
+  --halo-primary: rgba(37, 99, 235, 0.12);
+  --halo-secondary: rgba(14, 165, 233, 0.12);
+  --glass: rgba(255, 255, 255, 0.65);
+  --input-bg: #ffffff;
+  --input-border: rgba(203, 213, 225, 0.8);
+  --sidebar-text-muted: rgba(100, 116, 139, 0.8);
+  --stat-bg: rgba(37, 99, 235, 0.08);
+}
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  transition: background 0.35s ease, color 0.35s ease;
+}
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: -40vh -40vw;
+  pointer-events: none;
+  background: radial-gradient(circle at center, var(--halo-primary), transparent 60%);
+  opacity: 0.5;
+  filter: blur(140px);
+  animation: orbitGlow 32s linear infinite;
+  z-index: 0;
+}
+body::after {
+  animation-duration: 42s;
+  animation-direction: reverse;
+  background: radial-gradient(circle at center, var(--halo-secondary), transparent 65%);
+}
+@keyframes orbitGlow {
+  from { transform: rotate(0deg) scale(1.05); }
+  50% { transform: rotate(180deg) scale(1.08); }
+  to { transform: rotate(360deg) scale(1.05); }
+}
+body[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.16), transparent 55%), #050914;
+  --sidebar-bg: rgba(13, 16, 28, 0.92);
+  --sidebar-border: rgba(30, 41, 59, 0.8);
+  --card: rgba(15, 23, 42, 0.92);
+  --card-soft: rgba(17, 24, 39, 0.88);
+  --card-overlay: rgba(17, 24, 39, 0.9);
+  --border: rgba(51, 65, 85, 0.6);
+  --text: #f8fafc;
+  --muted: rgba(203, 213, 225, 0.75);
+  --accent: #6366f1;
+  --accent-soft: rgba(99, 102, 241, 0.22);
+  --danger: #f87171;
+  --success: #34d399;
+  --warning: #facc15;
+  --shadow: rgba(2, 6, 23, 0.55);
+  --halo-primary: rgba(99, 102, 241, 0.25);
+  --halo-secondary: rgba(14, 165, 233, 0.22);
+  --glass: rgba(15, 23, 42, 0.65);
+  --input-bg: rgba(15, 23, 42, 0.9);
+  --input-border: rgba(75, 85, 99, 0.6);
+  --sidebar-text-muted: rgba(148, 163, 184, 0.75);
+  --stat-bg: rgba(37, 99, 235, 0.18);
+}
+body[data-theme="light"] {
+  color-scheme: light;
+  --surface: #f3f5fb;
+  --sidebar-bg: rgba(255, 255, 255, 0.95);
+  --sidebar-border: rgba(226, 232, 240, 0.9);
+  --card: #ffffff;
+  --card-soft: #f8fafc;
+  --card-overlay: rgba(255, 255, 255, 0.95);
+  --border: rgba(226, 232, 240, 0.85);
+  --text: #0f172a;
+  --muted: rgba(71, 85, 105, 0.7);
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.16);
+  --danger: #ef4444;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --shadow: rgba(15, 23, 42, 0.08);
+  --halo-primary: rgba(79, 70, 229, 0.14);
+  --halo-secondary: rgba(16, 185, 129, 0.14);
+  --glass: rgba(255, 255, 255, 0.65);
+  --input-bg: #ffffff;
+  --input-border: rgba(203, 213, 225, 0.8);
+  --sidebar-text-muted: rgba(100, 116, 139, 0.8);
+  --stat-bg: rgba(37, 99, 235, 0.08);
+}
+* { box-sizing: border-box; }
+.workspace {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+}
+.workspace-main {
+  flex: 1;
+  margin-left: 260px;
+  padding: 36px 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  position: relative;
+  z-index: 1;
+}
+.overview-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 4px 0 8px;
+}
+.hero-text h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+}
+.hero-text p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.hero-actions {
+  display: flex;
+  gap: 12px;
+}
+.hero-actions .profile-topup {
+  justify-self: auto;
+  align-self: flex-start;
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 18px;
+}
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stat-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+.stat-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+.topbar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 28px 24px 32px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  backdrop-filter: blur(18px);
+  z-index: 30;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+}
+.topbar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.topbar-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.topbar-sub {
+  font-size: 12px;
+  color: var(--sidebar-text-muted);
+}
+.topbar-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.top-tab {
+  border-radius: 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sidebar-text-muted);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.2s ease, border 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+.top-tab .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.top-tab .nav-label {
+  flex: 1;
+  text-align: left;
+}
+.top-tab:hover {
+  transform: translateX(4px);
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--text);
+}
+.top-tab.active {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(14, 165, 233, 0.18));
+  border-color: rgba(37, 99, 235, 0.35);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.topbar-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.theme-toggle {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card-soft);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+.theme-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.14);
+}
+.theme-toggle.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.profile-card {
+  border-radius: 18px;
+  border: 1px solid rgba(37, 99, 235, 0.15);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.08));
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+}
+.profile-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.25), transparent 70%);
+  opacity: 0.4;
+  pointer-events: none;
+}
+.profile-card--alert {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.22), rgba(239, 68, 68, 0.18));
+}
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.profile-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.75), rgba(14, 165, 233, 0.6));
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4);
+  position: relative;
+  z-index: 1;
+}
+.profile-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  position: relative;
+  z-index: 1;
+}
+.profile-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(250, 204, 21, 0.18);
+  color: #b45309;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+body[data-theme="dark"] .profile-badge {
+  background: rgba(250, 204, 21, 0.22);
+  color: #facc15;
+}
+.profile-username {
+  font-size: 12px;
+  color: var(--muted);
+  position: relative;
+  z-index: 1;
+}
+.profile-credit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  position: relative;
+  z-index: 1;
+}
+body[data-theme="dark"] .profile-credit {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.profile-credit .credit-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.profile-credit .credit-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+.profile-credit .credit-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.profile-credit .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.25);
+}
+.profile-credit .status-dot.offline {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.3);
+}
+.profile-topup {
+  border-radius: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(59, 130, 246, 0.92));
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 9px 16px;
+  cursor: pointer;
+  box-shadow: 0 18px 32px rgba(37, 99, 235, 0.3);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.profile-topup:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 40px rgba(37, 99, 235, 0.32);
+}
+.logout-btn {
+  border-radius: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.7);
+  background: var(--card);
+  color: var(--text);
+  font-size: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+}
+.logout-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.16);
+}
+@media (max-width: 960px) {
+  .topbar {
+    position: fixed;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+    padding: 16px 20px;
+    border-right: none;
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+  .topbar-tabs {
+    flex-direction: row;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .topbar-actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+  .profile-card {
+    display: none;
+  }
+  .workspace-main {
+    margin-left: 0;
+    padding: 120px 20px 32px;
+  }
+  .overview-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .hero-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
 
     .app {
       display: grid;
-      grid-template-columns: 260px 1fr 320px;
-      gap: 18px;
-      min-height: calc(100vh - 50px);
-      padding: 12px 16px 16px;
-      position: relative;
-      z-index: 1;
+      grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+      gap: 24px;
+      align-items: flex-start;
     }
-    @media (max-width: 1100px) {
+    .app > .card,
+    .app > .card.main-layout,
+    .app > .card-soft {
+      grid-column: 1;
+    }
+    .app > .jobs-col {
+      grid-column: 2;
+    }
+    @media (max-width: 1200px) {
       .app { grid-template-columns: 1fr; }
+      .app > * { grid-column: 1; }
     }
 
     .card {
-      background: radial-gradient(circle at top left, #1e1b4b 0, var(--card) 55%);
-      border-radius: 14px;
+      background: var(--card);
+      border-radius: 18px;
       border: 1px solid var(--border);
-      padding: 14px 16px;
-      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.7);
+      padding: 20px 24px;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
       position: relative;
       overflow: hidden;
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
     }
-    .card::before {
-      content: "";
-      position: absolute;
-      inset: -30%;
-      background: conic-gradient(from 90deg, rgba(99,102,241,0.35), transparent 45%, rgba(34,197,94,0.25));
-      filter: blur(60px);
-      opacity: 0;
-      transition: opacity 0.4s ease;
-      animation: cardGlow 12s linear infinite;
-      z-index: 0;
-    }
+    .card::before { display: none; }
     .card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.75);
-    }
-    .card:hover::before {
-      opacity: 0.9;
-    }
-    @keyframes cardGlow {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-    @keyframes gradientShift {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
+      transform: translateY(-3px);
+      box-shadow: 0 28px 56px rgba(15, 23, 42, 0.15);
     }
     .card > * { position: relative; z-index: 1; }
+
     .card-soft {
       background: var(--card-soft);
-      border-radius: 12px;
+      border-radius: 18px;
       border: 1px solid var(--border);
-      padding: 12px 14px;
+      padding: 18px 20px;
       position: relative;
       overflow: hidden;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
     }
     .card-soft::before {
       content: "";
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(14,165,233,0.04));
+      background: linear-gradient(135deg, rgba(37,99,235,0.12), rgba(14,165,233,0.08));
       opacity: 0;
-      transition: opacity 0.4s ease;
+      transition: opacity 0.3s ease;
       z-index: 0;
     }
     .card-soft:hover::before {
@@ -1327,8 +1876,8 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       font-size: 11px;
       border-radius: 999px;
       padding: 4px 10px;
-      border: 1px solid rgba(148, 163, 184, 0.5);
-      background: radial-gradient(circle at top, #111827 0, #020617 70%);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: linear-gradient(135deg, rgba(37,99,235,0.16), rgba(14,165,233,0.1));
       color: var(--muted);
     }
     .dot-large {
@@ -1352,7 +1901,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       width: 100%;
       border-radius: 8px;
       border: 1px solid var(--border);
-      background: #020617;
+      background: var(--card);
       color: var(--text);
       font-size: 13px;
       padding: 7px 9px;
@@ -1368,7 +1917,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
     select:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.45);
-      background: #020617;
+      background: var(--card);
     }
     .field-row {
       display: flex;
@@ -1452,7 +2001,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       flex: 1 1 0;
       border-radius: 999px;
       border: 1px solid var(--border);
-      background: #020617;
+      background: var(--card-soft);
       color: var(--muted);
       font-size: 11px;
       padding: 6px 10px;
@@ -1463,10 +2012,10 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       overflow: hidden;
     }
     .feature-tab.active {
-      background: var(--accent-soft);
-      border-color: var(--accent);
+      background: linear-gradient(135deg, rgba(37,99,235,0.25), rgba(14,165,233,0.2));
+      border-color: rgba(37,99,235,0.4);
       color: var(--text);
-      box-shadow: 0 10px 30px rgba(79,70,229,0.35);
+      box-shadow: 0 16px 32px rgba(37,99,235,0.18);
     }
     .feature-tab::after {
       content: "";
@@ -1586,7 +2135,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       height: 6px;
     }
     .preview-item {
-      background: #020617;
+      background: var(--card);
       border-radius: 10px;
       border: 1px solid var(--border);
       padding: 6px;
@@ -1657,7 +2206,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       border-radius: 10px;
       border: 1px solid var(--border);
       padding: 8px 9px;
-      background: #020617;
+      background: var(--card);
       display: flex;
       flex-direction: column;
       gap: 4px;
@@ -1786,7 +2335,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       border-radius: 10px;
       border: 1px solid var(--border);
       object-fit: cover;
-      background: #020617;
+      background: var(--card);
     }
     .upload-status {
       font-size: 11px;
@@ -1931,7 +2480,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       gap: 10px;
       border-radius: 10px;
       border: 1px solid var(--border);
-      background: #020617;
+      background: var(--card);
       padding: 6px 8px;
     }
     .gemini-ref-thumb {
@@ -1988,7 +2537,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       .film-app { grid-template-columns: 1fr; }
     }
     .film-scenes-board {
-      background: radial-gradient(circle at top, #020617 0, #020617 60%);
+      background: linear-gradient(135deg, rgba(37,99,235,0.14), rgba(14,165,233,0.1));
       border-radius: 12px;
       border: 1px dashed rgba(75,85,99,0.8);
       padding: 16px;
@@ -2015,7 +2564,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       justify-content: center;
       margin: 0 auto 8px;
       font-size: 24px;
-      background: #020617;
+      background: var(--card);
     }
     .film-scenes-container {
       display: grid;
@@ -2023,7 +2572,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       gap: 10px;
     }
     .film-scene-card {
-      background: #020617;
+      background: var(--card);
       border-radius: 10px;
       border: 1px solid var(--border);
       padding: 8px;
@@ -2037,7 +2586,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       max-height: 220px;
       border-radius: 8px;
       object-fit: contain;
-      background: #020617;
+      background: var(--card);
     }
     .film-scene-header {
       display: flex;
@@ -2072,7 +2621,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       border: 1px dashed #4b5563;
       padding: 10px;
       text-align: center;
-      background: #020617;
+      background: var(--card);
       cursor: pointer;
       min-height: 120px;
       display: flex;
@@ -2102,7 +2651,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       font-size: 12px;
       border-radius: 999px;
       border: 1px solid var(--border);
-      background: #020617;
+      background: var(--card);
       color: var(--muted);
       padding: 6px 10px;
       cursor: pointer;
@@ -2137,7 +2686,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       .ugc-app { grid-template-columns: 1fr; }
     }
     .ugc-list-card {
-      background: radial-gradient(circle at top, #020617 0, #020617 60%);
+      background: linear-gradient(135deg, rgba(37,99,235,0.14), rgba(14,165,233,0.1));
       border-radius: 12px;
       border: 1px dashed rgba(75,85,99,0.8);
       padding: 12px 14px;
@@ -2156,7 +2705,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       color: var(--muted);
     }
     .ugc-row {
-      background: #020617;
+      background: var(--card);
       border-radius: 12px;
       border: 1px solid var(--border);
       display: grid;
@@ -2202,10 +2751,10 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       opacity: .8;
     }
     .ugc-video-card {
-      border-radius: 10px;
+      border-radius: 12px;
       border: 1px solid var(--border);
-      background: radial-gradient(circle at top,#111827,#020617);
-      padding: 8px;
+      background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.12));
+      padding: 10px;
       font-size: 11px;
       text-align: center;
       min-height: 80px;
@@ -2249,7 +2798,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       border-radius:8px;
       border:1px solid var(--border);
       object-fit:cover;
-      background:#020617;
+      background: var(--card);
       font-size:10px;
       display:flex;
       align-items:center;
@@ -2263,7 +2812,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       width: 100%;
       border-radius: 10px;
       border: 1px solid var(--border);
-      background: #020617;
+      background: var(--card);
       color: var(--text);
       padding: 10px 12px;
       display: flex;
@@ -2315,7 +2864,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       top: calc(100% + 6px);
       left: 0;
       right: 0;
-      background: #020617;
+      background: var(--card);
       border-radius: 12px;
       border: 1px solid rgba(71,85,105,0.8);
       box-shadow: 0 18px 35px rgba(15,23,42,0.5);
@@ -2399,7 +2948,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
     }
     .asset-preview.hidden { display: none; }
     .asset-preview-inner {
-      background: #020617;
+      background: var(--card);
       border-radius: 14px;
       border: 1px solid rgba(99,102,241,0.35);
       max-width: min(90vw, 960px);
@@ -2471,31 +3020,85 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
     }
   </style>
 </head>
-<body>
+<body data-theme="light">
 
-<div class="topbar">
+<div class="workspace">
+  <div class="topbar">
   <div class="topbar-brand">
     <div class="topbar-title">Freepik Multi Suite</div>
     <div class="topbar-sub">AI Hub • Filmmaker • UGC Tool</div>
   </div>
   <div class="topbar-tabs">
     <button class="top-tab active" data-target="viewHub">
-      <span class="dot"></span> AI Hub
+      <span class="dot"></span>
+      <span class="nav-label">Dashboard</span>
     </button>
     <button class="top-tab" data-target="viewFilm">
-      <span class="dot"></span> Filmmaker
+      <span class="dot"></span>
+      <span class="nav-label">Filmmaker</span>
     </button>
     <button class="top-tab" data-target="viewUGC">
-      <span class="dot"></span> UGC Tool
+      <span class="dot"></span>
+      <span class="nav-label">UGC Tool</span>
     </button>
   </div>
   <div class="topbar-actions">
-    <?php if ($currentUser !== ''): ?>
-      <span class="topbar-user">👤 <?= htmlspecialchars($currentUser, ENT_QUOTES) ?></span>
-    <?php endif; ?>
+    <button type="button" class="theme-toggle" id="themeToggle" aria-label="Toggle theme">☀️</button>
+    <div class="profile-card" id="profileCard">
+      <div class="profile-main">
+        <div class="profile-avatar" id="profileAvatar">FM</div>
+        <div class="profile-text">
+          <div class="profile-title">
+            <span class="profile-display" id="profileDisplay">User</span>
+            <span class="profile-badge" id="profileBadge">PRO</span>
+          </div>
+          <div class="profile-username" id="profileUsername">@username</div>
+        </div>
+      </div>
+      <div class="profile-credit">
+        <span class="credit-label">Credit</span>
+        <span class="credit-value" id="profileCoins">0</span>
+        <span class="credit-status"><span class="status-dot"></span><span id="profileStatusText">Live</span></span>
+      </div>
+      <button type="button" class="profile-topup" id="profileTopup">Top Up Credit</button>
+    </div>
     <button type="button" class="logout-btn" id="logoutButton">Keluar</button>
   </div>
 </div>
+
+  <main class="workspace-main">
+    <section class="overview-hero">
+      <div class="hero-text">
+        <h1>Dashboard Overview</h1>
+        <p>Selamat datang kembali! Pantau progress generate konten dan saldo koin kamu.</p>
+      </div>
+      <div class="hero-actions">
+        <button type="button" class="profile-topup" id="heroTopup">Top Up Credit</button>
+      </div>
+    </section>
+
+    <section class="stats-grid">
+      <article class="stat-card">
+        <span class="stat-label">Available Coins</span>
+        <span class="stat-value" id="statCoins">0</span>
+        <span class="stat-meta">Saldo aktif untuk semua generator</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">Videos Generated</span>
+        <span class="stat-value" id="statVideos">0</span>
+        <span class="stat-meta">Total job video yang berhasil</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">Images Generated</span>
+        <span class="stat-value" id="statImages">0</span>
+        <span class="stat-meta">Image & editing task selesai</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">Active Queue</span>
+        <span class="stat-value" id="statQueue">0</span>
+        <span class="stat-meta">Task yang masih diproses</span>
+      </article>
+    </section>
 
 <!-- ======================= AI HUB ======================= -->
 <div id="viewHub" class="app">
@@ -2915,6 +3518,9 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
   </div>
 </div>
 
+</main>
+</div>
+
 <div id="assetPreviewModal" class="asset-preview hidden">
   <div class="asset-preview-inner">
     <button type="button" id="assetPreviewClose" class="asset-preview-close">&times;</button>
@@ -2924,7 +3530,212 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
 </div>
 
 <script>
+  const themeToggle = document.getElementById('themeToggle');
+  const profileCard = document.getElementById('profileCard');
+  const profileDisplayEl = document.getElementById('profileDisplay');
+  const profileUsernameEl = document.getElementById('profileUsername');
+  const profileCoinsEl = document.getElementById('profileCoins');
+  const profileBadgeEl = document.getElementById('profileBadge');
+  const profileAvatarEl = document.getElementById('profileAvatar');
+  const profileStatusTextEl = document.getElementById('profileStatusText');
+  const profileTopupBtn = document.getElementById('profileTopup');
+  const heroTopupBtn = document.getElementById('heroTopup');
   const logoutButton = document.getElementById('logoutButton');
+  const statCoinsEl = document.getElementById('statCoins');
+  const statVideosEl = document.getElementById('statVideos');
+  const statImagesEl = document.getElementById('statImages');
+  const statQueueEl = document.getElementById('statQueue');
+
+  let currentAccount = null;
+  let currentTheme = 'light';
+
+  const COIN_COST_STANDARD = 1;
+  const COIN_COST_FILM_PER_SCENE = 1;
+  const COIN_COST_UGC = 1;
+  let jobs = [];
+  let modelConfigMap = {};
+
+  function updateDashboardStats() {
+    if (statCoinsEl) {
+      const coins = currentAccount && Number.isFinite(Number(currentAccount.coins))
+        ? Number(currentAccount.coins)
+        : 0;
+      statCoinsEl.textContent = coins.toLocaleString('id-ID');
+    }
+
+    const totalJobs = Array.isArray(jobs) ? jobs : [];
+    const queueCount = totalJobs.filter(job => !finalStatus(job.status)).length;
+    const completed = totalJobs.filter(job => finalStatus(job.status));
+
+    const videoCount = completed.filter(job => {
+      const cfg = modelConfigMap[job.modelId];
+      const type = job.type || (cfg && cfg.type);
+      return type === 'video';
+    }).length;
+
+    const imageCount = completed.filter(job => {
+      const cfg = modelConfigMap[job.modelId];
+      const type = job.type || (cfg && cfg.type);
+      return type === 'image' || type === 'edit';
+    }).length;
+
+    if (statVideosEl) statVideosEl.textContent = videoCount.toLocaleString('id-ID');
+    if (statImagesEl) statImagesEl.textContent = imageCount.toLocaleString('id-ID');
+    if (statQueueEl) statQueueEl.textContent = queueCount.toLocaleString('id-ID');
+  }
+
+  function applyTheme(theme) {
+    currentTheme = theme === 'light' ? 'light' : 'dark';
+    document.body.dataset.theme = currentTheme;
+    if (themeToggle) {
+      themeToggle.textContent = currentTheme === 'dark' ? '🌙' : '☀️';
+    }
+  }
+
+  function initialsFrom(name, username) {
+    const source = name && name.trim() ? name : username || '';
+    const words = source.split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      return username ? username.slice(0, 2).toUpperCase() : 'FM';
+    }
+    const letters = words.slice(0, 2).map(w => w[0]);
+    return letters.join('').toUpperCase();
+  }
+
+  function formatSubscriptionLabel(subscription) {
+    if (!subscription) return 'FREE';
+    return String(subscription).toUpperCase();
+  }
+
+  function updateProfileCard(account) {
+    if (!profileCard || !account) return;
+    const display = account.display_name || account.username || 'User';
+    const username = account.username ? `@${account.username}` : '';
+    const coins = Number.isFinite(Number(account.coins)) ? Number(account.coins) : 0;
+    const subscription = formatSubscriptionLabel(account.subscription);
+    const isBanned = !!account.is_banned;
+    const isBlocked = !!account.is_blocked;
+
+    if (profileDisplayEl) profileDisplayEl.textContent = display;
+    if (profileUsernameEl) profileUsernameEl.textContent = username;
+    if (profileCoinsEl) profileCoinsEl.textContent = coins;
+    if (profileBadgeEl) profileBadgeEl.textContent = subscription;
+    if (profileAvatarEl) profileAvatarEl.textContent = initialsFrom(display, account.username);
+
+    if (profileStatusTextEl) {
+      if (isBanned) {
+        profileStatusTextEl.textContent = 'Banned';
+      } else if (isBlocked) {
+        profileStatusTextEl.textContent = 'Blocked';
+      } else {
+        profileStatusTextEl.textContent = 'Live';
+      }
+    }
+
+    const statusDot = profileCard.querySelector('.status-dot');
+    if (statusDot) {
+      statusDot.classList.toggle('offline', isBanned || isBlocked);
+    }
+
+    profileCard.classList.toggle('profile-card--alert', isBanned || isBlocked);
+    updateDashboardStats();
+  }
+
+  async function fetchAccountState() {
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account', {
+      credentials: 'same-origin'
+    });
+    if (!res.ok) {
+      throw new Error('Gagal memuat akun (HTTP ' + res.status + ')');
+    }
+    const payload = await res.json();
+    if (!payload.ok) {
+      throw new Error(payload.error || 'Gagal memuat akun.');
+    }
+    return payload.data || {};
+  }
+
+  async function persistTheme(theme) {
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-theme', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ theme })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) || 'Gagal menyimpan tema.');
+    }
+    return data.data;
+  }
+
+  async function loadAccountState() {
+    try {
+      const account = await fetchAccountState();
+      currentAccount = account;
+      applyTheme(account.theme || currentTheme);
+      updateProfileCard(account);
+    } catch (err) {
+      console.warn('Tidak dapat memuat akun:', err);
+      applyTheme(currentTheme);
+    }
+  }
+
+  function ensureCoins(amount) {
+    if (!currentAccount) {
+      return false;
+    }
+    const balance = Number.isFinite(Number(currentAccount.coins)) ? Number(currentAccount.coins) : 0;
+    return balance >= amount;
+  }
+
+  async function spendCoins(amount) {
+    if (!amount || amount <= 0) return;
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-coins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ amount })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      const message = (data && data.error) ? JSON.stringify(data.error) : 'Koin tidak bisa diperbarui.';
+      throw new Error(message);
+    }
+    if (!currentAccount) currentAccount = {};
+    currentAccount.coins = data.data && typeof data.data.coins !== 'undefined' ? data.data.coins : currentAccount.coins;
+    updateProfileCard(currentAccount);
+  }
+
+  if (themeToggle) {
+    themeToggle.addEventListener('click', async () => {
+      const next = currentTheme === 'dark' ? 'light' : 'dark';
+      const previous = currentTheme;
+      applyTheme(next);
+      try {
+        const updated = await persistTheme(next);
+        if (updated) {
+          currentAccount = updated;
+          updateProfileCard(updated);
+        }
+      } catch (err) {
+        console.warn('Gagal menyimpan tema:', err);
+        applyTheme(previous);
+      }
+    });
+  }
+
+  const handleTopupClick = () => {
+    alert('Hubungi admin untuk melakukan top up credit.');
+  };
+
+  if (profileTopupBtn) {
+    profileTopupBtn.addEventListener('click', handleTopupClick);
+  }
+  if (heroTopupBtn) {
+    heroTopupBtn.addEventListener('click', handleTopupClick);
+  }
+
   if (logoutButton) {
     logoutButton.addEventListener('click', async () => {
       if (logoutButton.classList.contains('loading')) {
@@ -2956,6 +3767,8 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       }
     });
   }
+
+  loadAccountState();
 
   // ===== GEMINI MODES =====
   const GEMINI_MODE_META = {
@@ -3214,6 +4027,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       })
     }
   };
+  modelConfigMap = MODEL_CONFIG;
 
   const FEATURE_MODELS = {
     imageGen: ['gemini','imagen3','seedream4','fluxPro11'],
@@ -3223,7 +4037,8 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
   };
 
   const STORAGE_KEY = 'freepik_jobs_v1';
-  let jobs = loadJobs();
+  jobs = loadJobs();
+  updateDashboardStats();
   let activeJobId = null;
   let pollingTimers = {};
   let progressTimers = {};
@@ -3875,6 +4690,8 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       const activeJob = jobs.find(j => j.id === activeJobId);
       if (activeJob) syncStatusProgress(activeJob);
     }
+
+    updateDashboardStats();
   }
 
   function renderJobItem(job) {
@@ -4677,11 +5494,21 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       return;
     }
 
+    if (!currentAccount) {
+      setStatus('Data akun belum siap, coba lagi sesaat lagi.', 'err');
+      return;
+    }
+    if (!ensureCoins(COIN_COST_STANDARD)) {
+      setStatus('Koin kamu tidak cukup untuk generate.', 'err');
+      return;
+    }
+
     submitBtn.disabled = true;
     setStatus('Membuat task ke Freepik…');
 
     try {
       const { taskId, status, generated, extraUrl, references, geminiModeUsed } = await createTask(modelId);
+      await spendCoins(COIN_COST_STANDARD);
       const jobId = uuid();
 
       const job = {
@@ -5104,14 +5931,25 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       return;
     }
 
-    filmGenerateBtn.disabled = true;
-    filmScenes = [];
-    renderFilmScenes();
-
     const cfg = MODEL_CONFIG.gemini;
     const base64 = filmCharacterDataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 
     const scenePlans = buildFilmScenePlans(brief, count);
+    const requiredCoins = Math.max(1, scenePlans.length * COIN_COST_FILM_PER_SCENE);
+    if (!currentAccount) {
+      alert('Data akun belum siap. Muat ulang halaman.');
+      return;
+    }
+    if (!ensureCoins(requiredCoins)) {
+      alert('Koin kamu tidak cukup untuk generate film.');
+      return;
+    }
+
+    filmGenerateBtn.disabled = true;
+    filmScenes = [];
+    renderFilmScenes();
+
+    let successfulScenes = 0;
 
     for (const plan of scenePlans) {
       const scenePrompt = plan.prompt;
@@ -5127,34 +5965,55 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
         body.aspect_ratio = 'widescreen_16_9';
       }
 
+      let taskId = null;
+      let status = 'ERROR';
+      let success = false;
+
       try {
         const data = await callFreepik(cfg, body, 'POST');
-        let taskId = null;
-        let status = 'CREATED';
+        status = 'CREATED';
         if (data && data.data) {
           taskId = data.data.task_id || null;
           status  = data.data.status   || status;
         }
-        filmScenes.push({
-          index: plan.index,
-          prompt: scenePrompt,
-          meta: plan.meta,
-          taskId,
-          status,
-          url: null
-        });
+        success = true;
       } catch (err) {
         console.error(err);
-        filmScenes.push({
-          index: plan.index,
-          prompt: scenePrompt,
-          meta: plan.meta,
-          taskId: null,
-          status: 'ERROR',
-          url: null
-        });
+        status = 'ERROR';
       }
+
+      filmScenes.push({
+        index: plan.index,
+        prompt: scenePrompt,
+        meta: plan.meta,
+        taskId,
+        status,
+        url: null
+      });
+
+      if (success) {
+        const normalized = String(status || '').toUpperCase();
+        if (normalized !== 'ERROR' && normalized !== 'FAILED') {
+          successfulScenes += 1;
+        }
+      }
+
       renderFilmScenes();
+    }
+
+    const coinsToSpend = successfulScenes * COIN_COST_FILM_PER_SCENE;
+    if (coinsToSpend > 0) {
+      try {
+        await spendCoins(coinsToSpend);
+      } catch (err) {
+        console.error('Gagal mengurangi koin film:', err);
+        alert('Koin tidak dapat dikurangi: ' + err.message);
+        try {
+          await loadAccountState();
+        } catch (loadErr) {
+          console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+        }
+      }
     }
 
     startFilmPolling();
@@ -5634,8 +6493,17 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       alert('Minimal upload 1 product image.');
       return;
     }
+    if (!currentAccount) {
+      alert('Data akun belum siap. Muat ulang halaman.');
+      return;
+    }
     const styleKey = (ugcStyleValueInput && ugcStyleValueInput.value) || DEFAULT_UGC_STYLE_KEY;
     const brief = ugcBriefInput.value.trim() || 'Product UGC photo shot';
+    const requiredCoins = Math.max(1, UGC_IDEA_COUNT * COIN_COST_UGC);
+    if (!ensureCoins(requiredCoins)) {
+      alert('Koin kamu tidak cukup untuk generate UGC.');
+      return;
+    }
 
     ugcGenerateBtn.disabled = true;
     ugcItems = [];
@@ -5643,6 +6511,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
 
     const cfg = MODEL_CONFIG.gemini;
     const refs = buildUgcReferences();
+    let successfulIdeas = 0;
 
     for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
       const prompt = buildUgcImagePrompt(brief, styleKey, i);
@@ -5667,20 +6536,42 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
       if (refs.length) {
         body.reference_images = refs.slice();
       }
+      let success = false;
       try {
         const data = await callFreepik(cfg, body, 'POST');
         if (data && data.data) {
           item.taskId = data.data.task_id || null;
           item.status = data.data.status || 'CREATED';
         }
+        success = true;
       } catch (e) {
         console.error(e);
         item.status = 'ERROR';
+      }
+      if (success) {
+        const normalized = String(item.status || '').toUpperCase();
+        if (normalized !== 'ERROR' && normalized !== 'FAILED') {
+          successfulIdeas += 1;
+        }
       }
       renderUgcList();
     }
 
     if (ugcItems.some(s => s.taskId)) startUgcPolling();
+    const coinsToSpend = successfulIdeas * COIN_COST_UGC;
+    if (coinsToSpend > 0) {
+      try {
+        await spendCoins(coinsToSpend);
+      } catch (err) {
+        console.error('Gagal mengurangi koin UGC:', err);
+        alert('Koin tidak dapat dikurangi: ' + err.message);
+        try {
+          await loadAccountState();
+        } catch (loadErr) {
+          console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+        }
+      }
+    }
     ugcGenerateBtn.disabled = false;
   }
 
