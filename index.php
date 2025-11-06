@@ -6430,7 +6430,19 @@ body[data-theme="dark"] .profile-credit {
   function ensureSentence(text, fallback) {
     const base = (text || '').trim();
     if (!base) return fallback;
-    return /[.!?]$/.test(base) ? base : base + '.';
+    return /[.!?…]$/.test(base) ? base : base + '.';
+  }
+
+  function collapseWhitespace(text) {
+    return (text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function summarizeSceneSnippet(text) {
+    const cleaned = collapseWhitespace(text);
+    if (!cleaned) {
+      return 'Peristiwa penting yang mendorong cerita';
+    }
+    return cleaned.length > 140 ? cleaned.slice(0, 137) + '…' : cleaned;
   }
 
   function extractStoryPartsForScenes(brief, count) {
@@ -6471,7 +6483,13 @@ body[data-theme="dark"] .profile-credit {
 
   function buildFilmScenePlans(brief, count) {
     const parts = extractStoryPartsForScenes(brief, count);
-    const preset = FILM_STATE_LIBRARY[filmStateMode] || FILM_STATE_LIBRARY.auto;
+    const preset = getFilmStatePreset(filmStateMode);
+    const storyBriefSection = ensureSentence(summarizeSceneSnippet(brief), 'Story brief tidak tersedia.');
+    const filmStateSection = preset.key === 'auto'
+      ? 'AUTO STATE · Sistem menentukan treatment sinematik terbaik.'
+      : `${preset.label} · ${preset.prompt}`;
+    let previousSummary = 'Belum ada scene sebelumnya; buka cerita berdasarkan story brief.';
+
     return parts.map((part, idx) => {
       const index = idx + 1;
       const action = ensureSentence(capitalizeFirst(part), 'Describe the protagonist in action.');
@@ -6479,31 +6497,46 @@ body[data-theme="dark"] .profile-credit {
       const lighting = filmSceneLightingPresets[idx % filmSceneLightingPresets.length];
       const camera = filmSceneCameraAngles[idx % filmSceneCameraAngles.length];
       const mood = filmSceneMoods[idx % filmSceneMoods.length];
-      const continuity = idx === 0
-        ? 'Opening beat introducing the story.'
-        : filmNarrativeBeats[(idx - 1) % filmNarrativeBeats.length];
+      const nextSummary = idx + 1 < parts.length ? summarizeSceneSnippet(parts[idx + 1]) : null;
+      const prevSummaryForPrompt = previousSummary;
 
-      const promptLines = [`Scene ${index}: ${action}`];
-      promptLines.push(`Setting/environment: ${environment}.`);
-      promptLines.push(`Lighting: ${lighting}.`);
-      promptLines.push(`Camera style: ${camera}.`);
-      promptLines.push(`Mood: ${mood}.`);
-      promptLines.push(`Narrative continuity: ${continuity}`);
-      if (preset && preset.prompt) {
-        promptLines.push(`Overall filmmaking direction: ${preset.prompt}`);
-      }
-      promptLines.push('Maintain the protagonist consistent with the uploaded character reference.');
+      const beatIntro = ensureSentence(filmNarrativeBeats[idx % filmNarrativeBeats.length], 'Bangun ketegangan cerita.');
+      const reactionLine = idx === 0
+        ? 'Respon langsung terhadap premis story brief dan kenalkan motivasi utama tokoh'
+        : `Respon terhadap peristiwa sebelumnya: ${prevSummaryForPrompt}`;
+      const causeLine = nextSummary
+        ? `Picu aksi menuju adegan selanjutnya: ${nextSummary}`
+        : 'Berikan konsekuensi akhir yang menutup bab ini sekaligus membuka ruang refleksi';
+      const narrativeBeat = [
+        beatIntro,
+        ensureSentence(reactionLine, 'Respon terhadap adegan sebelumnya.'),
+        ensureSentence(causeLine, 'Picu aksi berikutnya.')
+      ].join(' ');
+
+      const currentSummary = ensureSentence(summarizeSceneSnippet(part), 'Adegan bergerak maju.');
+      previousSummary = currentSummary;
+
+      const previousLabel = index === 1 ? 'Scene Sebelumnya' : `Scene ${index - 1}`;
+      const promptSections = [
+        `[StoryBrief] ${storyBriefSection}`,
+        `[FilmmakerState] ${filmStateSection}`,
+        `[RINGKASAN Singkat ${previousLabel}] ${prevSummaryForPrompt}`,
+        `[NarrativeBeat Scene ${index}] ${narrativeBeat}`,
+        'characterReferences: gunakan gambar referensi karakter yang diupload agar tokoh konsisten.',
+        `Setting/environment: ${environment}. Lighting: ${lighting}. Camera style: ${camera}. Mood: ${mood}.`
+      ];
 
       return {
         index,
-        prompt: promptLines.join(' '),
+        prompt: promptSections.join(' '),
         meta: {
           action,
           environment,
           lighting,
           camera,
           mood,
-          continuity,
+          previousSummary: prevSummaryForPrompt,
+          narrativeBeat,
           theme: preset ? preset.label : 'AUTO STATE'
         }
       };
