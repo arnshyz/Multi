@@ -2779,6 +2779,75 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   let geminiMode = 'text';
   let geminiReferences = [];
 
+  function isHttpUrl(value) {
+    return typeof value === 'string' && /^https?:\/\//i.test(value);
+  }
+
+  function isDataImage(value) {
+    return typeof value === 'string' && /^data:image\//i.test(value);
+  }
+
+  function stripDataUrlPrefix(dataUrl) {
+    return typeof dataUrl === 'string'
+      ? dataUrl.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '')
+      : dataUrl;
+  }
+
+  async function fetchLocalImageAsBase64(url) {
+    const absolute = new URL(url, window.location.href).href;
+    const res = await fetch(absolute, {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Konversi base64 gagal'));
+      reader.onloadend = () => {
+        const result = reader.result;
+        if (typeof result === 'string') {
+          resolve(stripDataUrlPrefix(result));
+        } else {
+          reject(new Error('Pembacaan file tidak valid'));
+        }
+      };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function prepareGeminiReferenceImages(urls) {
+    const results = [];
+    for (const entry of urls) {
+      if (!entry) continue;
+      if (isDataImage(entry)) {
+        results.push(stripDataUrlPrefix(entry));
+        continue;
+      }
+      if (isHttpUrl(entry)) {
+        try {
+          const target = new URL(entry, window.location.href);
+          if (target.origin !== window.location.origin) {
+            results.push(entry);
+            continue;
+          }
+        } catch (err) {
+          // Jika URL tidak valid, lanjutkan ke percobaan fetch lokal di bawah
+        }
+      }
+
+      try {
+        const base64 = await fetchLocalImageAsBase64(entry);
+        results.push(base64);
+      } catch (err) {
+        throw new Error(`Gagal membaca referensi: ${err.message}`);
+      }
+    }
+    return results;
+  }
+
   function getGeminiMeta(mode = geminiMode) {
     return GEMINI_MODE_META[mode] || GEMINI_MODE_META.text;
   }
@@ -3770,7 +3839,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           refs.splice(meta.max);
         }
       }
-      formData.referenceImages = refs;
+      if (refs.length) {
+        try {
+          formData.referenceImages = await prepareGeminiReferenceImages(refs);
+        } catch (err) {
+          throw new Error('Gagal memproses gambar referensi: ' + err.message);
+        }
+      } else {
+        formData.referenceImages = [];
+      }
       formData.geminiMode = geminiMode;
       usedGeminiRefs = refs.slice();
       usedGeminiMode = geminiMode;
