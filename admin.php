@@ -141,6 +141,7 @@ if (isset($_GET['api'])) {
                 'meta' => $data['meta'],
                 'nextKey' => compute_next_key($data),
                 'activeKeyCount' => count_active_keys($data),
+                'platform' => auth_platform_admin_view($data['platform'] ?? null),
             ]);
             break;
 
@@ -327,6 +328,31 @@ if (isset($_GET['api'])) {
                 'meta' => $data['meta'],
                 'nextKey' => compute_next_key($data),
             ]);
+            break;
+
+        case 'setGenerator':
+            $payload = read_payload();
+            $key = isset($payload['key']) ? trim((string)$payload['key']) : '';
+            if ($key === '') {
+                respond_error('Key generator wajib diisi', 422);
+            }
+            $enabled = !empty($payload['enabled']);
+            $platform = auth_platform_set_generator($key, $enabled);
+            if (!$platform) {
+                respond_error('Gagal memperbarui generator atau key tidak ditemukan', 404);
+            }
+            respond_ok(['platform' => auth_platform_admin_view($platform)]);
+            break;
+
+        case 'setMaintenance':
+            $payload = read_payload();
+            $active = !empty($payload['active']);
+            $message = array_key_exists('message', $payload) ? (string)$payload['message'] : null;
+            $platform = auth_platform_set_maintenance($active, $message);
+            if (!$platform) {
+                respond_error('Gagal memperbarui status maintenance', 500);
+            }
+            respond_ok(['platform' => auth_platform_admin_view($platform)]);
             break;
 
         default:
@@ -557,6 +583,10 @@ if (isset($_GET['api'])) {
       transform: translateY(-1px);
       box-shadow: 0 12px 24px rgba(15,23,42,0.35);
     }
+    .btn.small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
     .list {
       display: flex;
       flex-direction: column;
@@ -689,6 +719,88 @@ if (isset($_GET['api'])) {
     .key-card.inactive {
       opacity: 0.72;
     }
+    .maintenance-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(99,102,241,0.14);
+      background: rgba(10,15,30,0.55);
+    }
+    .maintenance-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .maintenance-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .maintenance-status {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .generator-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .generator-card {
+      border-radius: 16px;
+      border: 1px solid rgba(148,163,184,0.22);
+      background: rgba(12,16,32,0.7);
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .generator-card.offline {
+      border-color: rgba(248,113,113,0.32);
+      box-shadow: 0 18px 32px rgba(248,113,113,0.08);
+    }
+    .generator-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .generator-name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .generator-desc {
+      font-size: 12px;
+      color: var(--muted);
+      max-width: 420px;
+    }
+    .generator-meta {
+      font-size: 11px;
+      color: rgba(148,163,184,0.7);
+    }
+    .generator-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .generator-status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: rgba(34,197,94,0.16);
+      color: #bbf7d0;
+    }
+    .generator-status-chip.off {
+      background: rgba(248,113,113,0.18);
+      color: #fecaca;
+    }
     @media (max-width: 640px) {
       body {
         padding: 24px 12px 40px;
@@ -807,6 +919,32 @@ if (isset($_GET['api'])) {
           <div class="empty">Belum ada API key tersimpan.</div>
         </div>
       </article>
+
+      <article class="panel panel-platform">
+        <header class="panel-header">
+          <div>
+            <h2>Platform & Maintenance</h2>
+            <span class="panel-sub">Kelola maintenance website & akses generator</span>
+          </div>
+          <p class="panel-meta">Nonaktifkan generator tertentu untuk user saat maintenance, admin tetap bisa menguji.</p>
+        </header>
+
+        <form id="maintenanceForm" class="maintenance-form">
+          <label class="maintenance-toggle" for="maintenanceActive">
+            <input type="checkbox" id="maintenanceActive" style="accent-color:#6366f1;">
+            Aktifkan mode maintenance website
+          </label>
+          <textarea id="maintenanceMessage" class="input" rows="2" placeholder="Pesan maintenance untuk user"></textarea>
+          <div class="maintenance-actions">
+            <button type="submit" class="btn primary small">Simpan Maintenance</button>
+            <span id="maintenanceStatus" class="maintenance-status"></span>
+          </div>
+        </form>
+
+        <div class="generator-list" id="generatorList">
+          <div class="empty">Tidak ada generator terdaftar.</div>
+        </div>
+      </article>
     </section>
   </div>
 
@@ -817,7 +955,11 @@ if (isset($_GET['api'])) {
         apiKeys: [],
         meta: { rollingIndex: 0 },
         nextKey: null,
-        activeKeyCount: 0
+        activeKeyCount: 0,
+        platform: {
+          maintenance: { active: false, message: '', updated_at: null },
+          generators: []
+        }
       };
 
       const toastEl = document.getElementById('toast');
@@ -841,6 +983,11 @@ if (isset($_GET['api'])) {
       const newKeyLabel = document.getElementById('newKeyLabel');
       const newKeyValue = document.getElementById('newKeyValue');
       const newKeyActive = document.getElementById('newKeyActive');
+      const maintenanceForm = document.getElementById('maintenanceForm');
+      const maintenanceToggle = document.getElementById('maintenanceActive');
+      const maintenanceMessage = document.getElementById('maintenanceMessage');
+      const maintenanceStatus = document.getElementById('maintenanceStatus');
+      const generatorList = document.getElementById('generatorList');
       let toastTimer = null;
 
       function showToast(message, type = 'info') {
@@ -910,6 +1057,48 @@ if (isset($_GET['api'])) {
         return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
       }
 
+      function defaultPlatformState() {
+        return {
+          maintenance: { active: false, message: '', updated_at: null },
+          generators: []
+        };
+      }
+
+      function normalizePlatform(platform) {
+        if (!platform || typeof platform !== 'object') {
+          return defaultPlatformState();
+        }
+        const maintenance = platform.maintenance && typeof platform.maintenance === 'object'
+          ? platform.maintenance
+          : {};
+        const normalized = {
+          maintenance: {
+            active: !!maintenance.active,
+            message: maintenance.message ? String(maintenance.message) : '',
+            updated_at: maintenance.updated_at || null,
+          },
+          generators: []
+        };
+        const items = Array.isArray(platform.generators)
+          ? platform.generators
+          : (platform.generators && typeof platform.generators === 'object'
+              ? Object.values(platform.generators)
+              : []);
+        items
+          .filter(item => item && typeof item === 'object')
+          .forEach(item => {
+            const key = item.key || item.id || '';
+            normalized.generators.push({
+              key,
+              label: item.label || key || 'Generator',
+              description: item.description || '',
+              enabled: !!item.enabled,
+              updated_at: item.updated_at || null,
+            });
+          });
+        return normalized;
+      }
+
       async function apiCall(action, payload = {}, method = 'POST') {
         const options = {
           method,
@@ -953,8 +1142,10 @@ if (isset($_GET['api'])) {
           state.meta = data.meta || { rollingIndex: 0 };
           state.nextKey = data.nextKey || null;
           state.activeKeyCount = data.activeKeyCount || 0;
+          state.platform = normalizePlatform(data.platform);
           renderAccounts();
           renderKeys();
+          renderPlatform();
         } catch (err) {
           handleApiError(err, 'Gagal memuat data');
         }
@@ -1119,6 +1310,131 @@ if (isset($_GET['api'])) {
 
           accountList.appendChild(card);
         });
+      }
+
+      function renderPlatform() {
+        const platform = normalizePlatform(state.platform);
+        state.platform = platform;
+
+        if (maintenanceToggle) {
+          maintenanceToggle.checked = !!platform.maintenance.active;
+        }
+
+        if (maintenanceMessage && document.activeElement !== maintenanceMessage) {
+          maintenanceMessage.value = platform.maintenance.message || '';
+        }
+
+        if (maintenanceStatus) {
+          maintenanceStatus.textContent = platform.maintenance.updated_at
+            ? `Update ${formatDate(platform.maintenance.updated_at)}`
+            : '';
+        }
+
+        if (!generatorList) {
+          return;
+        }
+
+        generatorList.innerHTML = '';
+        const items = platform.generators.slice().sort((a, b) => {
+          return (a.label || '').localeCompare(b.label || '');
+        });
+
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'Tidak ada generator terdaftar.';
+          generatorList.appendChild(empty);
+          return;
+        }
+
+        items.forEach(gen => {
+          const card = document.createElement('div');
+          card.className = 'generator-card';
+          if (!gen.enabled) {
+            card.classList.add('offline');
+          }
+
+          const info = document.createElement('div');
+          info.className = 'generator-info';
+
+          const name = document.createElement('div');
+          name.className = 'generator-name';
+          name.textContent = gen.label || gen.key || 'Generator';
+          info.appendChild(name);
+
+          if (gen.description) {
+            const desc = document.createElement('div');
+            desc.className = 'generator-desc';
+            desc.textContent = gen.description;
+            info.appendChild(desc);
+          }
+
+          const meta = document.createElement('div');
+          meta.className = 'generator-meta';
+          meta.textContent = gen.updated_at ? `Update ${formatDate(gen.updated_at)}` : 'Admin selalu punya akses';
+          info.appendChild(meta);
+
+          const statusChip = document.createElement('span');
+          statusChip.className = 'generator-status-chip' + (gen.enabled ? '' : ' off');
+          statusChip.textContent = gen.enabled ? 'Aktif untuk user' : 'Maintenance user';
+          info.appendChild(statusChip);
+
+          const actions = document.createElement('div');
+          actions.className = 'generator-actions';
+
+          const toggleBtn = document.createElement('button');
+          toggleBtn.type = 'button';
+          toggleBtn.className = 'btn small ' + (gen.enabled ? 'ghost' : 'primary');
+          if (gen.enabled) {
+            toggleBtn.classList.add('danger');
+            toggleBtn.textContent = 'Matikan untuk user';
+          } else {
+            toggleBtn.textContent = 'Aktifkan kembali';
+          }
+          toggleBtn.addEventListener('click', () => {
+            if (!gen.key) return;
+            updateGenerator(gen.key, !gen.enabled);
+          });
+
+          actions.appendChild(toggleBtn);
+
+          card.appendChild(info);
+          card.appendChild(actions);
+          generatorList.appendChild(card);
+        });
+      }
+
+      async function updateGenerator(key, enabled) {
+        if (!key) return;
+        try {
+          const json = await apiCall('setGenerator', { key, enabled });
+          const data = json.data || {};
+          if (data.platform) {
+            state.platform = normalizePlatform(data.platform);
+            renderPlatform();
+          }
+          showToast('Status generator diperbarui', 'success');
+        } catch (err) {
+          handleApiError(err, 'Gagal memperbarui generator');
+        }
+      }
+
+      async function submitMaintenance() {
+        const payload = {
+          active: maintenanceToggle ? !!maintenanceToggle.checked : false,
+          message: maintenanceMessage ? maintenanceMessage.value : ''
+        };
+        try {
+          const json = await apiCall('setMaintenance', payload);
+          const data = json.data || {};
+          if (data.platform) {
+            state.platform = normalizePlatform(data.platform);
+            renderPlatform();
+          }
+          showToast('Status maintenance disimpan', 'success');
+        } catch (err) {
+          handleApiError(err, 'Gagal menyimpan maintenance');
+        }
       }
 
       function renderKeys() {
@@ -1382,6 +1698,13 @@ if (isset($_GET['api'])) {
           handleApiError(err, 'Gagal menambah API key');
         }
       });
+
+      if (maintenanceForm) {
+        maintenanceForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          await submitMaintenance();
+        });
+      }
 
       keyList.addEventListener('click', async (event) => {
         const target = event.target;

@@ -10,6 +10,57 @@
     "updated_at": null
   },
   "accounts": [],
+  "platform": {
+    "maintenance": {
+      "active": false,
+      "message": "Website sedang maintenance. Kami segera kembali!",
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    "generators": {
+      "imageGen": {
+        "key": "imageGen",
+        "label": "Image Generator",
+        "description": "Generate image assets dari prompt teks.",
+        "enabled": true,
+        "updated_at": "2024-01-01T00:00:00Z"
+      },
+      "imageEdit": {
+        "key": "imageEdit",
+        "label": "Image Editing",
+        "description": "Edit dan upscale image menggunakan Freepik tools.",
+        "enabled": true,
+        "updated_at": "2024-01-01T00:00:00Z"
+      },
+      "videoGen": {
+        "key": "videoGen",
+        "label": "Video Generator",
+        "description": "Buat video otomatis dari prompt dan referensi.",
+        "enabled": true,
+        "updated_at": "2024-01-01T00:00:00Z"
+      },
+      "lipsync": {
+        "key": "lipsync",
+        "label": "Lipsync Studio",
+        "description": "Sinkronisasi bibir otomatis dari video dan audio.",
+        "enabled": true,
+        "updated_at": "2024-01-01T00:00:00Z"
+      },
+      "filmmaker": {
+        "key": "filmmaker",
+        "label": "Filmmaker",
+        "description": "Generator rangkaian scene sinematik.",
+        "enabled": true,
+        "updated_at": "2024-01-01T00:00:00Z"
+      },
+      "ugc": {
+        "key": "ugc",
+        "label": "UGC Tool",
+        "description": "Generator ide konten UGC dan animasi.",
+        "enabled": true,
+        "updated_at": "2024-01-01T00:00:00Z"
+      }
+    }
+  },
   "security": {
     "ipChecks": [],
     "updated_at": "2024-01-01T00:00:00Z"
