@@ -1734,6 +1734,10 @@ body {
   transition: background 0.35s ease, color 0.35s ease;
 }
 
+.app-view[hidden] {
+  display: none !important;
+}
+
 button,
 .drive-actions a {
   transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.18s ease, color 0.25s ease;
@@ -2165,6 +2169,38 @@ body[data-theme="light"] {
 }
 .stat-meta {
   font-size: 11px;
+  color: var(--muted);
+}
+
+
+.account-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.account-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26px 28px;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(14,165,233,0.06));
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  gap: 18px;
+}
+
+.account-hero h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.account-hero p {
+  margin: 0;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -2887,6 +2923,52 @@ body[data-theme="light"] .profile-credit {
   }
   .profile-card {
     display: none;
+  }
+  .profile-card--mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 22px;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+  }
+  .profile-card--mobile .profile-main {
+    align-items: center;
+  }
+  .profile-card--mobile .profile-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+  .mobile-coin-banner {
+    display: flex;
+  }
+  .account-view {
+    gap: 20px;
+  }
+  .account-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    padding: 22px 24px;
+  }
+  .account-settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .avatar-row {
+    grid-template-columns: 1fr;
+  }
+  .avatar-preview {
+    margin: 0 auto;
+    max-width: 140px;
+  }
+  .account-save-btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+    align-self: stretch;
   }
   .profile-card--mobile {
     display: flex;
@@ -4568,6 +4650,12 @@ body[data-theme="light"] .profile-credit {
       </span>
       <span class="nav-label">Dashboard</span>
     </button>
+    <button class="sidebar-link" data-target="viewAccount">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M10.325 4.317a1 1 0 0 1 .987-.817h1.376a1 1 0 0 1 .987.817l.287 1.436a1 1 0 0 0 .96.804l1.45.055a1 1 0 0 1 .939.734l.345 1.31a1 1 0 0 1-.276.98l-1.07 1.026a1 1 0 0 0-.3.95l.332 1.406a1 1 0 0 1-.6 1.141l-1.307.522a1 1 0 0 0-.62.83l-.135 1.452a1 1 0 0 1-.995.915h-1.38a1 1 0 0 1-.994-.915l-.135-1.452a1 1 0 0 0-.62-.83l-1.307-.522a1 1 0 0 1-.6-1.141l.332-1.406a1 1 0 0 0-.3-.95l-1.07-1.026a1 1 0 0 1-.276-.98l.345-1.31a1 1 0 0 1 .939-.734l1.45-.055a1 1 0 0 0 .96-.804z" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="3" stroke-linecap="round" stroke-linejoin="round"></circle></svg>
+      </span>
+      <span class="nav-label">Pengaturan Akun</span>
+    </button>
     <button class="sidebar-link hidden" data-target="viewDrive" id="driveNavButton">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l1.5 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"></path><path d="M3 11h18" stroke-linecap="round"></path></svg>
@@ -4649,7 +4737,7 @@ body[data-theme="light"] .profile-credit {
       </div>
       <button type="button" class="profile-topup mobile-coin-topup" id="mobileCoinTopup">Top Up</button>
     </div>
-    <div id="viewDashboard" class="dashboard-view">
+    <div id="viewDashboard" class="dashboard-view app-view">
       <section class="overview-hero">
         <div class="hero-text">
           <h1>Dashboard Overview</h1>
@@ -4683,12 +4771,82 @@ body[data-theme="light"] .profile-credit {
         </article>
       </section>
 
+      <div class="profile-card profile-card--mobile" id="profileCardMobile">
+        <div class="profile-main">
+          <div class="profile-avatar" id="profileAvatarMobile">FM</div>
+          <div class="profile-text">
+            <div class="profile-title">
+              <span class="profile-display" id="profileDisplayMobile">User</span>
+              <span class="profile-badge" id="profileBadgeMobile">PRO</span>
+            </div>
+            <div class="profile-username" id="profileUsernameMobile">@username</div>
+          </div>
+        </div>
+        <div class="profile-credit">
+          <span class="credit-label">Credit</span>
+          <span class="credit-value" id="profileCoinsMobile">0</span>
+          <span class="credit-status"><span class="status-dot"></span><span id="profileStatusMobile">Live</span></span>
+        </div>
+        <button type="button" class="profile-topup" id="profileTopupMobile">Top Up Credit</button>
+      </div>
+    </div>
+
+    <div id="viewDrive" class="drive-view app-view" hidden>
+      <section class="drive-header">
+        <div>
+          <h1>Creative Drive</h1>
+          <p>Simpan dan kelola seluruh hasil generate foto &amp; video kamu di satu tempat.</p>
+        </div>
+        <div class="drive-meta">
+          <span id="driveTotalCount">0 file</span>
+          <span>&bull;</span>
+          <span id="driveTypeSummary">0 foto • 0 video</span>
+        </div>
+      </section>
+
+      <section class="drive-filters">
+        <div class="drive-filter">
+          <label for="driveTypeFilter">Tipe konten</label>
+          <select id="driveTypeFilter">
+            <option value="all">Semua</option>
+            <option value="image">Foto</option>
+            <option value="video">Video</option>
+          </select>
+        </div>
+        <div class="drive-filter">
+          <label for="driveDateFilter">Tanggal</label>
+          <input type="date" id="driveDateFilter">
+        </div>
+        <div class="drive-filter">
+          <label for="driveSortFilter">Urutkan</label>
+          <select id="driveSortFilter">
+            <option value="newest">Terbaru</option>
+            <option value="oldest">Terlama</option>
+          </select>
+        </div>
+        <button type="button" class="small secondary drive-clear-date" id="driveClearDate">Reset tanggal</button>
+      </section>
+
+      <section class="drive-content">
+        <div id="driveEmpty" class="drive-empty">Belum ada file tersimpan. Generate konten untuk mengisi drive pribadi kamu.</div>
+        <div id="driveGrid" class="drive-grid"></div>
+      </section>
+    </div>
+
+    <div id="viewAccount" class="account-view app-view" hidden>
+      <section class="account-hero">
+        <div>
+          <h1>Pengaturan Akun</h1>
+          <p>Kelola foto profil dan keamanan password kamu dari satu tempat.</p>
+        </div>
+      </section>
+
       <section class="account-settings" aria-labelledby="accountSettingsTitle">
         <div class="card-soft account-settings-card">
           <div class="header" id="accountSettingsTitle">
             <div>
-              <div class="title" style="font-size:16px">Pengaturan Akun</div>
-              <div class="subtitle">Perbarui foto profil dan password kamu</div>
+              <div class="title" style="font-size:16px">Profil &amp; Keamanan</div>
+              <div class="subtitle">Perbarui avatar serta ubah password secara aman.</div>
             </div>
           </div>
 
@@ -4734,71 +4892,10 @@ body[data-theme="light"] .profile-credit {
           </div>
         </div>
       </section>
-
-      <div class="profile-card profile-card--mobile" id="profileCardMobile">
-        <div class="profile-main">
-          <div class="profile-avatar" id="profileAvatarMobile">FM</div>
-          <div class="profile-text">
-            <div class="profile-title">
-              <span class="profile-display" id="profileDisplayMobile">User</span>
-              <span class="profile-badge" id="profileBadgeMobile">PRO</span>
-            </div>
-            <div class="profile-username" id="profileUsernameMobile">@username</div>
-          </div>
-        </div>
-        <div class="profile-credit">
-          <span class="credit-label">Credit</span>
-          <span class="credit-value" id="profileCoinsMobile">0</span>
-          <span class="credit-status"><span class="status-dot"></span><span id="profileStatusMobile">Live</span></span>
-        </div>
-        <button type="button" class="profile-topup" id="profileTopupMobile">Top Up Credit</button>
-      </div>
-    </div>
-
-    <div id="viewDrive" class="drive-view" style="display:none">
-      <section class="drive-header">
-        <div>
-          <h1>Creative Drive</h1>
-          <p>Simpan dan kelola seluruh hasil generate foto &amp; video kamu di satu tempat.</p>
-        </div>
-        <div class="drive-meta">
-          <span id="driveTotalCount">0 file</span>
-          <span>&bull;</span>
-          <span id="driveTypeSummary">0 foto • 0 video</span>
-        </div>
-      </section>
-
-      <section class="drive-filters">
-        <div class="drive-filter">
-          <label for="driveTypeFilter">Tipe konten</label>
-          <select id="driveTypeFilter">
-            <option value="all">Semua</option>
-            <option value="image">Foto</option>
-            <option value="video">Video</option>
-          </select>
-        </div>
-        <div class="drive-filter">
-          <label for="driveDateFilter">Tanggal</label>
-          <input type="date" id="driveDateFilter">
-        </div>
-        <div class="drive-filter">
-          <label for="driveSortFilter">Urutkan</label>
-          <select id="driveSortFilter">
-            <option value="newest">Terbaru</option>
-            <option value="oldest">Terlama</option>
-          </select>
-        </div>
-        <button type="button" class="small secondary drive-clear-date" id="driveClearDate">Reset tanggal</button>
-      </section>
-
-      <section class="drive-content">
-        <div id="driveEmpty" class="drive-empty">Belum ada file tersimpan. Generate konten untuk mengisi drive pribadi kamu.</div>
-        <div id="driveGrid" class="drive-grid"></div>
-      </section>
     </div>
 
 <!-- ======================= AI HUB ======================= -->
-<div id="viewHub" class="hub-app" style="display:none">
+<div id="viewHub" class="hub-app app-view" hidden>
   <div class="hub-column">
     <div class="card">
       <div class="header">
@@ -5043,7 +5140,7 @@ body[data-theme="light"] .profile-credit {
 </div>
 
 <!-- ======================= FILMMAKER ======================= -->
-<div id="viewFilm" class="film-app" style="display:none">
+<div id="viewFilm" class="film-app app-view" hidden>
   <div class="card">
     <div class="header">
       <div>
@@ -5147,7 +5244,7 @@ body[data-theme="light"] .profile-credit {
 </div>
 
 <!-- ======================= UGC TOOL ======================= -->
-<div id="viewUGC" class="ugc-app" style="display:none">
+<div id="viewUGC" class="ugc-app app-view" hidden>
   <div class="card-soft">
     <div class="header" style="margin-bottom:6px">
       <div>
@@ -7086,6 +7183,8 @@ body[data-theme="light"] .profile-credit {
   let viewHubSection = null;
   let viewFilmSection = null;
   let viewUGCSection = null;
+  let viewAccountSection = null;
+  let viewSections = {};
 
   const rowPrompt      = document.getElementById('rowPrompt');
   const rowImageUrl    = document.getElementById('rowImageUrl');
@@ -8528,6 +8627,15 @@ body[data-theme="light"] .profile-credit {
   viewHubSection = document.getElementById('viewHub');
   viewFilmSection = document.getElementById('viewFilm');
   viewUGCSection = document.getElementById('viewUGC');
+  viewAccountSection = document.getElementById('viewAccount');
+  viewSections = {
+    viewDashboard: viewDashboardSection,
+    viewAccount: viewAccountSection,
+    viewDrive: viewDriveSection,
+    viewHub: viewHubSection,
+    viewFilm: viewFilmSection,
+    viewUGC: viewUGCSection
+  };
 
   updateNavAvailability();
   updateFeatureTabsAvailability();
@@ -8538,6 +8646,20 @@ body[data-theme="light"] .profile-credit {
       const isHub = btn.dataset.target === 'viewHub';
       const matches = btn.dataset.target === target && (!isHub || (btn.dataset.feature || 'imageGen') === (featureKey || 'imageGen'));
       btn.classList.toggle('active', matches);
+    });
+  }
+
+  function setActiveView(target) {
+    Object.entries(viewSections).forEach(([key, el]) => {
+      if (!el) return;
+      const isActive = key === target;
+      if (isActive) {
+        el.style.display = '';
+        el.removeAttribute('hidden');
+      } else {
+        el.style.display = 'none';
+        el.setAttribute('hidden', '');
+      }
     });
   }
 
@@ -8560,11 +8682,7 @@ body[data-theme="light"] .profile-credit {
       }
     }
 
-    if (viewDashboardSection) viewDashboardSection.style.display = target === 'viewDashboard' ? '' : 'none';
-    if (viewDriveSection) viewDriveSection.style.display = target === 'viewDrive' ? '' : 'none';
-    if (viewHubSection) viewHubSection.style.display = target === 'viewHub' ? '' : 'none';
-    if (viewFilmSection) viewFilmSection.style.display = target === 'viewFilm' ? '' : 'none';
-    if (viewUGCSection) viewUGCSection.style.display = target === 'viewUGC' ? '' : 'none';
+    setActiveView(target);
 
     if (target === 'viewHub') {
       setFeature(resolvedFeatureKey || 'imageGen');
