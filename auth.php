@@ -544,17 +544,18 @@ function auth_validate_freepik_api_key(string $key, ?string &$error = null): boo
 
 function auth_probe_freepik_api_key(string $key): array
 {
-    $error = null;
+    $url = 'https://api.freepik.com/v1/ai/models';
+    $userAgent = 'Freepik-Key-Validator/1.1';
 
     if (function_exists('curl_init')) {
-        $ch = curl_init('https://api.freepik.com/v2/resources?limit=1');
+        $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 8);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Authorization: Bearer ' . $key,
+            'x-freepik-api-key: ' . $key,
             'Accept: application/json',
         ]);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Freepik-Key-Validator/1.0');
+        curl_setopt($ch, CURLOPT_USERAGENT, $userAgent);
 
         $response = curl_exec($ch);
         if ($response === false) {
@@ -574,37 +575,42 @@ function auth_probe_freepik_api_key(string $key): array
             return [false, 'Freepik menolak API key (HTTP ' . $status . ').', false];
         }
 
-        return [false, 'Freepik mengembalikan HTTP ' . $status . '.', false];
+        if ($status === 404) {
+            return [false, 'Endpoint verifikasi Freepik tidak ditemukan (HTTP 404).', true];
+        }
+
+        return [false, 'Freepik mengembalikan HTTP ' . $status . '.', true];
     }
 
     // cURL not available, attempt using file_get_contents
     $context = stream_context_create([
         'http' => [
             'method' => 'GET',
-            'header' => "Authorization: Bearer {$key}\r\nAccept: application/json\r\nUser-Agent: Freepik-Key-Validator/1.0\r\n",
+            'header' => "x-freepik-api-key: {$key}\r\nAccept: application/json\r\nUser-Agent: {$userAgent}\r\n",
             'timeout' => 8,
         ],
     ]);
 
-    $result = @file_get_contents('https://api.freepik.com/v2/resources?limit=1', false, $context);
+    $result = @file_get_contents($url, false, $context);
     if ($result === false) {
         return [false, 'Tidak dapat menghubungi Freepik.', true];
     }
 
     if (isset($http_response_header) && is_array($http_response_header)) {
-        foreach ($http_response_header as $header) {
-            if (stripos($header, 'HTTP/') === 0) {
-                if (preg_match('/\s(\d{3})\s/', $header, $matches)) {
-                    $status = (int)$matches[1];
-                    if ($status >= 200 && $status < 300) {
-                        return [true, null, false];
-                    }
-                    if (in_array($status, [401, 403], true)) {
-                        return [false, 'Freepik menolak API key (HTTP ' . $status . ').', false];
-                    }
-
-                    return [false, 'Freepik mengembalikan HTTP ' . $status . '.', false];
+        foreach ($http_response_header as $headerLine) {
+            if (stripos($headerLine, 'HTTP/') === 0 && preg_match('/\s(\d{3})\s/', $headerLine, $matches)) {
+                $status = (int)$matches[1];
+                if ($status >= 200 && $status < 300) {
+                    return [true, null, false];
                 }
+                if (in_array($status, [401, 403], true)) {
+                    return [false, 'Freepik menolak API key (HTTP ' . $status . ').', false];
+                }
+                if ($status === 404) {
+                    return [false, 'Endpoint verifikasi Freepik tidak ditemukan (HTTP 404).', true];
+                }
+
+                return [false, 'Freepik mengembalikan HTTP ' . $status . '.', true];
             }
         }
     }
