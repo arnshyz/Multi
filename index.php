@@ -13,8 +13,8 @@ function auth_json_response($payload, $status = 200)
 
 // ====== CONFIG FREEPIK ======
 $FREEPIK_API_KEYS = [
-    getenv('FREEPIK_API_KEY_1') ?: 'FPSX06967c376cb6d87d9c551ccb33ed4d56',
-    getenv('FREEPIK_API_KEY_2') ?: 'REPLACE_WITH_API_KEY_2',
+    getenv('FREEPIK_API_KEY_1') ?: 'FPSXbcc5610f664682840d2dfd832d74fc03',
+    getenv('FREEPIK_API_KEY_2') ?: 'FPSX06967c376cb6d87d9c551ccb33ed4d56',
     getenv('FREEPIK_API_KEY_3') ?: 'REPLACE_WITH_API_KEY_3',
     getenv('FREEPIK_API_KEY_4') ?: 'REPLACE_WITH_API_KEY_4',
     getenv('FREEPIK_API_KEY_5') ?: 'REPLACE_WITH_API_KEY_5',
@@ -822,7 +822,7 @@ if (!auth_is_logged_in()) {
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>Masuk · Freepik Multi Suite</title>
+  <title>Masuk · AKAY NUSANTARA </title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root {
@@ -1211,22 +1211,23 @@ if (!auth_is_logged_in()) {
       <div class="security-alert" role="alert">
         <span class="security-icon" aria-hidden="true">⚠️</span>
         <div class="security-copy">
-          <h1>Security Check</h1>
-          <p>Validasi alamat IP kamu sebelum memasuki Freepik Multi Suite.</p>
+          <h1>AKAY NUSANTARA - Security Check</h1>
+          <p>Validasi alamat IP kamu sebelum memasuki Dashboard Generator.</p>
         </div>
       </div>
       <div class="ip-panel">
         <span class="ip-label">Your IP Address</span>
         <span class="ip-value" id="securityIp"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
-        <span class="ip-note">Aktivitas login dipantau untuk mencegah pembagian tidak sah.</span>
+        <span class="ip-note">Aktivitas login kamu dipantau untuk mencegah pembagian tidak sah.</span>
       </div>
       <button type="button" id="securityContinue">Lanjutkan</button>
+       <span class="ip-note">Dikembangkan oleh AKAY STUDIO</span>
       <div class="security-status" id="securityStatus"></div>
     </section>
 
     <main class="auth-card main hidden" id="authPanel">
       <header class="auth-header">
-        <h1>Freepik Multi Suite</h1>
+        <h1>AKAY NUSANTARA</h1>
         <p>Masuk dengan akun kamu atau registrasi cepat menggunakan Freepik API key aktif.</p>
       </header>
       <div class="login-ip-stamp">
@@ -1464,7 +1465,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>Freepik Multi Suite – AI Hub + Filmmaker + UGC</title>
+  <title>AKAY Generator – AI Hub + Filmmaker + UGC</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
 
@@ -3783,7 +3784,7 @@ body[data-theme="dark"] .profile-credit {
   </button>
   <div class="sidebar">
   <div class="sidebar-brand">
-    <div class="sidebar-title">Freepik Multi Suite</div>
+    <div class="sidebar-title">AKAY-AI V2</div>
     <div class="sidebar-sub">AI Hub • Filmmaker • UGC Tool</div>
   </div>
   <nav class="sidebar-nav">
@@ -3880,7 +3881,7 @@ body[data-theme="dark"] .profile-credit {
 
       <section class="stats-grid">
         <article class="stat-card">
-          <span class="stat-label">Available Coins</span>
+          <span class="stat-label">Saldo Kredit Aktif Kamu</span>
           <span class="stat-value" id="statCoins">0</span>
           <span class="stat-meta">Saldo aktif untuk semua generator</span>
         </article>
@@ -3950,7 +3951,7 @@ body[data-theme="dark"] .profile-credit {
     <div class="card">
       <div class="header">
         <div>
-          <div class="title">Freepik AI Studio</div>
+          <div class="title">AKAY-AI Studio</div>
           <div class="subtitle">
             <span id="featureLabel">Image Generator</span> · Single PHP • Multi model Freepik
           </div>
@@ -4320,7 +4321,7 @@ body[data-theme="dark"] .profile-credit {
           <input id="ugcProductInput" type="file" accept="image/*" multiple style="display:none">
           <div class="film-drop-inner">
             <div style="margin-bottom:4px;">Click, drag &amp; drop, atau paste</div>
-            <span>PNG, JPG · max 3 images</span>
+            <span>PNG, JPG · max 3 images (3 Foto Produk Kamu)</span>
           </div>
         </div>
         <div id="ugcProductPreview" class="ugc-product-preview"></div>
@@ -4332,7 +4333,7 @@ body[data-theme="dark"] .profile-credit {
           <input id="ugcModelInput" type="file" accept="image/*" style="display:none">
           <div id="ugcModelIdle" class="film-drop-inner">
             <div style="margin-bottom:4px;">Click, drag &amp; drop, atau paste</div>
-            <span>PNG, JPG · 1 image</span>
+            <span>PNG, JPG · 1 image (1 Foto Model)</span>
           </div>
           <img id="ugcModelPreview" class="film-character-preview" style="display:none" alt="Model preview">
         </div>
@@ -4358,7 +4359,7 @@ body[data-theme="dark"] .profile-credit {
 
       <div>
         <div class="small-label">Product Brief (Optional)</div>
-        <textarea id="ugcBrief" placeholder="Contoh: Promoting a sustainable water bottle for fitness enthusiasts, emphasizing eco-friendly lifestyle and outdoor activities..."></textarea>
+        <textarea id="ugcBrief" placeholder="Contoh: Mempromosikan botol air berkelanjutan untuk penggemar kebugaran, menekankan gaya hidup ramah lingkungan dan aktivitas luar ruangan"></textarea>
       </div>
 
       <div>
@@ -6939,32 +6940,82 @@ body[data-theme="dark"] .profile-credit {
       prompt: ''
     },
     {
-      key: 'vlogCasual',
-      label: 'Vlog Santai',
-      description: 'Casual Vlogger',
-      icon: '📹',
-      prompt: 'Handheld vlog energy with natural lighting, conversational pacing, everyday city backdrops, quick jump cuts, and first-person narration from the protagonist.'
+      key: 'kdramaMelodrama',
+      label: 'Melodrama K-Drama',
+      description: 'Emotional, Slow-Burn',
+      icon: '🌸',
+      prompt: `
+    **Scene Lokasi**: lush urban park with misty morning atmosphere or a rooftop overlooking the skyline during blue hour, often featuring rain.
+    **LightingPresets**: soft diffused lighting with pastel highlights, giving a washed-out, dreamy look, mixed with ambient blue moon lighting for a cool night scene.
+    **SceneCameraAngles**: long lens compression shot isolating the subject, emphasizing distance and longing. Use smooth crane shots revealing scale and transition, but keep the pacing slow.
+    **SceneMoods**: quiet determination mixed with melancholic and deep sadness, often leading to a hopeful yet unresolved cliffhanger tone.
+    **NarrativeBeats**: Two characters experience a painful separation or a moment of deep regret and longing. The dialogue is minimal; the emphasis is on sustained eye contact, slow reaction shots, and the environment reflecting their inner turmoil.
+  `
     },
     {
-      key: 'filmCinematic',
+      key: 'detectiveRealization',
+      label: 'Realisasi Detektif',
+      description: 'Misteri, Fokus',
+      icon: '🔍',
+      prompt: `
+    **Scene Lokasi**: ornate, empty library reading room with dust motes dancing in the light.
+    **LightingPresets**: high-contrast chiaroscuro with deep shadows, emphasizing one point of light.
+    **SceneCameraAngles**: extreme close-up on the eyes to reveal deep emotion, transitioning to an overhead shot revealing spatial relationships.
+    **SceneMoods**: mystery with analytical focus, shifting to sudden, jarring shock.
+    **NarrativeBeats**: The protagonist finds the crucial, hidden clue in the seemingly empty room, followed immediately by the realization of the killer's identity.
+  `
+    },
+    {
+      key: 'cinematicBlockbuster',
       label: 'Film Sinematik',
-      description: 'Cinematic Look',
+      description: 'High-End, Wide-Screen Drama',
       icon: '🎞️',
-      prompt: 'High-end cinematic composition with dramatic lighting, widescreen framing, deliberate camera moves, rich color grading, and atmospheric sound design cues.'
+      prompt: `
+    **Scene Lokasi**: rooftop overlooking the skyline during blue hour, or a hi-tech control room glowing with translucent interfaces.
+    **LightingPresets**: moody volumetric light cutting through atmosphere, utilizing a Teal & Orange color palette. Use dramatic rim lighting with strong contrast to separate the subject from the background.
+    **SceneCameraAngles**: smooth crane shot revealing scale and transition, primarily using the wide establishing shot from a slightly elevated angle, often framed in a 21:9 aspect ratio.
+    **SceneMoods**: rising tension with subtle anxiety, leading to quiet determination. The overall feeling is grand and polished.
+    **NarrativeBeats**: The protagonist stands alone, contemplating a large-scale impending threat or decision that affects the city/world. The scene is about establishing the stakes and their powerful, singular resolve against a vast backdrop.
+  `
     },
     {
-      key: 'socialFast',
-      label: 'Media Sosial Cepat',
-      description: 'Reels / TikTok',
-      icon: '⚡',
-      prompt: 'Snappy vertical pacing optimized for social media, tight framing, bold on-screen text beats, punchy transitions, and high-contrast visuals that pop on mobile.'
+      key: 'romanticNostalgia',
+      label: 'Nostalgia Hangat',
+      description: 'Reflektif Penuh Kenyamanan',
+      icon: '☕️',
+      prompt: `
+    **Scene Lokasi**: a vintage diner booth late at night, under a broken neon sign.
+    **LightingPresets**: warm fireplace glow casting dynamic shadows on walls, mixed with practical lighting only (lamps and screens) for natural realism.
+    **SceneCameraAngles**: over-the-shoulder (OTS) shot for dialogue and conversation, frequently using a close-up focusing on hands (touching or holding a cup).
+    **SceneMoods**: warm nostalgia and comfort of familiarity, transitioning to a hopeful yet unresolved cliffhanger tone.
+    **NarrativeBeats**: Two characters share a late-night conversation, reminiscing about a shared past. The dialogue leads to a moment of soft realization about their current feelings for each other, leaving the future unspoken but implied.
+  `
     },
     {
-      key: 'cleanDocu',
-      label: 'Dokumenter Bersih',
-      description: 'Clean Docu',
-      icon: '🎤',
-      prompt: 'Documentary clarity with tripod-stable framing, soft balanced lighting, crisp natural sound cues, lower-third style overlays, and authentic detail moments.'
+      key: 'nusantaraEpic',
+      label: 'Epos Nusantara',
+      description: 'Rich Cultural and Historical',
+      icon: '🕌',
+      prompt: `
+    **Scene Lokasi**: a crowded street market filled with ambient details, featuring traditional textiles and food vendors, or an ancient, sun-drenched temple ruin.
+    **LightingPresets**: strong, natural golden hour sunlight with warm highlights, emphasizing deep saturation of colors (Reds, Yellows, Golds). Use high-contrast lighting to define textures.
+    **SceneCameraAngles**: wide establishing shot from a slightly elevated angle to capture the scope of the location, contrasted with close-up focusing on hands (crafting, offering, or traditional gestures).
+    **SceneMoods**: quiet determination and a sense of warm nostalgia, leading to an eventual hopeful yet unresolved cliffhanger tone.
+    **NarrativeBeats**: The protagonist is engaged in a moment of traditional ritual or communal life. The scene slowly builds tension as they must choose between preserving cultural heritage and navigating modern challenges. The focus is on the beauty of the setting and the gravitas of the decision.
+  `
+    },
+    {
+      key: 'situationalComedy',
+  label: 'Komedi Situasional Ceria',
+  description: 'Bright, High-Key',
+  icon: '😂', 
+  prompt: `
+    **Scene Lokasi**: sun-drenched apartment balcony with potted plants and city noise, or a brightly lit, sterile location like a hi-tech control room glowing with translucent interfaces.
+    **LightingPresets**: high-key bright white lighting for a sterile or comedic effect, or soft diffused lighting with maximum brightness to avoid shadows and ensure clear visibility of facial reactions.
+    **SceneCameraAngles**: shoulder-level medium shot highlighting expressions and physical comedy, frequently using a reverse shot showing the exaggerated reaction of the listening character. Avoid dynamic movements like steadicam or crane shots.
+    **SceneMoods**: whimsical and lighthearted with a sense of wonder, transitioning to playful competition and confident swagger. The tone must remain fast-paced and upbeat.
+    **NarrativeBeats**: Two characters are in a minor disagreement or awkward situation. The action focuses on rapid-fire dialogue and visual gags. The scene ends abruptly with a punchline or a highly confused reaction from one character.
+  `
     },
     {
       key: 'ecomAd',
