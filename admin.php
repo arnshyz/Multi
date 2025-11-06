@@ -3,123 +3,12 @@ require_once __DIR__ . '/auth.php';
 
 auth_session_start();
 
-$ADMIN_DATA_FILE = __DIR__ . '/admin-data.json';
-
-function admin_default_auth()
-{
-    $defaults = auth_default_credential_values();
-    $defaults['updated_at'] = null;
-    return $defaults;
-}
-
-function admin_default_data() {
-    return [
-        'users' => [],
-        'apiKeys' => [],
-        'meta' => [
-            'rollingIndex' => 0,
-        ],
-        'auth' => admin_default_auth(),
-    ];
-}
-
-function admin_data_path() {
-    global $ADMIN_DATA_FILE;
-    return $ADMIN_DATA_FILE;
-}
-
-function load_admin_data() {
-    $path = admin_data_path();
-    if (!is_file($path)) {
-        $data = admin_default_data();
-        save_admin_data($data);
-        return $data;
-    }
-
-    $json = @file_get_contents($path);
-    if ($json === false) {
-        $data = admin_default_data();
-        save_admin_data($data);
-        return $data;
-    }
-
-    $data = json_decode($json, true);
-    if (!is_array($data)) {
-        $data = admin_default_data();
-        save_admin_data($data);
-        return $data;
-    }
-
-    $needsSave = false;
-
-    if (!isset($data['users']) || !is_array($data['users'])) {
-        $data['users'] = [];
-        $needsSave = true;
-    }
-    if (!isset($data['apiKeys']) || !is_array($data['apiKeys'])) {
-        $data['apiKeys'] = [];
-        $needsSave = true;
-    }
-    if (!isset($data['meta']) || !is_array($data['meta'])) {
-        $data['meta'] = [];
-        $needsSave = true;
-    }
-    if (!isset($data['meta']['rollingIndex']) || !is_numeric($data['meta']['rollingIndex'])) {
-        $data['meta']['rollingIndex'] = 0;
-        $needsSave = true;
-    }
-
-    $authDefaults = admin_default_auth();
-    if (!isset($data['auth']) || !is_array($data['auth'])) {
-        $data['auth'] = $authDefaults;
-        $needsSave = true;
-    } else {
-        $auth = $data['auth'];
-        $username = isset($auth['username']) ? trim((string)$auth['username']) : '';
-        if ($username === '') {
-            $auth['username'] = $authDefaults['username'];
-            $needsSave = true;
-        } else {
-            $auth['username'] = $username;
-        }
-
-        $passwordHash = isset($auth['password_hash']) ? trim((string)$auth['password_hash']) : '';
-        if ($passwordHash === '' && isset($auth['password']) && $auth['password'] !== '') {
-            $passwordHash = password_hash((string)$auth['password'], PASSWORD_DEFAULT);
-            $needsSave = true;
-        }
-        if ($passwordHash === '') {
-            $passwordHash = $authDefaults['password_hash'];
-            $needsSave = true;
-        }
-        $auth['password_hash'] = $passwordHash;
-        if (isset($auth['password'])) {
-            unset($auth['password']);
-            $needsSave = true;
-        }
-
-        if (!isset($auth['updated_at'])) {
-            $auth['updated_at'] = $authDefaults['updated_at'];
-            $needsSave = true;
-        }
-
-        $data['auth'] = $auth;
-    }
-
-    if ($needsSave) {
-        save_admin_data($data);
-    }
-
-    return $data;
+function load_admin_data($fresh = false) {
+    return auth_storage_read($fresh);
 }
 
 function save_admin_data($data) {
-    $path = admin_data_path();
-    $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-    if ($json === false) {
-        return false;
-    }
-    return @file_put_contents($path, $json, LOCK_EX) !== false;
+    return auth_storage_write($data);
 }
 
 function respond_json($payload, $status = 200) {
@@ -213,11 +102,33 @@ function ensure_user_defaults($user) {
     return $user;
 }
 
+if (!auth_is_admin()) {
+    $message = 'Akses khusus admin. Silakan login sebagai admin.';
+    if (isset($_GET['api'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(403);
+        echo json_encode([
+            'ok' => false,
+            'status' => 403,
+            'error' => $message,
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    http_response_code(403);
+    echo '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>403 Dilarang</title></head><body style="font-family:system-ui;background:#020617;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;">'
+        . '<div style="text-align:center;max-width:480px;line-height:1.5;">'
+        . '<h1 style="font-size:28px;margin-bottom:16px;">403 - Dilarang</h1>'
+        . '<p style="margin:0;opacity:0.8;">' . htmlspecialchars($message, ENT_QUOTES) . '</p>'
+        . '</div></body></html>';
+    exit;
+}
+
 if (isset($_GET['api'])) {
     $action = $_GET['api'];
 
-    if (!auth_is_logged_in()) {
-        respond_error('Unauthorized', 401);
+    if (!auth_is_admin()) {
+        respond_error('Forbidden', 403);
     }
 
     switch ($action) {

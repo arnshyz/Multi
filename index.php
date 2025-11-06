@@ -230,7 +230,12 @@ if ($requestedApi === 'login') {
         ], 422);
     }
 
-    if (!auth_verify($username, $password)) {
+    $account = null;
+    if (!auth_verify($username, $password, $account)) {
+        auth_record_security_event('login-failed', [
+            'username' => $username,
+        ]);
+
         auth_json_response([
             'ok' => false,
             'status' => 401,
@@ -238,13 +243,14 @@ if ($requestedApi === 'login') {
         ], 401);
     }
 
-    auth_login($username);
+    auth_login($account ?? ['username' => $username, 'role' => 'user']);
 
     auth_json_response([
         'ok' => true,
         'status' => 200,
         'data' => [
-            'username' => $username
+            'username' => $account['username'] ?? $username,
+            'role' => $account['role'] ?? 'user',
         ]
     ]);
 }
@@ -267,7 +273,82 @@ if ($requestedApi === 'logout') {
     ]);
 }
 
-if ($requestedApi !== null && !auth_is_logged_in()) {
+if ($requestedApi === 'register') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk registrasi.'
+        ], 405);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = null;
+    if (is_string($raw) && $raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $payload = $decoded;
+        }
+    }
+
+    $apiKey = '';
+    $username = '';
+    $email = '';
+    $password = '';
+
+    if (is_array($payload)) {
+        $apiKey = isset($payload['freepik_api_key']) ? (string)$payload['freepik_api_key'] : '';
+        $username = isset($payload['username']) ? (string)$payload['username'] : '';
+        $email = isset($payload['email']) ? (string)$payload['email'] : '';
+        $password = isset($payload['password']) ? (string)$payload['password'] : '';
+    }
+
+    if ($apiKey === '' && isset($_POST['freepik_api_key'])) {
+        $apiKey = (string)$_POST['freepik_api_key'];
+    }
+    if ($username === '' && isset($_POST['username'])) {
+        $username = (string)$_POST['username'];
+    }
+    if ($email === '' && isset($_POST['email'])) {
+        $email = (string)$_POST['email'];
+    }
+    if ($password === '' && isset($_POST['password'])) {
+        $password = (string)$_POST['password'];
+    }
+
+    $result = auth_register_account($apiKey, $username, $email, $password);
+    if (empty($result['ok'])) {
+        $status = isset($result['status']) ? (int)$result['status'] : 422;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $result['errors'] ?? ['general' => 'Registrasi gagal.'],
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => $result['status'] ?? 201,
+        'message' => 'Registrasi berhasil. Silakan login menggunakan kredensial baru.',
+        'account' => [
+            'username' => $result['account']['username'] ?? $username,
+            'email' => $result['account']['email'] ?? $email,
+            'role' => $result['account']['role'] ?? 'user',
+        ],
+    ], $result['status'] ?? 201);
+}
+
+if ($requestedApi === 'security-check') {
+    $entry = auth_record_security_check();
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'ip' => $entry['ip'] ?? '',
+        'timestamp' => $entry['timestamp'] ?? gmdate('c'),
+    ]);
+}
+
+if ($requestedApi !== null && !in_array($requestedApi, ['login', 'register', 'security-check'], true) && !auth_is_logged_in()) {
     auth_json_response([
         'ok' => false,
         'status' => 401,
@@ -559,168 +640,420 @@ if (!auth_is_logged_in()) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       color-scheme: dark;
     }
     body {
       margin: 0;
       min-height: 100vh;
-      background: radial-gradient(circle at top, #1f2937 0, #02030a 55%, #000 100%);
+      background: radial-gradient(circle at top, rgba(59,130,246,0.35), transparent 55%),
+                  radial-gradient(circle at bottom, rgba(56,189,248,0.18), transparent 50%),
+                  #020617;
       color: #f9fafb;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 32px 20px;
     }
-    .login-card {
-      width: min(360px, 100%);
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      border-radius: 16px;
-      padding: 28px 26px;
-      box-shadow: 0 22px 70px rgba(2, 6, 23, 0.6);
+    .auth-layout {
+      width: min(960px, 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+    .security-card,
+    .auth-card {
+      width: min(460px, 100%);
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 20px;
+      padding: 32px 30px;
+      box-shadow: 0 35px 80px rgba(2, 6, 23, 0.55);
       backdrop-filter: blur(18px);
     }
-    .login-card h1 {
-      margin: 0 0 6px;
-      font-size: 24px;
+    .security-card h1 {
+      margin: 0 0 12px;
+      font-size: 28px;
       font-weight: 600;
       letter-spacing: 0.02em;
     }
-    .login-card p {
-      margin: 0 0 22px;
-      color: #9ca3af;
+    .security-card p {
+      margin: 0 0 20px;
+      color: rgba(226, 232, 240, 0.78);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .ip-panel {
+      border-radius: 16px;
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+      padding: 18px 20px 20px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .ip-label {
+      display: block;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(248, 250, 252, 0.6);
+      margin-bottom: 6px;
+    }
+    .ip-value {
+      font-size: 26px;
+      font-weight: 700;
+      color: #f97316;
+      letter-spacing: 0.04em;
+    }
+    .ip-note {
+      display: block;
+      margin-top: 10px;
+      font-size: 12px;
+      color: rgba(248, 250, 252, 0.55);
+    }
+    .security-card button,
+    .auth-card button[type="submit"] {
+      width: 100%;
+      border-radius: 12px;
+      border: none;
+      padding: 12px 18px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      color: #0f172a;
+      background: linear-gradient(135deg, #ef4444, #f97316);
+      box-shadow: 0 22px 48px rgba(239, 68, 68, 0.35);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    }
+    .auth-card button[type="submit"] {
+      background: linear-gradient(135deg, #6366f1, #22c55e);
+      box-shadow: 0 22px 48px rgba(79, 70, 229, 0.35);
+    }
+    .security-card button:hover,
+    .auth-card button[type="submit"]:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 28px 56px rgba(94, 234, 212, 0.25);
+    }
+    .security-card button:disabled,
+    .auth-card button[type="submit"].loading {
+      opacity: 0.6;
+      cursor: wait;
+    }
+    .security-status,
+    .form-status {
+      margin-top: 16px;
+      font-size: 13px;
+      min-height: 18px;
+      text-align: center;
+    }
+    .auth-header h1 {
+      margin: 0 0 6px;
+      font-size: 26px;
+      font-weight: 600;
+    }
+    .auth-header p {
+      margin: 0 0 18px;
+      color: rgba(148, 163, 184, 0.82);
       font-size: 14px;
-      line-height: 1.5;
+      line-height: 1.6;
+    }
+    .auth-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+      background: rgba(15, 23, 42, 0.55);
+      padding: 6px;
+      border-radius: 12px;
+    }
+    .auth-tabs .tab {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.015em;
+      cursor: pointer;
+      color: rgba(226, 232, 240, 0.75);
+      background: transparent;
+      transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .auth-tabs .tab.active {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(45, 212, 191, 0.18));
+      color: #f8fafc;
+      box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.45);
+    }
+    .auth-content {
+      display: none;
+      animation: fadeIn 0.25s ease forwards;
+    }
+    .auth-content.active {
+      display: block;
     }
     label {
       display: block;
       font-size: 13px;
       margin-bottom: 6px;
-      color: #cbd5f5;
+      color: rgba(226, 232, 240, 0.86);
       letter-spacing: 0.01em;
     }
     input[type="text"],
+    input[type="email"],
     input[type="password"] {
       width: 100%;
-      border-radius: 10px;
-      border: 1px solid rgba(148, 163, 184, 0.35);
-      background: rgba(2, 6, 23, 0.9);
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: rgba(2, 6, 23, 0.92);
       color: #f9fafb;
       font-size: 14px;
-      padding: 9px 12px;
+      padding: 11px 14px;
       margin-bottom: 16px;
-      transition: border-color 0.2s ease;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
     input[type="text"]:focus,
+    input[type="email"]:focus,
     input[type="password"]:focus {
       outline: none;
-      border-color: rgba(99, 102, 241, 0.7);
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+      border-color: rgba(99, 102, 241, 0.8);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
     }
-    button[type="submit"] {
-      width: 100%;
-      border-radius: 10px;
-      border: none;
-      padding: 11px 12px;
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      cursor: pointer;
-      color: #020617;
-      background: linear-gradient(135deg, #6366f1, #22c55e);
-      box-shadow: 0 18px 45px rgba(67, 56, 202, 0.4);
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    .form-note {
+      margin-top: -8px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: rgba(148, 163, 184, 0.7);
     }
-    button[type="submit"]:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 24px 55px rgba(67, 56, 202, 0.5);
+    .hidden {
+      display: none !important;
     }
-    button[type="submit"].loading {
-      opacity: 0.7;
-      cursor: wait;
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
-    .login-status {
-      margin-top: 16px;
-      font-size: 13px;
-      color: #f97373;
-      min-height: 18px;
+    @media (max-width: 480px) {
+      .security-card,
+      .auth-card {
+        padding: 26px 22px;
+        border-radius: 16px;
+      }
+      .security-card h1 {
+        font-size: 24px;
+      }
+      .ip-value {
+        font-size: 22px;
+      }
     }
   </style>
 </head>
 <body>
-  <main class="login-card">
-    <h1>Masuk</h1>
-    <p>Silakan masuk untuk mengakses Freepik Multi Suite.</p>
-    <form id="loginForm" autocomplete="off">
-      <label for="loginUsername">Username</label>
-      <input type="text" id="loginUsername" name="username" autocomplete="username" required>
-      <label for="loginPassword">Password</label>
-      <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
-      <button type="submit" id="loginSubmit">Masuk</button>
-    </form>
-    <div class="login-status" id="loginStatus"></div>
-  </main>
+  <?php $clientIp = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'; ?>
+  <div class="auth-layout">
+    <section class="security-card" id="securityGate">
+      <h1>Security Check</h1>
+      <p>Memverifikasi alamat IP kamu sebelum mengakses Freepik Multi Suite.</p>
+      <div class="ip-panel">
+        <span class="ip-label">Your IP Address</span>
+        <span class="ip-value" id="securityIp"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
+        <span class="ip-note">IP ini akan dipantau untuk pembagian yang tidak sah.</span>
+      </div>
+      <button type="button" id="securityContinue">Continue</button>
+      <div class="security-status" id="securityStatus"></div>
+    </section>
+
+    <main class="auth-card hidden" id="authPanel">
+      <header class="auth-header">
+        <h1>Freepik Multi Suite</h1>
+        <p>Masuk dengan akun kamu atau daftar menggunakan API key Freepik yang valid.</p>
+      </header>
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="tab active" data-target="login" aria-selected="true">Login</button>
+        <button type="button" class="tab" data-target="register" aria-selected="false">Register</button>
+      </div>
+      <section class="auth-content active" data-panel="login" id="loginPanel">
+        <form id="loginForm" autocomplete="off">
+          <label for="loginUsername">Username</label>
+          <input type="text" id="loginUsername" name="username" autocomplete="username" required>
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
+          <button type="submit" id="loginSubmit">Masuk</button>
+        </form>
+        <div class="form-status" id="loginStatus"></div>
+      </section>
+      <section class="auth-content" data-panel="register" id="registerPanel">
+        <form id="registerForm" autocomplete="off">
+          <label for="registerApiKey">Freepik API Key</label>
+          <input type="text" id="registerApiKey" name="freepik_api_key" autocomplete="off" required>
+          <div class="form-note">Pastikan API key aktif dan belum digunakan akun lain.</div>
+          <label for="registerUsername">Username</label>
+          <input type="text" id="registerUsername" name="username" autocomplete="new-username" required>
+          <label for="registerEmail">Email</label>
+          <input type="email" id="registerEmail" name="email" autocomplete="email" required>
+          <label for="registerPassword">Password</label>
+          <input type="password" id="registerPassword" name="password" autocomplete="new-password" required>
+          <button type="submit" id="registerSubmit">Daftar</button>
+        </form>
+        <div class="form-status" id="registerStatus"></div>
+      </section>
+    </main>
+  </div>
 
   <script>
+    const securityGate = document.getElementById('securityGate');
+    const authPanel = document.getElementById('authPanel');
+    const securityContinue = document.getElementById('securityContinue');
+    const securityStatus = document.getElementById('securityStatus');
     const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
     const loginStatus = document.getElementById('loginStatus');
+    const registerStatus = document.getElementById('registerStatus');
     const loginSubmit = document.getElementById('loginSubmit');
+    const registerSubmit = document.getElementById('registerSubmit');
+    const tabs = document.querySelectorAll('.auth-tabs .tab');
+    const panels = document.querySelectorAll('.auth-content');
 
-    function setLoginStatus(message, isError = true) {
-      if (!loginStatus) return;
-      loginStatus.textContent = message || '';
-      loginStatus.style.color = isError ? '#f97373' : '#4ade80';
+    function setStatus(el, message, isError = true) {
+      if (!el) return;
+      el.textContent = message || '';
+      el.style.color = isError ? '#f97373' : '#4ade80';
+    }
+
+    function formatErrors(error) {
+      if (!error) {
+        return 'Terjadi kesalahan. Coba lagi.';
+      }
+      if (typeof error === 'string') {
+        return error;
+      }
+      if (Array.isArray(error)) {
+        return error.join('\n');
+      }
+      if (typeof error === 'object') {
+        return Object.entries(error)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join('\n');
+      }
+      return String(error);
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.target;
+        tabs.forEach((btn) => {
+          const isActive = btn === tab;
+          btn.classList.toggle('active', isActive);
+          btn.setAttribute('aria-selected', String(isActive));
+        });
+        panels.forEach((panel) => {
+          panel.classList.toggle('active', panel.dataset.panel === target);
+        });
+      });
+    });
+
+    if (securityContinue) {
+      securityContinue.addEventListener('click', async () => {
+        securityContinue.disabled = true;
+        setStatus(securityStatus, 'Memverifikasi IP...', false);
+        try {
+          const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=security-check', {
+            method: 'POST',
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || 'Security check gagal.');
+          }
+          const ipValue = document.getElementById('securityIp');
+          if (ipValue && data.ip) {
+            ipValue.textContent = data.ip;
+          }
+          setStatus(securityStatus, 'IP tervalidasi. Silakan lanjut.', false);
+          setTimeout(() => {
+            securityGate?.classList.add('hidden');
+            authPanel?.classList.remove('hidden');
+            setStatus(securityStatus, '');
+          }, 400);
+        } catch (error) {
+          setStatus(securityStatus, formatErrors(error.message), true);
+          securityContinue.disabled = false;
+        }
+      });
     }
 
     if (loginForm) {
       loginForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!loginSubmit) return;
-
-        const formData = new FormData(loginForm);
-        const payload = {
-          username: (formData.get('username') || '').trim(),
-          password: formData.get('password') || ''
-        };
-
-        if (!payload.username || !payload.password) {
-          setLoginStatus('Username dan password wajib diisi.');
-          return;
-        }
-
+        setStatus(loginStatus, '');
         loginSubmit.classList.add('loading');
         loginSubmit.disabled = true;
-        setLoginStatus('Menyambungkan…', false);
-
         try {
+          const formData = new FormData(loginForm);
           const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify(payload)
+            body: formData,
           });
-
-          const text = await res.text();
-          let data;
-          try {
-            data = JSON.parse(text);
-          } catch (err) {
-            throw new Error('Respons tidak valid dari server.');
-          }
-
+          const data = await res.json();
           if (!res.ok || !data.ok) {
-            throw new Error(data && data.error ? data.error : 'Login gagal.');
+            const error = data.error || 'Login gagal. Periksa kembali data kamu.';
+            setStatus(loginStatus, formatErrors(error), true);
+          } else {
+            setStatus(loginStatus, 'Login berhasil! Mengalihkan...', false);
+            setTimeout(() => window.location.reload(), 600);
           }
-
-          setLoginStatus('Berhasil masuk. Mengalihkan…', false);
-          window.location.reload();
         } catch (err) {
-          console.error('Login gagal', err);
-          setLoginStatus(err && err.message ? err.message : 'Tidak dapat masuk.');
+          setStatus(loginStatus, 'Terjadi kesalahan jaringan. Coba lagi.', true);
         } finally {
           loginSubmit.classList.remove('loading');
           loginSubmit.disabled = false;
+        }
+      });
+    }
+
+    if (registerForm) {
+      registerForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!registerSubmit) return;
+        setStatus(registerStatus, '');
+        registerSubmit.classList.add('loading');
+        registerSubmit.disabled = true;
+        try {
+          const formData = new FormData(registerForm);
+          const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=register', {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            const error = data.error || 'Registrasi gagal.';
+            setStatus(registerStatus, formatErrors(error), true);
+          } else {
+            setStatus(registerStatus, 'Registrasi berhasil! Silakan login.', false);
+            const loginUser = document.getElementById('loginUsername');
+            if (loginUser && registerForm.username) {
+              loginUser.value = registerForm.username.value;
+            }
+            tabs.forEach((tab) => {
+              const isLogin = tab.dataset.target === 'login';
+              tab.classList.toggle('active', isLogin);
+              tab.setAttribute('aria-selected', String(isLogin));
+            });
+            panels.forEach((panel) => {
+              panel.classList.toggle('active', panel.dataset.panel === 'login');
+            });
+            registerForm.reset();
+          }
+        } catch (err) {
+          setStatus(registerStatus, 'Terjadi kesalahan jaringan. Coba lagi.', true);
+        } finally {
+          registerSubmit.classList.remove('loading');
+          registerSubmit.disabled = false;
         }
       });
     }
