@@ -1329,12 +1329,12 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
 :root {
   font-family: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color-scheme: light;
-  --surface: #f3f5fb;
-  --sidebar-bg: rgba(255, 255, 255, 0.95);
+  --surface: #f5f7fe;
+  --sidebar-bg: rgba(255, 255, 255, 0.97);
   --sidebar-border: rgba(226, 232, 240, 0.9);
   --card: #ffffff;
-  --card-soft: #f8fafc;
-  --card-overlay: rgba(255, 255, 255, 0.92);
+  --card-soft: #f9fbff;
+  --card-overlay: rgba(255, 255, 255, 0.94);
   --border: rgba(226, 232, 240, 0.9);
   --text: #0f172a;
   --muted: rgba(71, 85, 105, 0.7);
@@ -1344,9 +1344,9 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
   --success: #16a34a;
   --warning: #f59e0b;
   --shadow: rgba(15, 23, 42, 0.08);
-  --halo-primary: rgba(37, 99, 235, 0.12);
-  --halo-secondary: rgba(14, 165, 233, 0.12);
-  --glass: rgba(255, 255, 255, 0.65);
+  --halo-primary: rgba(79, 70, 229, 0.14);
+  --halo-secondary: rgba(16, 185, 129, 0.12);
+  --glass: rgba(255, 255, 255, 0.7);
   --input-bg: #ffffff;
   --input-border: rgba(203, 213, 225, 0.8);
   --sidebar-text-muted: rgba(100, 116, 139, 0.8);
@@ -1365,8 +1365,8 @@ body::after {
   inset: -40vh -40vw;
   pointer-events: none;
   background: radial-gradient(circle at center, var(--halo-primary), transparent 60%);
-  opacity: 0.5;
-  filter: blur(140px);
+  opacity: 0.35;
+  filter: blur(160px);
   animation: orbitGlow 32s linear infinite;
   z-index: 0;
 }
@@ -1407,24 +1407,24 @@ body[data-theme="dark"] {
 }
 body[data-theme="light"] {
   color-scheme: light;
-  --surface: #f3f5fb;
-  --sidebar-bg: rgba(255, 255, 255, 0.95);
-  --sidebar-border: rgba(226, 232, 240, 0.9);
+  --surface: #f5f7fe;
+  --sidebar-bg: rgba(255, 255, 255, 0.97);
+  --sidebar-border: rgba(226, 232, 240, 0.92);
   --card: #ffffff;
-  --card-soft: #f8fafc;
+  --card-soft: #f9fbff;
   --card-overlay: rgba(255, 255, 255, 0.95);
   --border: rgba(226, 232, 240, 0.85);
   --text: #0f172a;
-  --muted: rgba(71, 85, 105, 0.7);
+  --muted: rgba(71, 85, 105, 0.72);
   --accent: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.16);
+  --accent-soft: rgba(37, 99, 235, 0.18);
   --danger: #ef4444;
   --success: #16a34a;
   --warning: #f59e0b;
   --shadow: rgba(15, 23, 42, 0.08);
-  --halo-primary: rgba(79, 70, 229, 0.14);
-  --halo-secondary: rgba(16, 185, 129, 0.14);
-  --glass: rgba(255, 255, 255, 0.65);
+  --halo-primary: rgba(79, 70, 229, 0.12);
+  --halo-secondary: rgba(16, 185, 129, 0.12);
+  --glass: rgba(255, 255, 255, 0.68);
   --input-bg: #ffffff;
   --input-border: rgba(203, 213, 225, 0.8);
   --sidebar-text-muted: rgba(100, 116, 139, 0.8);
@@ -1435,16 +1435,23 @@ body[data-theme="light"] {
   display: flex;
   min-height: 100vh;
   position: relative;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 88px;
+  --sidebar-current-width: var(--sidebar-width);
+}
+.workspace.sidebar-collapsed {
+  --sidebar-current-width: var(--sidebar-collapsed-width);
 }
 .workspace-main {
   flex: 1;
-  margin-left: 260px;
+  margin-left: var(--sidebar-current-width);
   padding: 36px 36px 40px;
   display: flex;
   flex-direction: column;
   gap: 28px;
   position: relative;
   z-index: 1;
+  transition: margin-left 0.3s ease, padding 0.3s ease;
 }
 .overview-hero {
   display: flex;
@@ -1502,10 +1509,45 @@ body[data-theme="light"] {
   font-size: 11px;
   color: var(--muted);
 }
+.sidebar-toggle {
+  position: fixed;
+  top: 20px;
+  left: calc(var(--sidebar-current-width) + 16px);
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0;
+  cursor: pointer;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  z-index: 40;
+}
+.sidebar-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
+}
+.sidebar-toggle svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  transition: transform 0.3s ease;
+}
+.workspace.sidebar-collapsed .sidebar-toggle svg {
+  transform: rotate(180deg);
+}
 .topbar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 260px;
+  width: var(--sidebar-current-width);
   display: flex;
   flex-direction: column;
   gap: 28px;
@@ -1515,6 +1557,21 @@ body[data-theme="light"] {
   backdrop-filter: blur(18px);
   z-index: 30;
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+  transition: width 0.3s ease, padding 0.3s ease, transform 0.3s ease;
+}
+.topbar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.38);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 25;
+  display: none;
+}
+.workspace.sidebar-open .topbar-overlay {
+  opacity: 1;
+  pointer-events: auto;
 }
 .topbar-brand {
   display: flex;
@@ -1550,6 +1607,24 @@ body[data-theme="light"] {
   gap: 10px;
   transition: background 0.2s ease, border 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
+.top-tab .nav-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+.top-tab .nav-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+}
+.top-tab {
+  text-align: left;
+}
 .top-tab .dot {
   width: 6px;
   height: 6px;
@@ -1571,6 +1646,43 @@ body[data-theme="light"] {
   border-color: rgba(37, 99, 235, 0.35);
   color: var(--text);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.workspace.sidebar-collapsed .topbar {
+  padding: 28px 16px;
+}
+.workspace.sidebar-collapsed .topbar-brand,
+.workspace.sidebar-collapsed .topbar-sub {
+  display: none;
+}
+.workspace.sidebar-collapsed .topbar-tabs {
+  align-items: center;
+}
+.workspace.sidebar-collapsed .top-tab {
+  justify-content: center;
+  padding: 12px 10px;
+}
+.workspace.sidebar-collapsed .top-tab .nav-label,
+.workspace.sidebar-collapsed .top-tab .dot {
+  display: none;
+}
+.workspace.sidebar-collapsed .topbar-actions {
+  align-items: center;
+}
+.workspace.sidebar-collapsed .profile-card,
+.workspace.sidebar-collapsed .topbar-sub,
+.workspace.sidebar-collapsed .topbar-title {
+  display: none;
+}
+.workspace.sidebar-collapsed .logout-label {
+  display: none;
+}
+.workspace.sidebar-collapsed .logout-btn {
+  padding: 10px;
+  width: 44px;
+  justify-content: center;
+}
+.workspace.sidebar-collapsed .logout-btn svg {
+  margin: 0;
 }
 .topbar-actions {
   margin-top: auto;
@@ -1620,6 +1732,11 @@ body[data-theme="light"] {
   background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.25), transparent 70%);
   opacity: 0.4;
   pointer-events: none;
+}
+body[data-theme="light"] .profile-card {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(125, 211, 252, 0.08));
+  border-color: rgba(59, 130, 246, 0.22);
+  box-shadow: 0 18px 38px rgba(37, 99, 235, 0.14);
 }
 .profile-card--alert {
   border-color: rgba(248, 113, 113, 0.55);
@@ -1689,6 +1806,10 @@ body[data-theme="dark"] .profile-badge {
   position: relative;
   z-index: 1;
 }
+body[data-theme="light"] .profile-credit {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(59, 130, 246, 0.22);
+}
 body[data-theme="dark"] .profile-credit {
   background: rgba(15, 23, 42, 0.75);
   border-color: rgba(59, 130, 246, 0.35);
@@ -1748,50 +1869,264 @@ body[data-theme="dark"] .profile-credit {
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .logout-btn:hover {
   transform: translateY(-2px);
   border-color: rgba(37, 99, 235, 0.45);
   box-shadow: 0 18px 36px rgba(15, 23, 42, 0.16);
 }
+.logout-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+}
 @media (max-width: 960px) {
+  .workspace {
+    --sidebar-current-width: 0px;
+  }
+  .sidebar-toggle {
+    top: 16px;
+    left: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 16px;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
+  }
+  .sidebar-toggle svg {
+    width: 20px;
+    height: 20px;
+  }
   .topbar {
-    position: fixed;
-    width: 100%;
-    height: auto;
-    flex-direction: row;
-    align-items: center;
-    gap: 18px;
-    padding: 16px 20px;
+    width: min(320px, calc(100vw - 32px));
+    height: 100vh;
+    transform: translateX(-100%);
     border-right: none;
-    border-bottom: 1px solid var(--sidebar-border);
+    border-bottom: none;
+    padding: 28px 22px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+    box-shadow: 0 28px 68px rgba(15, 23, 42, 0.35);
+    background: var(--sidebar-bg);
+    border-radius: 0 24px 24px 0;
+  }
+  .workspace.sidebar-open .topbar {
+    transform: translateX(0);
+  }
+  .topbar-overlay {
+    display: block;
+  }
+  .topbar-brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .topbar-title {
+    font-size: 20px;
   }
   .topbar-tabs {
-    flex-direction: row;
+    flex-direction: column;
     gap: 12px;
-    overflow-x: auto;
-    padding-bottom: 4px;
+  }
+  .top-tab {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 14px 16px;
+    border-radius: 18px;
   }
   .topbar-actions {
-    flex-direction: row;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .topbar-actions > * {
+    width: 100%;
+  }
+  .theme-toggle {
+    align-self: flex-start;
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
+    justify-content: center;
   }
   .profile-card {
     display: none;
   }
+  .logout-btn {
+    justify-content: center;
+  }
   .workspace-main {
     margin-left: 0;
-    padding: 120px 20px 32px;
+    padding: 88px 20px 32px;
+    gap: 24px;
   }
   .overview-hero {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+    padding: 20px 18px;
+    border-radius: 22px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.12);
+  }
+  .hero-text h1 {
+    font-size: 24px;
+  }
+  .hero-text p {
+    font-size: 13px;
+    line-height: 1.5;
   }
   .hero-actions {
     width: 100%;
-    justify-content: flex-start;
+  }
+  .hero-actions .profile-topup {
+    width: 100%;
+    justify-content: center;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .stat-card {
+    padding: 18px 20px;
+    border-radius: 22px;
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.1);
+  }
+  .app {
+    gap: 16px;
+  }
+  .card,
+  .card-soft {
+    padding: 18px;
+    border-radius: 20px;
+  }
+  .feature-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .feature-tab {
+    width: 100%;
+  }
+  .select-group {
+    margin-bottom: 14px;
+  }
+  .two-col {
+    gap: 14px;
+  }
+  .btn-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .btn-group > * {
+    width: 100%;
+  }
+  .status-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .status-text {
+    flex: initial;
+  }
+  .status-progress {
+    width: 100%;
+  }
+  .preview-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .preview-item {
+    width: 100%;
+  }
+  .jobs-col {
+    gap: 16px;
+  }
+  .jobs-list {
+    max-height: none;
+  }
+  .film-app,
+  .ugc-app {
+    padding: 0;
+    gap: 16px;
+    min-height: 0;
+  }
+  .film-scenes-board,
+  .ugc-list-card {
+    padding: 16px;
+  }
+  .film-scenes-container {
+    grid-template-columns: 1fr;
+  }
+  .ugc-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace-main {
+    padding: 84px 16px 28px;
+    gap: 22px;
+  }
+  .sidebar-toggle {
+    top: 14px;
+    left: 14px;
+  }
+  .topbar {
+    width: min(300px, calc(100vw - 28px));
+    padding: 24px 18px 54px;
+  }
+  .hero-text h1 {
+    font-size: 22px;
+  }
+  .hero-actions .profile-topup {
+    font-size: 13px;
+    padding: 10px 16px;
+  }
+  .stat-value {
+    font-size: 24px;
+  }
+  .feature-tabs {
+    grid-template-columns: 1fr;
+  }
+  .status-pill {
+    width: 100%;
+    text-align: center;
+  }
+  .preview-btn-group,
+  .ugc-video-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .preview-btn-group > *,
+  .ugc-video-actions > * {
+    width: 100%;
+  }
+  .film-slider-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .film-aspect-toggle {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .film-aspect-btn {
+    flex: 1 1 calc(50% - 8px);
+  }
+  .ugc-product-preview img,
+  .ugc-product-preview div {
+    width: 56px;
+    height: 56px;
   }
 }
 
@@ -2993,7 +3328,7 @@ body[data-theme="dark"] .profile-credit {
       max-width: 100%;
       max-height: 100%;
       border-radius: 12px;
-      background: #000;
+      background: var(--card);
     }
     .asset-preview-download {
       align-self: flex-end;
@@ -3022,7 +3357,12 @@ body[data-theme="dark"] .profile-credit {
 </head>
 <body data-theme="light">
 
-<div class="workspace">
+<div class="workspace sidebar-open">
+  <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 6h16M4 12h10M4 18h16" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  </button>
   <div class="topbar">
   <div class="topbar-brand">
     <div class="topbar-title">Freepik Multi Suite</div>
@@ -3030,16 +3370,34 @@ body[data-theme="dark"] .profile-credit {
   </div>
   <div class="topbar-tabs">
     <button class="top-tab active" data-target="viewHub">
-      <span class="dot"></span>
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
       <span class="nav-label">Dashboard</span>
     </button>
     <button class="top-tab" data-target="viewFilm">
-      <span class="dot"></span>
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 0V4m4 2V4m4 2V4m4 2V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
       <span class="nav-label">Filmmaker</span>
     </button>
     <button class="top-tab" data-target="viewUGC">
-      <span class="dot"></span>
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
       <span class="nav-label">UGC Tool</span>
+    </button>
+    <button class="top-tab" data-target="viewHub" data-feature="videoGen">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4.5 6h9a2.5 2.5 0 0 1 2.5 2.5v7a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 2 15.5v-7A2.5 2.5 0 0 1 4.5 6zm11 2.5 6-3v11l-6-3z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Video Generator</span>
+    </button>
+    <button class="top-tab" data-target="viewHub" data-feature="lipsync">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 5a4 4 0 0 1 4 4v2a4 4 0 1 1-8 0V9a4 4 0 0 1 4-4zm0 14v-3m-5 3h10" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Lipsync Studio</span>
     </button>
   </div>
   <div class="topbar-actions">
@@ -3062,9 +3420,14 @@ body[data-theme="dark"] .profile-credit {
       </div>
       <button type="button" class="profile-topup" id="profileTopup">Top Up Credit</button>
     </div>
-    <button type="button" class="logout-btn" id="logoutButton">Keluar</button>
+    <button type="button" class="logout-btn" id="logoutButton">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M10 12h11l-3-3m3 3-3 3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <span class="logout-label">Keluar</span>
+    </button>
   </div>
 </div>
+
+  <div class="topbar-overlay" id="sidebarOverlay"></div>
 
   <main class="workspace-main">
     <section class="overview-hero">
@@ -3107,7 +3470,7 @@ body[data-theme="dark"] .profile-credit {
       <div>
         <div class="title">Freepik AI Studio</div>
         <div class="subtitle">
-          <span id="featureLabel">Video Generator</span> · Single PHP • Multi model Freepik
+          <span id="featureLabel">Image Generator</span> · Single PHP • Multi model Freepik
         </div>
       </div>
       <div class="badge">
@@ -3117,9 +3480,9 @@ body[data-theme="dark"] .profile-credit {
     </div>
 
     <div class="feature-tabs">
-      <button type="button" class="feature-tab" data-feature="imageGen">Image Generator</button>
+      <button type="button" class="feature-tab active" data-feature="imageGen">Image Generator</button>
       <button type="button" class="feature-tab" data-feature="imageEdit">Image Editing</button>
-      <button type="button" class="feature-tab active" data-feature="videoGen">Video Generator</button>
+      <button type="button" class="feature-tab" data-feature="videoGen">Video Generator</button>
       <button type="button" class="feature-tab" data-feature="lipsync">Lipsync Studio</button>
     </div>
 
@@ -3175,7 +3538,7 @@ body[data-theme="dark"] .profile-credit {
         </div>
 
         <div>
-          <div id="fieldsTitle" class="form-section-title">Video Generator</div>
+          <div id="fieldsTitle" class="form-section-title">Image Generator</div>
 
           <div id="geminiModeSection" class="gemini-mode-section hidden">
             <div class="form-section-title">Gemini Flash Modes</div>
@@ -3541,6 +3904,12 @@ body[data-theme="dark"] .profile-credit {
   const profileTopupBtn = document.getElementById('profileTopup');
   const heroTopupBtn = document.getElementById('heroTopup');
   const logoutButton = document.getElementById('logoutButton');
+  const workspace = document.querySelector('.workspace');
+  const sidebarToggle = document.getElementById('sidebarToggle');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+  const mobileSidebarQuery = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(max-width: 960px)')
+    : { matches: false };
   const statCoinsEl = document.getElementById('statCoins');
   const statVideosEl = document.getElementById('statVideos');
   const statImagesEl = document.getElementById('statImages');
@@ -3554,6 +3923,51 @@ body[data-theme="dark"] .profile-credit {
   const COIN_COST_UGC = 1;
   let jobs = [];
   let modelConfigMap = {};
+
+  function closeSidebarOnMobile() {
+    if (!workspace || !mobileSidebarQuery.matches) return;
+    if (workspace.classList.contains('sidebar-open')) {
+      workspace.classList.remove('sidebar-open');
+      if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function syncSidebarForViewport() {
+    if (!workspace) return;
+    if (mobileSidebarQuery.matches) {
+      workspace.classList.remove('sidebar-collapsed');
+      workspace.classList.remove('sidebar-open');
+      if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'false');
+    } else {
+      workspace.classList.add('sidebar-open');
+      const collapsed = workspace.classList.contains('sidebar-collapsed');
+      if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+    }
+  }
+
+  syncSidebarForViewport();
+  if (mobileSidebarQuery && typeof mobileSidebarQuery.addEventListener === 'function') {
+    mobileSidebarQuery.addEventListener('change', syncSidebarForViewport);
+  } else if (mobileSidebarQuery && typeof mobileSidebarQuery.addListener === 'function') {
+    mobileSidebarQuery.addListener(syncSidebarForViewport);
+  }
+
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', () => {
+      if (!workspace) return;
+      if (mobileSidebarQuery.matches) {
+        const isOpen = workspace.classList.toggle('sidebar-open');
+        sidebarToggle.setAttribute('aria-expanded', String(isOpen));
+      } else {
+        const isCollapsed = workspace.classList.toggle('sidebar-collapsed');
+        sidebarToggle.setAttribute('aria-expanded', String(!isCollapsed));
+      }
+    });
+  }
+
+  if (sidebarOverlay) {
+    sidebarOverlay.addEventListener('click', closeSidebarOnMobile);
+  }
 
   function updateDashboardStats() {
     if (statCoinsEl) {
@@ -4632,7 +5046,7 @@ body[data-theme="dark"] .profile-credit {
     syncGeminiVisibility();
   }
 
-  let currentFeature = 'videoGen';
+  let currentFeature = 'imageGen';
 
   function setFeature(featureKey) {
     currentFeature = featureKey;
@@ -5615,6 +6029,17 @@ body[data-theme="dark"] .profile-credit {
       viewHub.style.display  = (target === 'viewHub')  ? 'grid' : 'none';
       viewFilm.style.display = (target === 'viewFilm') ? 'grid' : 'none';
       viewUGC.style.display  = (target === 'viewUGC')  ? 'grid' : 'none';
+
+      if (target === 'viewHub') {
+        const featureKey = btn.dataset.feature;
+        if (featureKey) {
+          setFeature(featureKey);
+        } else {
+          setFeature('imageGen');
+        }
+      }
+
+      closeSidebarOnMobile();
     });
   });
 
@@ -6711,7 +7136,7 @@ document.addEventListener('keydown', event => {
 
 
   // ===== INIT =====
-  setFeature('videoGen');
+  setFeature('imageGen');
   jobs.filter(j => !finalStatus(j.status)).forEach(job => startJobProgress(job));
   renderJobs();
   if (jobs.length) {
