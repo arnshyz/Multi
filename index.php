@@ -1484,6 +1484,12 @@ body[data-theme="light"] {
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 18px;
 }
+.dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
 .stat-card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -1544,7 +1550,7 @@ body[data-theme="light"] {
 .workspace.sidebar-collapsed .sidebar-toggle svg {
   transform: rotate(180deg);
 }
-.topbar {
+.sidebar {
   position: fixed;
   inset: 0 auto 0 0;
   width: var(--sidebar-current-width);
@@ -1559,7 +1565,7 @@ body[data-theme="light"] {
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
   transition: width 0.3s ease, padding 0.3s ease, transform 0.3s ease;
 }
-.topbar-overlay {
+.sidebar-overlay {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.38);
@@ -1569,31 +1575,40 @@ body[data-theme="light"] {
   z-index: 25;
   display: none;
 }
-.workspace.sidebar-open .topbar-overlay {
+.workspace.sidebar-open .sidebar-overlay {
   opacity: 1;
   pointer-events: auto;
 }
-.topbar-brand {
+.sidebar-brand {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.topbar-title {
+.sidebar-title {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--text);
 }
-.topbar-sub {
+.sidebar-sub {
   font-size: 12px;
   color: var(--sidebar-text-muted);
 }
-.topbar-tabs {
+.sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.top-tab {
+.sidebar-section {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sidebar-text-muted);
+  padding: 4px 14px;
+  margin: 10px 0 -2px;
+}
+
+.sidebar-link {
   border-radius: 16px;
   border: 1px solid transparent;
   background: transparent;
@@ -1607,7 +1622,7 @@ body[data-theme="light"] {
   gap: 10px;
   transition: background 0.2s ease, border 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
-.top-tab .nav-icon {
+.sidebar-link .nav-icon {
   width: 20px;
   height: 20px;
   display: inline-flex;
@@ -1615,62 +1630,65 @@ body[data-theme="light"] {
   justify-content: center;
   color: inherit;
 }
-.top-tab .nav-icon svg {
+.sidebar-link .nav-icon svg {
   width: 18px;
   height: 18px;
   stroke: currentColor;
   stroke-width: 1.6;
   fill: none;
 }
-.top-tab {
+.sidebar-link {
   text-align: left;
 }
-.top-tab .dot {
+.sidebar-link .dot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.top-tab .nav-label {
+.sidebar-link .nav-label {
   flex: 1;
   text-align: left;
 }
-.top-tab:hover {
+.sidebar-link:hover {
   transform: translateX(4px);
   background: rgba(37, 99, 235, 0.08);
   color: var(--text);
 }
-.top-tab.active {
+.sidebar-link.active {
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(14, 165, 233, 0.18));
   border-color: rgba(37, 99, 235, 0.35);
   color: var(--text);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
-.workspace.sidebar-collapsed .topbar {
+.workspace.sidebar-collapsed .sidebar {
   padding: 28px 16px;
 }
-.workspace.sidebar-collapsed .topbar-brand,
-.workspace.sidebar-collapsed .topbar-sub {
+.workspace.sidebar-collapsed .sidebar-brand,
+.workspace.sidebar-collapsed .sidebar-sub {
   display: none;
 }
-.workspace.sidebar-collapsed .topbar-tabs {
+.workspace.sidebar-collapsed .sidebar-section {
+  display: none;
+}
+.workspace.sidebar-collapsed .sidebar-nav {
   align-items: center;
 }
-.workspace.sidebar-collapsed .top-tab {
+.workspace.sidebar-collapsed .sidebar-link {
   justify-content: center;
   padding: 12px 10px;
 }
-.workspace.sidebar-collapsed .top-tab .nav-label,
-.workspace.sidebar-collapsed .top-tab .dot {
+.workspace.sidebar-collapsed .sidebar-link .nav-label,
+.workspace.sidebar-collapsed .sidebar-link .dot {
   display: none;
 }
-.workspace.sidebar-collapsed .topbar-actions {
+.workspace.sidebar-collapsed .sidebar-actions {
   align-items: center;
 }
 .workspace.sidebar-collapsed .profile-card,
-.workspace.sidebar-collapsed .topbar-sub,
-.workspace.sidebar-collapsed .topbar-title {
+.workspace.sidebar-collapsed .sidebar-sub,
+.workspace.sidebar-collapsed .sidebar-title {
   display: none;
 }
 .workspace.sidebar-collapsed .logout-label {
@@ -1684,7 +1702,7 @@ body[data-theme="light"] {
 .workspace.sidebar-collapsed .logout-btn svg {
   margin: 0;
 }
-.topbar-actions {
+.sidebar-actions {
   margin-top: auto;
   display: flex;
   flex-direction: column;
@@ -1901,7 +1919,7 @@ body[data-theme="dark"] .profile-credit {
     width: 20px;
     height: 20px;
   }
-  .topbar {
+  .sidebar {
     width: min(320px, calc(100vw - 32px));
     height: 100vh;
     transform: translateX(-100%);
@@ -1916,36 +1934,36 @@ body[data-theme="dark"] .profile-credit {
     background: var(--sidebar-bg);
     border-radius: 0 24px 24px 0;
   }
-  .workspace.sidebar-open .topbar {
+  .workspace.sidebar-open .sidebar {
     transform: translateX(0);
   }
-  .topbar-overlay {
+  .sidebar-overlay {
     display: block;
   }
-  .topbar-brand {
+  .sidebar-brand {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
   }
-  .topbar-title {
+  .sidebar-title {
     font-size: 20px;
   }
-  .topbar-tabs {
+  .sidebar-nav {
     flex-direction: column;
     gap: 12px;
   }
-  .top-tab {
+  .sidebar-link {
     width: 100%;
     justify-content: flex-start;
     padding: 14px 16px;
     border-radius: 18px;
   }
-  .topbar-actions {
+  .sidebar-actions {
     flex-direction: column;
     align-items: stretch;
     gap: 14px;
   }
-  .topbar-actions > * {
+  .sidebar-actions > * {
     width: 100%;
   }
   .theme-toggle {
@@ -2081,7 +2099,7 @@ body[data-theme="dark"] .profile-credit {
     top: 14px;
     left: 14px;
   }
-  .topbar {
+  .sidebar {
     width: min(300px, calc(100vw - 28px));
     padding: 24px 18px 54px;
   }
@@ -3363,44 +3381,57 @@ body[data-theme="dark"] .profile-credit {
       <path d="M4 6h16M4 12h10M4 18h16" stroke-linecap="round" stroke-linejoin="round"></path>
     </svg>
   </button>
-  <div class="topbar">
-  <div class="topbar-brand">
-    <div class="topbar-title">Freepik Multi Suite</div>
-    <div class="topbar-sub">AI Hub • Filmmaker • UGC Tool</div>
+  <div class="sidebar">
+  <div class="sidebar-brand">
+    <div class="sidebar-title">Freepik Multi Suite</div>
+    <div class="sidebar-sub">AI Hub • Filmmaker • UGC Tool</div>
   </div>
-  <div class="topbar-tabs">
-    <button class="top-tab active" data-target="viewHub">
+  <nav class="sidebar-nav">
+    <button class="sidebar-link active" data-target="viewDashboard">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
       <span class="nav-label">Dashboard</span>
     </button>
-    <button class="top-tab" data-target="viewFilm">
+    <button class="sidebar-link" data-target="viewFilm">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 0V4m4 2V4m4 2V4m4 2V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
       <span class="nav-label">Filmmaker</span>
     </button>
-    <button class="top-tab" data-target="viewUGC">
+    <button class="sidebar-link" data-target="viewUGC">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
       <span class="nav-label">UGC Tool</span>
     </button>
-    <button class="top-tab" data-target="viewHub" data-feature="videoGen">
+    <div class="sidebar-section">AI Generators</div>
+    <button class="sidebar-link" data-target="viewHub" data-feature="imageGen">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M8.757 15.243l-2.121 2.121m12.728 0-2.121-2.121M8.757 8.757 6.636 6.636" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Image Generator</span>
+    </button>
+    <button class="sidebar-link" data-target="viewHub" data-feature="imageEdit">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="m15.232 5.232 3.536 3.536M4 20h4.5L19.768 8.732a2.5 2.5 0 0 0 0-3.536l-1.964-1.964a2.5 2.5 0 0 0-3.536 0L4 16.5V20z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Image Editing</span>
+    </button>
+    <button class="sidebar-link" data-target="viewHub" data-feature="videoGen">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4.5 6h9a2.5 2.5 0 0 1 2.5 2.5v7a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 2 15.5v-7A2.5 2.5 0 0 1 4.5 6zm11 2.5 6-3v11l-6-3z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
       <span class="nav-label">Video Generator</span>
     </button>
-    <button class="top-tab" data-target="viewHub" data-feature="lipsync">
+    <button class="sidebar-link" data-target="viewHub" data-feature="lipsync">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M12 5a4 4 0 0 1 4 4v2a4 4 0 1 1-8 0V9a4 4 0 0 1 4-4zm0 14v-3m-5 3h10" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
       <span class="nav-label">Lipsync Studio</span>
     </button>
-  </div>
-  <div class="topbar-actions">
+  </nav>
+  <div class="sidebar-actions">
     <button type="button" class="theme-toggle" id="themeToggle" aria-label="Toggle theme">☀️</button>
     <div class="profile-card" id="profileCard">
       <div class="profile-main">
@@ -3427,44 +3458,46 @@ body[data-theme="dark"] .profile-credit {
   </div>
 </div>
 
-  <div class="topbar-overlay" id="sidebarOverlay"></div>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
   <main class="workspace-main">
-    <section class="overview-hero">
-      <div class="hero-text">
-        <h1>Dashboard Overview</h1>
-        <p>Selamat datang kembali! Pantau progress generate konten dan saldo koin kamu.</p>
-      </div>
-      <div class="hero-actions">
-        <button type="button" class="profile-topup" id="heroTopup">Top Up Credit</button>
-      </div>
-    </section>
+    <div id="viewDashboard" class="dashboard-view">
+      <section class="overview-hero">
+        <div class="hero-text">
+          <h1>Dashboard Overview</h1>
+          <p>Selamat datang kembali! Pantau progress generate konten dan saldo koin kamu.</p>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="profile-topup" id="heroTopup">Top Up Credit</button>
+        </div>
+      </section>
 
-    <section class="stats-grid">
-      <article class="stat-card">
-        <span class="stat-label">Available Coins</span>
-        <span class="stat-value" id="statCoins">0</span>
-        <span class="stat-meta">Saldo aktif untuk semua generator</span>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">Videos Generated</span>
-        <span class="stat-value" id="statVideos">0</span>
-        <span class="stat-meta">Total job video yang berhasil</span>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">Images Generated</span>
-        <span class="stat-value" id="statImages">0</span>
-        <span class="stat-meta">Image & editing task selesai</span>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">Active Queue</span>
-        <span class="stat-value" id="statQueue">0</span>
-        <span class="stat-meta">Task yang masih diproses</span>
-      </article>
-    </section>
+      <section class="stats-grid">
+        <article class="stat-card">
+          <span class="stat-label">Available Coins</span>
+          <span class="stat-value" id="statCoins">0</span>
+          <span class="stat-meta">Saldo aktif untuk semua generator</span>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Videos Generated</span>
+          <span class="stat-value" id="statVideos">0</span>
+          <span class="stat-meta">Total job video yang berhasil</span>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Images Generated</span>
+          <span class="stat-value" id="statImages">0</span>
+          <span class="stat-meta">Image & editing task selesai</span>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Active Queue</span>
+          <span class="stat-value" id="statQueue">0</span>
+          <span class="stat-meta">Task yang masih diproses</span>
+        </article>
+      </section>
+    </div>
 
 <!-- ======================= AI HUB ======================= -->
-<div id="viewHub" class="app">
+<div id="viewHub" class="app" style="display:none">
   <div class="card">
     <div class="header">
       <div>
@@ -3479,12 +3512,6 @@ body[data-theme="dark"] .profile-credit {
       </div>
     </div>
 
-    <div class="feature-tabs">
-      <button type="button" class="feature-tab active" data-feature="imageGen">Image Generator</button>
-      <button type="button" class="feature-tab" data-feature="imageEdit">Image Editing</button>
-      <button type="button" class="feature-tab" data-feature="videoGen">Video Generator</button>
-      <button type="button" class="feature-tab" data-feature="lipsync">Lipsync Studio</button>
-    </div>
 
     <div class="select-group">
       <div class="model-group-label">Model</div>
@@ -4665,6 +4692,11 @@ body[data-theme="dark"] .profile-credit {
   const clearHistoryBtn = document.getElementById('clearHistoryBtn');
   const featureTabs = document.querySelectorAll('.feature-tab');
   const featureLabel = document.getElementById('featureLabel');
+  let navButtons = [];
+  let viewDashboardSection = null;
+  let viewHubSection = null;
+  let viewFilmSection = null;
+  let viewUGCSection = null;
 
   const rowPrompt      = document.getElementById('rowPrompt');
   const rowImageUrl    = document.getElementById('rowImageUrl');
@@ -5050,9 +5082,11 @@ body[data-theme="dark"] .profile-credit {
 
   function setFeature(featureKey) {
     currentFeature = featureKey;
-    featureTabs.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.feature === featureKey);
-    });
+    if (featureTabs.length) {
+      featureTabs.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.feature === featureKey);
+      });
+    }
 
     const allowed = new Set(FEATURE_MODELS[featureKey] || []);
     const options = modelSelect.querySelectorAll('option');
@@ -5085,6 +5119,9 @@ body[data-theme="dark"] .profile-credit {
     else if (featureKey === 'lipsync') label = 'Lipsync Studio';
     else label = 'AI Hub';
     featureLabel.textContent = label;
+    if (navButtons.length && viewHubSection && viewHubSection.style.display !== 'none') {
+      activateNav('viewHub', featureKey);
+    }
   }
 
   function renderJobs() {
@@ -6009,39 +6046,52 @@ body[data-theme="dark"] .profile-credit {
     }
   });
 
-  featureTabs.forEach(btn => {
+  if (featureTabs.length) {
+    featureTabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.feature;
+        setFeature(key);
+      });
+    });
+  }
+
+  navButtons = Array.from(document.querySelectorAll('.sidebar-link'));
+  viewDashboardSection = document.getElementById('viewDashboard');
+  viewHubSection = document.getElementById('viewHub');
+  viewFilmSection = document.getElementById('viewFilm');
+  viewUGCSection = document.getElementById('viewUGC');
+
+  function activateNav(target, featureKey) {
+    navButtons.forEach(btn => {
+      const isHub = btn.dataset.target === 'viewHub';
+      const matches = btn.dataset.target === target && (!isHub || (btn.dataset.feature || 'imageGen') === (featureKey || 'imageGen'));
+      btn.classList.toggle('active', matches);
+    });
+  }
+
+  function showView(target, featureKey) {
+    if (viewDashboardSection) viewDashboardSection.style.display = target === 'viewDashboard' ? '' : 'none';
+    if (viewHubSection) viewHubSection.style.display = target === 'viewHub' ? '' : 'none';
+    if (viewFilmSection) viewFilmSection.style.display = target === 'viewFilm' ? '' : 'none';
+    if (viewUGCSection) viewUGCSection.style.display = target === 'viewUGC' ? '' : 'none';
+
+    if (target === 'viewHub') {
+      setFeature(featureKey || 'imageGen');
+    }
+
+    activateNav(target, featureKey);
+    closeSidebarOnMobile();
+  }
+
+  navButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      const key = btn.dataset.feature;
-      setFeature(key);
+      const target = btn.dataset.target || 'viewDashboard';
+      const featureKey = btn.dataset.feature || (target === 'viewHub' ? 'imageGen' : undefined);
+      showView(target, featureKey);
     });
   });
 
-  const topTabs = document.querySelectorAll('.top-tab');
-  const viewHub = document.getElementById('viewHub');
-  const viewFilm = document.getElementById('viewFilm');
-  const viewUGC = document.getElementById('viewUGC');
-
-  topTabs.forEach(btn => {
-    btn.addEventListener('click', () => {
-      topTabs.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const target = btn.dataset.target;
-      viewHub.style.display  = (target === 'viewHub')  ? 'grid' : 'none';
-      viewFilm.style.display = (target === 'viewFilm') ? 'grid' : 'none';
-      viewUGC.style.display  = (target === 'viewUGC')  ? 'grid' : 'none';
-
-      if (target === 'viewHub') {
-        const featureKey = btn.dataset.feature;
-        if (featureKey) {
-          setFeature(featureKey);
-        } else {
-          setFeature('imageGen');
-        }
-      }
-
-      closeSidebarOnMobile();
-    });
-  });
+  showView('viewDashboard');
 
   // ===== FILMMAKER STATE =====
   let filmCharacterDataUrl = null;
