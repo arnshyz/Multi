@@ -3826,7 +3826,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
   // ===== FILMMAKER STATE =====
   let filmCharacterDataUrl = null;
-  let filmAspect = '9:16';
+  let filmAspect = '16:9';
   let filmScenes = [];
   let filmPollTimer = null;
 
