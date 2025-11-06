@@ -2970,6 +2970,43 @@ body[data-theme="light"] .profile-credit {
     justify-content: center;
     align-self: stretch;
   }
+  .profile-card--mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 22px;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+  }
+  .profile-card--mobile .profile-main {
+    align-items: center;
+  }
+  .profile-card--mobile .profile-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+  .mobile-coin-banner {
+    display: flex;
+  }
+  .account-settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .avatar-row {
+    grid-template-columns: 1fr;
+  }
+  .avatar-preview {
+    margin: 0 auto;
+    max-width: 140px;
+  }
+  .account-save-btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+    align-self: stretch;
+  }
   .logout-btn {
     justify-content: center;
   }
