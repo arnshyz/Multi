@@ -477,6 +477,70 @@ if ($requestedApi === 'account-coins') {
     ]);
 }
 
+if ($requestedApi === 'drive') {
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $items = auth_drive_get_items($account['id']);
+        auth_json_response([
+            'ok' => true,
+            'status' => 200,
+            'data' => [
+                'items' => $items,
+            ],
+        ]);
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $raw = file_get_contents('php://input');
+        $payload = json_decode($raw, true);
+        if (!is_array($payload)) {
+            $payload = $_POST;
+        }
+
+        $items = isset($payload['items']) && is_array($payload['items']) ? $payload['items'] : [];
+        if (!$items) {
+            auth_json_response([
+                'ok' => false,
+                'status' => 422,
+                'error' => 'Tidak ada item drive yang dikirimkan.'
+            ], 422);
+        }
+
+        $errors = [];
+        $stored = auth_drive_append_items($account['id'], $items, $errors);
+        if ($stored === null) {
+            $status = isset($errors['items']) ? 422 : (isset($errors['account']) ? 404 : 500);
+            auth_json_response([
+                'ok' => false,
+                'status' => $status,
+                'error' => $errors ?: 'Gagal menyimpan drive.'
+            ], $status);
+        }
+
+        auth_json_response([
+            'ok' => true,
+            'status' => 200,
+            'data' => [
+                'items' => $stored,
+            ],
+        ]);
+    }
+
+    auth_json_response([
+        'ok' => false,
+        'status' => 405,
+        'error' => 'Metode tidak diizinkan untuk drive.'
+    ], 405);
+}
+
 // ====== UPLOAD FILE: ?api=upload ======
 if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     header('Content-Type: application/json; charset=utf-8');
@@ -1567,6 +1631,214 @@ body[data-theme="light"] {
   display: flex;
   flex-direction: column;
   gap: 28px;
+}
+
+.drive-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.drive-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.drive-header h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+.drive-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.drive-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.drive-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 16px;
+  align-items: flex-end;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+.drive-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+.drive-filter label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.drive-filter select,
+.drive-filter input {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--text);
+  min-height: 36px;
+}
+.drive-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.drive-empty {
+  padding: 48px 24px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--card-soft);
+}
+.drive-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+@media (min-width: 1280px) {
+  .drive-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+.drive-card {
+  background: var(--card);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.drive-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(99, 102, 241, 0.6);
+}
+.drive-thumb {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.4);
+  aspect-ratio: 4 / 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-in;
+}
+.drive-thumb img,
+.drive-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.drive-thumb video {
+  pointer-events: none;
+}
+.drive-thumb[data-type="video"]::after {
+  content: '▶';
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.75);
+  color: #fff;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.35);
+}
+.drive-type-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
+}
+.drive-card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drive-card-footer strong {
+  font-size: 12px;
+  color: var(--text);
+}
+.drive-card-footer span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.drive-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.drive-actions button,
+.drive-actions a {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.drive-actions button:hover,
+.drive-actions a:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(129, 140, 248, 0.7);
+}
+.drive-clear-date {
+  margin-left: auto;
+}
+@media (max-width: 720px) {
+  .drive-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .drive-meta {
+    width: 100%;
+  }
+  .drive-filter {
+    min-width: 100%;
+  }
+  .drive-filters {
+    align-items: stretch;
+  }
 }
 
 .stat-card {
@@ -3522,6 +3794,12 @@ body[data-theme="dark"] .profile-credit {
       </span>
       <span class="nav-label">Dashboard</span>
     </button>
+    <button class="sidebar-link hidden" data-target="viewDrive" id="driveNavButton">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l1.5 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"></path><path d="M3 11h18" stroke-linecap="round"></path></svg>
+      </span>
+      <span class="nav-label">Drive</span>
+    </button>
     <button class="sidebar-link" data-target="viewFilm">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 0V4m4 2V4m4 2V4m4 2V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
@@ -3622,6 +3900,48 @@ body[data-theme="dark"] .profile-credit {
           <span class="stat-value" id="statQueue">0</span>
           <span class="stat-meta">Task yang masih diproses</span>
         </article>
+      </section>
+    </div>
+
+    <div id="viewDrive" class="drive-view" style="display:none">
+      <section class="drive-header">
+        <div>
+          <h1>Creative Drive</h1>
+          <p>Simpan dan kelola seluruh hasil generate foto &amp; video kamu di satu tempat.</p>
+        </div>
+        <div class="drive-meta">
+          <span id="driveTotalCount">0 file</span>
+          <span>&bull;</span>
+          <span id="driveTypeSummary">0 foto • 0 video</span>
+        </div>
+      </section>
+
+      <section class="drive-filters">
+        <div class="drive-filter">
+          <label for="driveTypeFilter">Tipe konten</label>
+          <select id="driveTypeFilter">
+            <option value="all">Semua</option>
+            <option value="image">Foto</option>
+            <option value="video">Video</option>
+          </select>
+        </div>
+        <div class="drive-filter">
+          <label for="driveDateFilter">Tanggal</label>
+          <input type="date" id="driveDateFilter">
+        </div>
+        <div class="drive-filter">
+          <label for="driveSortFilter">Urutkan</label>
+          <select id="driveSortFilter">
+            <option value="newest">Terbaru</option>
+            <option value="oldest">Terlama</option>
+          </select>
+        </div>
+        <button type="button" class="small secondary drive-clear-date" id="driveClearDate">Reset tanggal</button>
+      </section>
+
+      <section class="drive-content">
+        <div id="driveEmpty" class="drive-empty">Belum ada file tersimpan. Generate konten untuk mengisi drive pribadi kamu.</div>
+        <div id="driveGrid" class="drive-grid"></div>
       </section>
     </div>
 
@@ -4086,6 +4406,15 @@ body[data-theme="dark"] .profile-credit {
   const statVideosEl = document.getElementById('statVideos');
   const statImagesEl = document.getElementById('statImages');
   const statQueueEl = document.getElementById('statQueue');
+  const driveNavButton = document.getElementById('driveNavButton');
+  const driveGrid = document.getElementById('driveGrid');
+  const driveEmpty = document.getElementById('driveEmpty');
+  const driveTypeFilter = document.getElementById('driveTypeFilter');
+  const driveSortFilter = document.getElementById('driveSortFilter');
+  const driveDateFilter = document.getElementById('driveDateFilter');
+  const driveClearDateBtn = document.getElementById('driveClearDate');
+  const driveTotalCountEl = document.getElementById('driveTotalCount');
+  const driveTypeSummaryEl = document.getElementById('driveTypeSummary');
 
   let currentAccount = null;
   let currentTheme = 'light';
@@ -4095,6 +4424,9 @@ body[data-theme="dark"] .profile-credit {
   const COIN_COST_UGC = 1;
   let jobs = [];
   let modelConfigMap = {};
+  let driveItems = [];
+  let driveLoaded = false;
+  let driveLoading = false;
 
   function closeSidebarOnMobile() {
     if (!workspace || !mobileSidebarQuery.matches) return;
@@ -4168,6 +4500,247 @@ body[data-theme="dark"] .profile-credit {
     if (statVideosEl) statVideosEl.textContent = videoCount.toLocaleString('id-ID');
     if (statImagesEl) statImagesEl.textContent = imageCount.toLocaleString('id-ID');
     if (statQueueEl) statQueueEl.textContent = queueCount.toLocaleString('id-ID');
+  }
+
+  function setDriveAccess(enabled) {
+    if (!driveNavButton) return;
+    driveNavButton.classList.toggle('hidden', !enabled);
+    driveNavButton.disabled = !enabled;
+  }
+
+  function jobOutputType(job) {
+    if (!job) return 'image';
+    const cfg = modelConfigMap[job.modelId];
+    const type = job.type || (cfg && cfg.type);
+    return type === 'video' ? 'video' : 'image';
+  }
+
+  function driveModelLabel(modelId) {
+    if (!modelId) return 'Hasil Generate';
+    const cfg = modelConfigMap[modelId];
+    if (cfg && cfg.label) return cfg.label;
+    return String(modelId).toUpperCase();
+  }
+
+  function formatDriveDate(iso) {
+    if (!iso) return '-';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  function updateDriveSummary() {
+    const total = Array.isArray(driveItems) ? driveItems.length : 0;
+    const photos = Array.isArray(driveItems) ? driveItems.filter(item => (item.type || 'image') !== 'video').length : 0;
+    const videos = total - photos;
+    if (driveTotalCountEl) {
+      driveTotalCountEl.textContent = `${total.toLocaleString('id-ID')} file`;
+    }
+    if (driveTypeSummaryEl) {
+      driveTypeSummaryEl.textContent = `${photos.toLocaleString('id-ID')} foto • ${videos.toLocaleString('id-ID')} video`;
+    }
+  }
+
+  function renderDriveItems() {
+    if (!driveGrid || !driveEmpty) {
+      return;
+    }
+
+    const typeValue = driveTypeFilter ? driveTypeFilter.value : 'all';
+    const sortValue = driveSortFilter ? driveSortFilter.value : 'newest';
+    const dateValue = driveDateFilter ? driveDateFilter.value : '';
+
+    let items = Array.isArray(driveItems) ? driveItems.slice() : [];
+
+    if (typeValue === 'image' || typeValue === 'video') {
+      items = items.filter(item => (item.type || 'image') === typeValue);
+    }
+
+    if (dateValue) {
+      items = items.filter(item => {
+        const iso = item.created_at || item.createdAt || '';
+        return typeof iso === 'string' && iso.slice(0, 10) === dateValue;
+      });
+    }
+
+    items.sort((a, b) => {
+      const aTime = new Date(a.created_at || a.createdAt || 0).getTime();
+      const bTime = new Date(b.created_at || b.createdAt || 0).getTime();
+      if (sortValue === 'oldest') {
+        return aTime - bTime;
+      }
+      return bTime - aTime;
+    });
+
+    driveEmpty.style.display = items.length ? 'none' : 'block';
+    driveGrid.innerHTML = '';
+
+    items.forEach(item => {
+      if (!item || !item.url) return;
+      const card = document.createElement('div');
+      card.className = 'drive-card';
+
+      const thumb = document.createElement('div');
+      thumb.className = 'drive-thumb';
+      const type = (item.type || 'image') === 'video' ? 'video' : 'image';
+      thumb.dataset.type = type;
+
+      const badge = document.createElement('span');
+      badge.className = 'drive-type-badge';
+      badge.textContent = type === 'video' ? 'VIDEO' : 'FOTO';
+      thumb.appendChild(badge);
+
+      if (type === 'video') {
+        const video = document.createElement('video');
+        video.src = (item.thumbnail_url && /^https?:/i.test(item.thumbnail_url)) ? item.thumbnail_url : item.url;
+        video.muted = true;
+        video.loop = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        thumb.appendChild(video);
+      } else {
+        const img = document.createElement('img');
+        img.src = (item.thumbnail_url && /^https?:/i.test(item.thumbnail_url)) ? item.thumbnail_url : item.url;
+        img.alt = 'Drive item';
+        thumb.appendChild(img);
+      }
+
+      thumb.addEventListener('click', () => {
+        openAssetPreview(item.url, type);
+      });
+
+      const footer = document.createElement('div');
+      footer.className = 'drive-card-footer';
+
+      const title = document.createElement('strong');
+      title.textContent = driveModelLabel(item.model);
+      footer.appendChild(title);
+
+      const meta = document.createElement('span');
+      meta.textContent = formatDriveDate(item.created_at || item.createdAt);
+      footer.appendChild(meta);
+
+      if (item.prompt) {
+        const promptEl = document.createElement('span');
+        promptEl.textContent = item.prompt;
+        footer.appendChild(promptEl);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'drive-actions';
+
+      const previewBtn = document.createElement('button');
+      previewBtn.type = 'button';
+      previewBtn.textContent = 'Preview';
+      previewBtn.addEventListener('click', () => openAssetPreview(item.url, type));
+      actions.appendChild(previewBtn);
+
+      const downloadLink = document.createElement('a');
+      downloadLink.href = item.url;
+      downloadLink.target = '_blank';
+      downloadLink.rel = 'noopener';
+      downloadLink.textContent = 'Download';
+      downloadLink.setAttribute('download', '');
+      actions.appendChild(downloadLink);
+
+      card.appendChild(thumb);
+      card.appendChild(footer);
+      card.appendChild(actions);
+      driveGrid.appendChild(card);
+    });
+
+    updateDriveSummary();
+  }
+
+  async function loadDriveItems(force = false) {
+    if (!currentAccount || driveLoading) {
+      return;
+    }
+    if (driveLoaded && !force) {
+      renderDriveItems();
+      return;
+    }
+
+    driveLoading = true;
+    try {
+      const res = await fetch(DRIVE_ENDPOINT, {
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error((data && data.error) || 'Gagal memuat drive.');
+      }
+      driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      driveLoaded = true;
+      renderDriveItems();
+    } catch (err) {
+      console.warn('Gagal memuat drive:', err);
+    } finally {
+      driveLoading = false;
+    }
+  }
+
+  async function persistDriveItems(items) {
+    if (!items || !items.length) {
+      return null;
+    }
+
+    const res = await fetch(DRIVE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ items })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) || 'Gagal menyimpan drive.');
+    }
+
+    driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+    driveLoaded = true;
+    renderDriveItems();
+    return driveItems;
+  }
+
+  async function syncJobToDrive(job) {
+    if (!job || !currentAccount) return;
+    if (!finalStatus(job.status)) return;
+    if (job.driveSynced) return;
+
+    const type = jobOutputType(job);
+    const urls = new Set();
+    const payload = [];
+
+    const pushUrl = url => {
+      if (typeof url !== 'string') return;
+      if (!/^https?:\/\//i.test(url)) return;
+      if (urls.has(url)) return;
+      urls.add(url);
+      payload.push({
+        type,
+        url,
+        model: job.modelId || null,
+        prompt: job.prompt || null,
+        created_at: job.updatedAt || job.createdAt || nowIso()
+      });
+    };
+
+    if (Array.isArray(job.generated)) {
+      job.generated.forEach(pushUrl);
+    }
+    pushUrl(job.extraUrl || null);
+
+    if (!payload.length) {
+      return;
+    }
+
+    try {
+      await persistDriveItems(payload);
+      job.driveSynced = nowIso();
+      saveJobs();
+    } catch (err) {
+      console.warn('Gagal sinkron drive:', err);
+    }
   }
 
   function applyTheme(theme) {
@@ -4261,9 +4834,20 @@ body[data-theme="dark"] .profile-credit {
       currentAccount = account;
       applyTheme(account.theme || currentTheme);
       updateProfileCard(account);
+      setDriveAccess(true);
+      if (driveLoaded) {
+        renderDriveItems();
+      } else {
+        updateDriveSummary();
+      }
     } catch (err) {
       console.warn('Tidak dapat memuat akun:', err);
       applyTheme(currentTheme);
+      currentAccount = null;
+      driveItems = [];
+      driveLoaded = false;
+      setDriveAccess(false);
+      renderDriveItems();
     }
   }
 
@@ -4343,6 +4927,9 @@ body[data-theme="dark"] .profile-credit {
     });
   }
 
+  setDriveAccess(false);
+  updateDriveSummary();
+  renderDriveItems();
   loadAccountState();
 
   // ===== GEMINI MODES =====
@@ -4612,6 +5199,7 @@ body[data-theme="dark"] .profile-credit {
   };
 
   const STORAGE_KEY = 'freepik_jobs_v1';
+  const DRIVE_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive';
   jobs = loadJobs();
   updateDashboardStats();
   let activeJobId = null;
@@ -4629,6 +5217,9 @@ body[data-theme="dark"] .profile-credit {
         if (job && typeof job === 'object') {
           if (typeof job.progress !== 'number') {
             job.progress = finalStatus(job.status) ? 100 : 0;
+          }
+          if (job.driveSynced && typeof job.driveSynced !== 'string') {
+            job.driveSynced = String(job.driveSynced);
           }
         }
         return job;
@@ -4828,6 +5419,7 @@ body[data-theme="dark"] .profile-credit {
   const featureLabel = document.getElementById('featureLabel');
   let navButtons = [];
   let viewDashboardSection = null;
+  let viewDriveSection = null;
   let viewHubSection = null;
   let viewFilmSection = null;
   let viewUGCSection = null;
@@ -6057,6 +6649,7 @@ body[data-theme="dark"] .profile-credit {
         if (job.generated && job.generated.length) {
           await ensureLocalFiles(job);
         }
+        await syncJobToDrive(job);
         if (job.type === 'video') {
           const url = (job.localUrls && job.localUrls[0]) ||
                       (job.generated && job.generated[0]) ||
@@ -6112,7 +6705,8 @@ body[data-theme="dark"] .profile-credit {
         updatedAt: nowIso(),
         status: status || (taskId ? 'CREATED' : 'COMPLETED'),
         generated: generated || [],
-        extraUrl: extraUrl || null
+        extraUrl: extraUrl || null,
+        prompt: formData.prompt || null
       };
 
       if (modelId === 'gemini') {
@@ -6137,6 +6731,7 @@ body[data-theme="dark"] .profile-credit {
         if (job.generated && job.generated.length) {
           await ensureLocalFiles(job);
         }
+        await syncJobToDrive(job);
       }
     } catch (err) {
       console.error(err);
@@ -6196,8 +6791,25 @@ body[data-theme="dark"] .profile-credit {
     });
   }
 
+  if (driveTypeFilter) {
+    driveTypeFilter.addEventListener('change', renderDriveItems);
+  }
+  if (driveSortFilter) {
+    driveSortFilter.addEventListener('change', renderDriveItems);
+  }
+  if (driveDateFilter) {
+    driveDateFilter.addEventListener('change', renderDriveItems);
+  }
+  if (driveClearDateBtn) {
+    driveClearDateBtn.addEventListener('click', () => {
+      if (driveDateFilter) driveDateFilter.value = '';
+      renderDriveItems();
+    });
+  }
+
   navButtons = Array.from(document.querySelectorAll('.sidebar-link'));
   viewDashboardSection = document.getElementById('viewDashboard');
+  viewDriveSection = document.getElementById('viewDrive');
   viewHubSection = document.getElementById('viewHub');
   viewFilmSection = document.getElementById('viewFilm');
   viewUGCSection = document.getElementById('viewUGC');
@@ -6212,12 +6824,16 @@ body[data-theme="dark"] .profile-credit {
 
   function showView(target, featureKey) {
     if (viewDashboardSection) viewDashboardSection.style.display = target === 'viewDashboard' ? '' : 'none';
+    if (viewDriveSection) viewDriveSection.style.display = target === 'viewDrive' ? '' : 'none';
     if (viewHubSection) viewHubSection.style.display = target === 'viewHub' ? '' : 'none';
     if (viewFilmSection) viewFilmSection.style.display = target === 'viewFilm' ? '' : 'none';
     if (viewUGCSection) viewUGCSection.style.display = target === 'viewUGC' ? '' : 'none';
 
     if (target === 'viewHub') {
       setFeature(featureKey || 'imageGen');
+    }
+    if (target === 'viewDrive') {
+      loadDriveItems();
     }
 
     activateNav(target, featureKey);
@@ -6226,6 +6842,9 @@ body[data-theme="dark"] .profile-credit {
 
   navButtons.forEach(btn => {
     btn.addEventListener('click', () => {
+      if (btn.disabled) {
+        return;
+      }
       const target = btn.dataset.target || 'viewDashboard';
       const featureKey = btn.dataset.feature || (target === 'viewHub' ? 'imageGen' : undefined);
       showView(target, featureKey);
@@ -7465,7 +8084,8 @@ body[data-theme="dark"] .profile-credit {
       updatedAt: nowIso(),
       status,
       generated: generated || [],
-      extraUrl: null
+      extraUrl: null,
+      prompt: body.prompt || null
     };
     jobs.unshift(job);
     saveJobs();
@@ -7475,6 +8095,10 @@ body[data-theme="dark"] .profile-credit {
       startPolling(job);
     } else {
       finishJobProgress(job);
+      if (job.generated && job.generated.length) {
+        await ensureLocalFiles(job);
+      }
+      await syncJobToDrive(job);
     }
 
     item.videoJobId = jobId;
@@ -7564,6 +8188,9 @@ document.addEventListener('keydown', event => {
   setFeature('imageGen');
   jobs.filter(j => !finalStatus(j.status)).forEach(job => startJobProgress(job));
   renderJobs();
+  jobs.filter(j => finalStatus(j.status) && !j.driveSynced).forEach(job => {
+    syncJobToDrive(job).catch(err => console.warn('Resync drive gagal:', err));
+  });
   if (jobs.length) {
     const lastCompleted = jobs.find(j => finalStatus(j.status)) || jobs[0];
     activeJobId = lastCompleted.id;

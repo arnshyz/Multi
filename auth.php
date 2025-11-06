@@ -293,6 +293,48 @@ function auth_accounts_contains_admin(array $accounts): bool
     return false;
 }
 
+function auth_normalize_drive_item($item): ?array
+{
+    if (!is_array($item)) {
+        return null;
+    }
+
+    $id = isset($item['id']) && $item['id'] !== '' ? (string)$item['id'] : uniqid('drive_', true);
+    $type = isset($item['type']) ? strtolower((string)$item['type']) : 'image';
+    if (!in_array($type, ['image', 'video'], true)) {
+        $type = 'image';
+    }
+
+    $url = isset($item['url']) ? trim((string)$item['url']) : '';
+    if ($url === '' || !preg_match('/^https?:\/\//i', $url)) {
+        return null;
+    }
+
+    $thumb = isset($item['thumbnail_url']) && $item['thumbnail_url'] !== ''
+        ? (string)$item['thumbnail_url']
+        : null;
+    if ($thumb !== null && !preg_match('/^https?:\/\//i', $thumb)) {
+        $thumb = null;
+    }
+
+    $model = isset($item['model']) && $item['model'] !== '' ? (string)$item['model'] : null;
+    $prompt = isset($item['prompt']) && $item['prompt'] !== '' ? (string)$item['prompt'] : null;
+
+    $createdAt = isset($item['created_at']) && $item['created_at'] !== ''
+        ? (string)$item['created_at']
+        : gmdate('c');
+
+    return [
+        'id' => $id,
+        'type' => $type,
+        'url' => $url,
+        'thumbnail_url' => $thumb,
+        'model' => $model,
+        'prompt' => $prompt,
+        'created_at' => $createdAt,
+    ];
+}
+
 function auth_normalize_account($account): array
 {
     if (!is_array($account)) {
@@ -344,6 +386,21 @@ function auth_normalize_account($account): array
             return is_array($entry) && isset($entry['ip']) && $entry['ip'] !== '';
         }
     ));
+
+    $driveItems = [];
+    if (isset($account['drive_items']) && is_array($account['drive_items'])) {
+        foreach ($account['drive_items'] as $item) {
+            $normalized = auth_normalize_drive_item($item);
+            if ($normalized) {
+                $driveItems[$normalized['id']] = $normalized;
+            }
+        }
+    }
+    usort($driveItems, function ($a, $b) {
+        return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+    });
+    $account['drive_items'] = array_values($driveItems);
+
     $account['source'] = isset($account['source']) ? (string)$account['source'] : 'storage';
 
     return $account;
@@ -808,6 +865,101 @@ function auth_account_public_payload(array $account): array
         'last_login_at' => $account['last_login_at'] ?? null,
         'last_login_ip' => $account['last_login_ip'] ?? null,
     ];
+}
+
+function auth_drive_get_items(string $accountId): array
+{
+    $data = auth_storage_read();
+    foreach ($data['accounts'] as $account) {
+        if (!is_array($account)) {
+            continue;
+        }
+        if (($account['id'] ?? null) !== $accountId) {
+            continue;
+        }
+
+        $normalized = auth_normalize_account($account);
+        return $normalized['drive_items'] ?? [];
+    }
+
+    return [];
+}
+
+function auth_drive_append_items(string $accountId, array $items, array &$errors = [])
+{
+    $errors = [];
+    if (!$items) {
+        $errors['items'] = 'Tidak ada item drive yang dikirimkan.';
+        return null;
+    }
+
+    $payload = [];
+    foreach ($items as $item) {
+        $normalized = auth_normalize_drive_item($item);
+        if ($normalized) {
+            $payload[$normalized['url']] = $normalized;
+        }
+    }
+
+    if (!$payload) {
+        $errors['items'] = 'Tidak ada item drive yang valid.';
+        return null;
+    }
+
+    $data = auth_storage_read();
+    $foundIndex = null;
+    foreach ($data['accounts'] as $idx => $account) {
+        if (is_array($account) && ($account['id'] ?? null) === $accountId) {
+            $foundIndex = $idx;
+            break;
+        }
+    }
+
+    if ($foundIndex === null) {
+        $errors['account'] = 'Akun tidak ditemukan.';
+        return null;
+    }
+
+    $account = auth_normalize_account($data['accounts'][$foundIndex]);
+    $existing = isset($account['drive_items']) && is_array($account['drive_items'])
+        ? $account['drive_items']
+        : [];
+
+    $existingMap = [];
+    foreach ($existing as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $url = $entry['url'] ?? null;
+        if (is_string($url) && $url !== '') {
+            $existingMap[$url] = $entry;
+        }
+    }
+
+    foreach (array_values($payload) as $item) {
+        $url = $item['url'];
+        if (isset($existingMap[$url])) {
+            continue;
+        }
+        array_unshift($existing, $item);
+        $existingMap[$url] = $item;
+    }
+
+    $maxItems = 500;
+    if (count($existing) > $maxItems) {
+        $existing = array_slice($existing, 0, $maxItems);
+    }
+
+    $account['drive_items'] = $existing;
+    $account['updated_at'] = gmdate('c');
+    $data['accounts'][$foundIndex] = auth_normalize_account($account);
+
+    if (!auth_storage_write($data)) {
+        $errors['general'] = 'Gagal menyimpan penyimpanan drive.';
+        return null;
+    }
+
+    return $data['accounts'][$foundIndex]['drive_items'] ?? [];
 }
 
 function auth_create_account_entry(array $input, array &$errors = []): ?array
