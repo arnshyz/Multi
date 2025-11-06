@@ -3,5 +3,10 @@
   "apiKeys": [],
   "meta": {
     "rollingIndex": 0
+  },
+  "auth": {
+    "username": "admin",
+    "password_hash": "$2y$12$8d6CiI0X1xIzaIPxtm6gWujpCv.nUoI6RxiX8MDqq9jia83DeQqGm",
+    "updated_at": null
   }
 }

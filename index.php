@@ -1,7 +1,279 @@
 <?php
+require_once __DIR__ . '/auth.php';
+
+auth_session_start();
+
+function auth_json_response($payload, $status = 200)
+{
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // ====== CONFIG FREEPIK ======
-$FREEPIK_API_KEY  = 'FPSX06967c376cb6d87d9c551ccb33ed4d56'; // GANTI DI SINI
+$FREEPIK_API_KEYS = [
+    getenv('FREEPIK_API_KEY_1') ?: 'FPSX06967c376cb6d87d9c551ccb33ed4d56',
+    getenv('FREEPIK_API_KEY_2') ?: 'REPLACE_WITH_API_KEY_2',
+    getenv('FREEPIK_API_KEY_3') ?: 'REPLACE_WITH_API_KEY_3',
+    getenv('FREEPIK_API_KEY_4') ?: 'REPLACE_WITH_API_KEY_4',
+    getenv('FREEPIK_API_KEY_5') ?: 'REPLACE_WITH_API_KEY_5',
+];
+
 $FREEPIK_BASE_URL = 'https://api.freepik.com';
+
+$FREEPIK_REDIS_CONFIG = [
+    'host'     => getenv('FREEPIK_REDIS_HOST') ?: getenv('REDIS_HOST') ?: '127.0.0.1',
+    'port'     => (int)(getenv('FREEPIK_REDIS_PORT') ?: getenv('REDIS_PORT') ?: 6379),
+    'timeout'  => (float)(getenv('FREEPIK_REDIS_TIMEOUT') ?: getenv('REDIS_TIMEOUT') ?: 1.5),
+    'password' => getenv('FREEPIK_REDIS_PASSWORD') ?: getenv('REDIS_PASSWORD') ?: null,
+    'database' => (int)(getenv('FREEPIK_REDIS_DATABASE') ?: getenv('REDIS_DATABASE') ?: 0),
+    'key'      => getenv('FREEPIK_REDIS_KEY') ?: 'freepik:api-keys',
+];
+
+function freepik_normalize_api_keys($keys)
+{
+    $normalized = [];
+    foreach ((array)$keys as $key) {
+        if (!is_string($key)) {
+            continue;
+        }
+        $trimmed = trim($key);
+        if ($trimmed === '' || stripos($trimmed, 'REPLACE_WITH') !== false) {
+            continue;
+        }
+        $normalized[$trimmed] = true;
+    }
+
+    return array_keys($normalized);
+}
+
+function freepik_available_api_keys()
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    global $FREEPIK_API_KEYS;
+
+    $keys = [];
+
+    $single = getenv('FREEPIK_API_KEY');
+    if (is_string($single) && trim($single) !== '') {
+        $keys[] = $single;
+    }
+
+    for ($i = 1; $i <= 10; $i++) {
+        $envKey = getenv('FREEPIK_API_KEY_' . $i);
+        if (is_string($envKey) && trim($envKey) !== '') {
+            $keys[] = $envKey;
+        }
+    }
+
+    $keys = array_merge($keys, (array)$FREEPIK_API_KEYS);
+
+    $cached = freepik_normalize_api_keys($keys);
+
+    return $cached;
+}
+
+function freepik_redis_client()
+{
+    static $client = null;
+    static $initialized = false;
+
+    if ($initialized) {
+        return $client;
+    }
+
+    $initialized = true;
+
+    if (!class_exists('Redis')) {
+        return null;
+    }
+
+    global $FREEPIK_REDIS_CONFIG;
+
+    try {
+        $redis = new Redis();
+        $redis->connect(
+            $FREEPIK_REDIS_CONFIG['host'],
+            $FREEPIK_REDIS_CONFIG['port'],
+            $FREEPIK_REDIS_CONFIG['timeout']
+        );
+
+        if (!empty($FREEPIK_REDIS_CONFIG['password'])) {
+            $redis->auth($FREEPIK_REDIS_CONFIG['password']);
+        }
+
+        if (isset($FREEPIK_REDIS_CONFIG['database'])) {
+            $redis->select((int)$FREEPIK_REDIS_CONFIG['database']);
+        }
+
+        $client = $redis;
+    } catch (Throwable $e) {
+        $client = null;
+    }
+
+    return $client;
+}
+
+function freepik_ensure_redis_key_list($redis, $keys)
+{
+    if (!$redis || !$keys) {
+        return;
+    }
+
+    global $FREEPIK_REDIS_CONFIG;
+
+    $listKey = (string)$FREEPIK_REDIS_CONFIG['key'];
+    if ($listKey === '') {
+        $listKey = 'freepik:api-keys';
+    }
+
+    $hashKey = $listKey . ':hash';
+    $expectedHash = sha1(implode('|', $keys));
+
+    try {
+        $currentHash = $redis->get($hashKey);
+        if ($currentHash === $expectedHash) {
+            return;
+        }
+
+        $redis->multi();
+        $redis->del($listKey);
+        foreach ($keys as $key) {
+            $redis->rPush($listKey, $key);
+        }
+        $redis->set($hashKey, $expectedHash);
+        $redis->exec();
+    } catch (Throwable $e) {
+        // Ignore and allow fallback rotation.
+    }
+}
+
+function freepik_next_api_key()
+{
+    $keys = freepik_available_api_keys();
+    if (!$keys) {
+        return null;
+    }
+
+    $redis = freepik_redis_client();
+    $listKey = null;
+    if ($redis) {
+        global $FREEPIK_REDIS_CONFIG;
+        $listKey = (string)$FREEPIK_REDIS_CONFIG['key'];
+        if ($listKey === '') {
+            $listKey = 'freepik:api-keys';
+        }
+
+        freepik_ensure_redis_key_list($redis, $keys);
+
+        try {
+            $value = $redis->rPopLPush($listKey, $listKey);
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        } catch (Throwable $e) {
+            // fall through to PHP fallback rotation
+        }
+    }
+
+    static $index = 0;
+    $key = $keys[$index % count($keys)];
+    $index++;
+    return $key;
+}
+
+$requestedApi = isset($_GET['api']) ? (string)$_GET['api'] : null;
+
+if ($requestedApi === 'login') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk login.'
+        ], 405);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = null;
+    if (is_string($raw) && $raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $payload = $decoded;
+        }
+    }
+
+    $username = '';
+    $password = '';
+
+    if (is_array($payload)) {
+        $username = isset($payload['username']) ? trim((string)$payload['username']) : '';
+        $password = isset($payload['password']) ? (string)$payload['password'] : '';
+    }
+
+    if ($username === '' && isset($_POST['username'])) {
+        $username = trim((string)$_POST['username']);
+    }
+    if ($password === '' && isset($_POST['password'])) {
+        $password = (string)$_POST['password'];
+    }
+
+    if ($username === '' || $password === '') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'Username dan password wajib diisi.'
+        ], 422);
+    }
+
+    if (!auth_verify($username, $password)) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Kredensial tidak valid.'
+        ], 401);
+    }
+
+    auth_login($username);
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => [
+            'username' => $username
+        ]
+    ]);
+}
+
+if ($requestedApi === 'logout') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk logout.'
+        ], 405);
+    }
+
+    auth_logout();
+    auth_session_start();
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200
+    ]);
+}
+
+if ($requestedApi !== null && !auth_is_logged_in()) {
+    auth_json_response([
+        'ok' => false,
+        'status' => 401,
+        'error' => 'Silakan masuk untuk mengakses API.'
+    ], 401);
+}
 
 // ====== UPLOAD FILE: ?api=upload ======
 if (isset($_GET['api']) && $_GET['api'] === 'upload') {
@@ -182,11 +454,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
 if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     header('Content-Type: application/json; charset=utf-8');
 
-    if (!$FREEPIK_API_KEY || $FREEPIK_API_KEY === 'YOUR_FREEPIK_API_KEY') {
+    $selectedApiKey = freepik_next_api_key();
+    if (!$selectedApiKey) {
         echo json_encode([
             'ok'     => false,
             'status' => 500,
-            'error'  => 'FREEPIK_API_KEY belum di-set di file PHP'
+            'error'  => 'FREEPIK API key belum dikonfigurasi'
         ]);
         exit;
     }
@@ -224,7 +497,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
 
     $headers = [
-        'x-freepik-api-key: ' . $FREEPIK_API_KEY,
+        'x-freepik-api-key: ' . $selectedApiKey,
         'Accept: application/json'
     ];
 
@@ -272,6 +545,193 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     ], JSON_UNESCAPED_SLASHES);
     exit;
 }
+?>
+<?php
+if (!auth_is_logged_in()) {
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store, max-age=0');
+    ?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Masuk · Freepik Multi Suite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color-scheme: dark;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #1f2937 0, #02030a 55%, #000 100%);
+      color: #f9fafb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .login-card {
+      width: min(360px, 100%);
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 16px;
+      padding: 28px 26px;
+      box-shadow: 0 22px 70px rgba(2, 6, 23, 0.6);
+      backdrop-filter: blur(18px);
+    }
+    .login-card h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .login-card p {
+      margin: 0 0 22px;
+      color: #9ca3af;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: #cbd5f5;
+      letter-spacing: 0.01em;
+    }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(2, 6, 23, 0.9);
+      color: #f9fafb;
+      font-size: 14px;
+      padding: 9px 12px;
+      margin-bottom: 16px;
+      transition: border-color 0.2s ease;
+    }
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      outline: none;
+      border-color: rgba(99, 102, 241, 0.7);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+    button[type="submit"] {
+      width: 100%;
+      border-radius: 10px;
+      border: none;
+      padding: 11px 12px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      color: #020617;
+      background: linear-gradient(135deg, #6366f1, #22c55e);
+      box-shadow: 0 18px 45px rgba(67, 56, 202, 0.4);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    button[type="submit"]:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 24px 55px rgba(67, 56, 202, 0.5);
+    }
+    button[type="submit"].loading {
+      opacity: 0.7;
+      cursor: wait;
+    }
+    .login-status {
+      margin-top: 16px;
+      font-size: 13px;
+      color: #f97373;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+  <main class="login-card">
+    <h1>Masuk</h1>
+    <p>Silakan masuk untuk mengakses Freepik Multi Suite.</p>
+    <form id="loginForm" autocomplete="off">
+      <label for="loginUsername">Username</label>
+      <input type="text" id="loginUsername" name="username" autocomplete="username" required>
+      <label for="loginPassword">Password</label>
+      <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
+      <button type="submit" id="loginSubmit">Masuk</button>
+    </form>
+    <div class="login-status" id="loginStatus"></div>
+  </main>
+
+  <script>
+    const loginForm = document.getElementById('loginForm');
+    const loginStatus = document.getElementById('loginStatus');
+    const loginSubmit = document.getElementById('loginSubmit');
+
+    function setLoginStatus(message, isError = true) {
+      if (!loginStatus) return;
+      loginStatus.textContent = message || '';
+      loginStatus.style.color = isError ? '#f97373' : '#4ade80';
+    }
+
+    if (loginForm) {
+      loginForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!loginSubmit) return;
+
+        const formData = new FormData(loginForm);
+        const payload = {
+          username: (formData.get('username') || '').trim(),
+          password: formData.get('password') || ''
+        };
+
+        if (!payload.username || !payload.password) {
+          setLoginStatus('Username dan password wajib diisi.');
+          return;
+        }
+
+        loginSubmit.classList.add('loading');
+        loginSubmit.disabled = true;
+        setLoginStatus('Menyambungkan…', false);
+
+        try {
+          const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
+          });
+
+          const text = await res.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (err) {
+            throw new Error('Respons tidak valid dari server.');
+          }
+
+          if (!res.ok || !data.ok) {
+            throw new Error(data && data.error ? data.error : 'Login gagal.');
+          }
+
+          setLoginStatus('Berhasil masuk. Mengalihkan…', false);
+          window.location.reload();
+        } catch (err) {
+          console.error('Login gagal', err);
+          setLoginStatus(err && err.message ? err.message : 'Tidak dapat masuk.');
+        } finally {
+          loginSubmit.classList.remove('loading');
+          loginSubmit.disabled = false;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
+<?php
+    exit;
+}
+
+$currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : '';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -334,7 +794,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 12px;
+      column-gap: 12px;
+      row-gap: 10px;
+      flex-wrap: wrap;
+    }
+    .topbar-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
     .topbar-title {
       font-size: 14px;
@@ -349,6 +816,57 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
+      justify-content: center;
+      flex: 1;
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
+    }
+    .topbar-user {
+      font-size: 12px;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .logout-btn {
+      border-radius: 999px;
+      border: 1px solid rgba(99,102,241,0.35);
+      background: rgba(15,23,42,0.9);
+      color: var(--text);
+      font-size: 12px;
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .logout-btn:hover {
+      border-color: rgba(129,140,248,0.7);
+      color: #e0e7ff;
+      box-shadow: 0 8px 22px rgba(79,70,229,0.35);
+    }
+    .logout-btn.loading {
+      opacity: 0.65;
+      pointer-events: none;
+    }
+    @media (max-width: 768px) {
+      .topbar {
+        justify-content: flex-start;
+      }
+      .topbar-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+      .topbar-tabs {
+        width: 100%;
+        justify-content: flex-start;
+      }
     }
     .top-tab {
       border-radius: 999px;
@@ -1623,7 +2141,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 <body>
 
 <div class="topbar">
-  <div>
+  <div class="topbar-brand">
     <div class="topbar-title">Freepik Multi Suite</div>
     <div class="topbar-sub">AI Hub • Filmmaker • UGC Tool</div>
   </div>
@@ -1637,6 +2155,12 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     <button class="top-tab" data-target="viewUGC">
       <span class="dot"></span> UGC Tool
     </button>
+  </div>
+  <div class="topbar-actions">
+    <?php if ($currentUser !== ''): ?>
+      <span class="topbar-user">👤 <?= htmlspecialchars($currentUser, ENT_QUOTES) ?></span>
+    <?php endif; ?>
+    <button type="button" class="logout-btn" id="logoutButton">Keluar</button>
   </div>
 </div>
 
@@ -2067,6 +2591,39 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 </div>
 
 <script>
+  const logoutButton = document.getElementById('logoutButton');
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+      if (logoutButton.classList.contains('loading')) {
+        return;
+      }
+
+      logoutButton.classList.add('loading');
+      try {
+        const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({})
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          console.error('Logout gagal:', text);
+          alert('Logout gagal. Silakan coba lagi.');
+          return;
+        }
+
+        window.location.reload();
+      } catch (err) {
+        console.error('Logout error', err);
+        alert('Terjadi kesalahan saat logout.');
+      } finally {
+        logoutButton.classList.remove('loading');
+      }
+    });
+  }
+
   // ===== GEMINI MODES =====
   const GEMINI_MODE_META = {
     text: {
@@ -2605,6 +3162,75 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
   let geminiMode = 'text';
   let geminiReferences = [];
+
+  function isHttpUrl(value) {
+    return typeof value === 'string' && /^https?:\/\//i.test(value);
+  }
+
+  function isDataImage(value) {
+    return typeof value === 'string' && /^data:image\//i.test(value);
+  }
+
+  function stripDataUrlPrefix(dataUrl) {
+    return typeof dataUrl === 'string'
+      ? dataUrl.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '')
+      : dataUrl;
+  }
+
+  async function fetchLocalImageAsBase64(url) {
+    const absolute = new URL(url, window.location.href).href;
+    const res = await fetch(absolute, {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Konversi base64 gagal'));
+      reader.onloadend = () => {
+        const result = reader.result;
+        if (typeof result === 'string') {
+          resolve(stripDataUrlPrefix(result));
+        } else {
+          reject(new Error('Pembacaan file tidak valid'));
+        }
+      };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function prepareGeminiReferenceImages(urls) {
+    const results = [];
+    for (const entry of urls) {
+      if (!entry) continue;
+      if (isDataImage(entry)) {
+        results.push(stripDataUrlPrefix(entry));
+        continue;
+      }
+      if (isHttpUrl(entry)) {
+        try {
+          const target = new URL(entry, window.location.href);
+          if (target.origin !== window.location.origin) {
+            results.push(entry);
+            continue;
+          }
+        } catch (err) {
+          // Jika URL tidak valid, lanjutkan ke percobaan fetch lokal di bawah
+        }
+      }
+
+      try {
+        const base64 = await fetchLocalImageAsBase64(entry);
+        results.push(base64);
+      } catch (err) {
+        throw new Error(`Gagal membaca referensi: ${err.message}`);
+      }
+    }
+    return results;
+  }
 
   function getGeminiMeta(mode = geminiMode) {
     return GEMINI_MODE_META[mode] || GEMINI_MODE_META.text;
@@ -3597,7 +4223,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
           refs.splice(meta.max);
         }
       }
-      formData.referenceImages = refs;
+      if (refs.length) {
+        try {
+          formData.referenceImages = await prepareGeminiReferenceImages(refs);
+        } catch (err) {
+          throw new Error('Gagal memproses gambar referensi: ' + err.message);
+        }
+      } else {
+        formData.referenceImages = [];
+      }
       formData.geminiMode = geminiMode;
       usedGeminiRefs = refs.slice();
       usedGeminiMode = geminiMode;
@@ -4287,6 +4921,43 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
   let ugcItems = [];
   let ugcPollTimer = null;
 
+  function normalizeUgcReference(entry) {
+    if (!entry) return null;
+    if (typeof entry === 'string') {
+      return stripDataUrlPrefix(entry);
+    }
+    if (entry.dataUrl) {
+      return stripDataUrlPrefix(entry.dataUrl);
+    }
+    if (entry.url) {
+      return entry.url;
+    }
+    return null;
+  }
+
+  function buildUgcReferences() {
+    const referenceLimit = 3;
+    const productRefs = ugcProductImages
+      .map(img => normalizeUgcReference(img))
+      .filter(Boolean);
+
+    const refs = productRefs.slice(0, referenceLimit);
+    const modelRef = normalizeUgcReference(ugcModelImage);
+
+    if (modelRef) {
+      if (!productRefs.length) {
+        return [modelRef];
+      }
+      if (refs.length < referenceLimit) {
+        refs.push(modelRef);
+      } else {
+        refs[refs.length - 1] = modelRef;
+      }
+    }
+
+    return refs;
+  }
+
   function getUgcStyle(key = DEFAULT_UGC_STYLE_KEY) {
     return UGC_STYLE_LIBRARY[key] || UGC_STYLE_LIBRARY[DEFAULT_UGC_STYLE_KEY];
   }
@@ -4638,16 +5309,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     renderUgcList();
 
     const cfg = MODEL_CONFIG.gemini;
-    const referenceLimit = 3;
-    const refs = [];
-    ugcProductImages.forEach(p => {
-      if (refs.length < referenceLimit) {
-        refs.push(p.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
-      }
-    });
-    if (ugcModelImage && refs.length < referenceLimit) {
-      refs.push(ugcModelImage.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
-    }
+    const refs = buildUgcReferences();
 
     for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
       const prompt = buildUgcImagePrompt(brief, styleKey, i);
@@ -4670,7 +5332,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         aspect_ratio: 'square_1_1'
       };
       if (refs.length) {
-        body.reference_images = refs;
+        body.reference_images = refs.slice();
       }
       try {
         const data = await callFreepik(cfg, body, 'POST');
