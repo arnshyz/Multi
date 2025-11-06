@@ -1,0 +1,403 @@
+/* Import Font */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+
+/* Global Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Poppins', sans-serif;
+    transition: background-color 0.5s, color 0.5s, border-color 0.5s, box-shadow 0.5s;
+}
+
+:root {
+    --bg-color: #0d122b;
+    --text-color: #e0f7ff;
+    --glass-bg: rgba(255, 255, 255, 0.08);
+    --glass-border: rgba(255, 255, 255, 0.18);
+    --light-gradient-start: rgba(132, 255, 235, 0.2);
+    --light-gradient-end: rgba(181, 102, 255, 0.2);
+    --btn-start: #00c6ff;
+    --btn-end: #0072ff;
+    --btn-shadow: rgba(0, 198, 255, 0.4);
+    --hover-color: #84b3ff;
+}
+
+body.dark-mode {
+    --bg-color: #05051a;
+    --text-color: #f0f0f5;
+    --glass-bg: rgba(0, 0, 0, 0.2);
+    --glass-border: rgba(255, 255, 255, 0.05);
+    --light-gradient-start: rgba(255, 0, 157, 0.1);
+    --light-gradient-end: rgba(77, 255, 0, 0.1);
+    --btn-start: #ff007b;
+    --btn-end: #ff9900;
+    --btn-shadow: rgba(255, 0, 123, 0.5);
+    --hover-color: #ff9900;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: var(--bg-color);
+    color: var(--text-color);
+    position: relative;
+    overflow: hidden;
+}
+
+.background-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    background: radial-gradient(circle at 10% 20%, var(--light-gradient-start), transparent 40%),
+                radial-gradient(circle at 80% 90%, var(--light-gradient-end), transparent 40%);
+}
+
+.container {
+    width: 90%;
+    max-width: 1200px;
+    padding: 40px;
+    z-index: 10;
+}
+
+.glass-navbar, .glass-hero-card, .feature-cards .glass-card {
+    background: var(--glass-bg);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+}
+
+.glass-navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 30px;
+    margin-bottom: 40px;
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+}
+
+.glass-navbar nav ul {
+    list-style: none;
+    display: flex;
+}
+
+.glass-navbar nav ul li {
+    margin-left: 25px;
+}
+
+.glass-navbar nav ul li a {
+    text-decoration: none;
+    color: var(--text-color);
+    font-weight: 400;
+    transition: color 0.3s;
+}
+
+.glass-navbar nav ul li a:hover {
+    color: var(--hover-color);
+}
+
+.glass-toggle {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    padding: 8px 15px;
+    border-radius: 20px;
+    color: var(--text-color);
+    cursor: pointer;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+}
+
+.glass-toggle:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.glass-hero-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 60px;
+    min-height: 400px;
+    margin-bottom: 40px;
+}
+
+.glass-hero-card .content {
+    max-width: 50%;
+}
+
+.hero-title {
+    font-size: 3.5rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 15px;
+}
+
+.hero-subtitle {
+    font-size: 1.2rem;
+    font-weight: 300;
+    margin-bottom: 30px;
+    color: var(--hover-color);
+}
+
+.btn-learn-more {
+    display: inline-block;
+    padding: 12px 30px;
+    background: linear-gradient(135deg, var(--btn-start), var(--btn-end));
+    border-radius: 50px;
+    text-decoration: none;
+    color: white;
+    font-weight: 600;
+    letter-spacing: 1px;
+    box-shadow: 0 4px 15px var(--btn-shadow);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.btn-learn-more:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--btn-shadow);
+}
+
+.image-placeholder {
+    width: 250px;
+    height: 250px;
+    background: radial-gradient(circle, var(--text-color) 0%, var(--hover-color) 50%, transparent 70%);
+    border-radius: 50%;
+    animation: pulse 4s infinite ease-in-out;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 10px var(--hover-color), 0 0 20px var(--light-gradient-end); }
+    50% { box-shadow: 0 0 30px var(--hover-color), 0 0 40px var(--light-gradient-end); }
+    100% { box-shadow: 0 0 10px var(--hover-color), 0 0 20px var(--light-gradient-end); }
+}
+
+.feature-cards {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.feature-cards .glass-card {
+    flex: 1;
+    padding: 30px 20px;
+    text-align: center;
+    transition: transform 0.3s, box-shadow 0.3s;
+    cursor: pointer;
+}
+
+.feature-cards .glass-card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 15px 50px 0 rgba(0, 0, 0, 0.4);
+}
+
+.feature-cards .glass-card .icon {
+    font-size: 2.5rem;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.feature-cards .glass-card h3 {
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.footer {
+    text-align: center;
+    padding: 20px 0;
+    font-size: 0.8rem;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-overlay.active {
+    display: flex;
+}
+
+.glass-modal {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 40px;
+    width: 90%;
+    max-width: 400px;
+    position: relative;
+    transform: scale(0.95);
+    opacity: 0;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.modal-overlay.active .glass-modal {
+    transform: scale(1);
+    opacity: 1;
+}
+
+.close-btn {
+    position: absolute;
+    top: 15px;
+    right: 25px;
+    font-size: 30px;
+    font-weight: 300;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: var(--hover-color);
+}
+
+.modal-title {
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.input-group {
+    margin-bottom: 20px;
+}
+
+.input-group label {
+    display: block;
+    font-weight: 400;
+    margin-bottom: 5px;
+    color: var(--text-color);
+}
+
+.input-group input[type="text"],
+.input-group input[type="password"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.input-group input:focus {
+    border-color: var(--hover-color);
+    box-shadow: 0 0 5px var(--hover-color);
+}
+
+.btn-login {
+    width: 100%;
+    padding: 12px 0;
+    background: linear-gradient(135deg, var(--btn-start), var(--btn-end));
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: 0 4px 15px var(--btn-shadow);
+    margin-top: 15px;
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.btn-login:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.btn-login.loading {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.login-status {
+    margin-top: 15px;
+    font-size: 0.9rem;
+    text-align: center;
+    min-height: 1.2em;
+}
+
+.login-status[data-state="info"] {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.login-status[data-state="success"] {
+    color: #7bffb7;
+}
+
+.login-status[data-state="error"] {
+    color: #ff8a8a;
+}
+
+.forgot-link {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 0.9rem;
+    color: var(--hover-color);
+    cursor: pointer;
+}
+
+@media (max-width: 900px) {
+    .glass-hero-card {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .glass-hero-card .content {
+        max-width: 100%;
+        margin-bottom: 30px;
+    }
+
+    .hero-title {
+        font-size: 2.5rem;
+    }
+
+    .feature-cards {
+        flex-direction: column;
+    }
+
+    .glass-navbar {
+        flex-direction: column;
+        padding: 15px 15px 5px 15px;
+    }
+
+    .glass-navbar nav ul {
+        padding-top: 15px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .glass-navbar nav ul li {
+        margin: 5px 10px;
+    }
+
+    .glass-toggle {
+        margin-top: 10px;
+    }
+}

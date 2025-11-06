@@ -1049,644 +1049,195 @@ if (!auth_is_logged_in()) {
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-store, max-age=0');
     ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <title>Masuk · AKAY NUSANTARA </title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    :root {
-      font-family: 'Poppins', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      color-scheme: light;
-    }
-    body.auth-body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 20px;
-      background: radial-gradient(120% 120% at 20% 0%, rgba(99,102,241,0.22), transparent),
-                  radial-gradient(110% 110% at 80% 100%, rgba(34,211,238,0.18), transparent),
-                  linear-gradient(160deg, #0f172a 0%, #1e1b4b 35%, #0b1120 100%);
-      color: #f8fafc;
-      position: relative;
-      overflow: hidden;
-    }
-    body.auth-body::before {
-      content: "";
-      position: fixed;
-      inset: -40% -20%;
-      background: conic-gradient(from 120deg, rgba(59,130,246,0.3), rgba(236,72,153,0.22), rgba(34,211,238,0.28), rgba(59,130,246,0.3));
-      background-size: 160% 160%;
-      filter: blur(80px);
-      opacity: 0.65;
-      animation: auroraDrift 22s ease-in-out infinite;
-      z-index: 0;
-      pointer-events: none;
-    }
-    .auth-background {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      overflow: hidden;
-    }
-    .auth-background .orb {
-      position: absolute;
-      width: 420px;
-      height: 420px;
-      border-radius: 50%;
-      filter: blur(140px);
-      opacity: 0.6;
-      animation: floatOrb 16s ease-in-out infinite;
-      background: radial-gradient(circle, rgba(165,180,252,0.75), transparent 70%);
-    }
-    .auth-background .orb-one { top: -120px; left: -120px; }
-    .auth-background .orb-two {
-      bottom: -160px;
-      right: -80px;
-      background: radial-gradient(circle, rgba(94,234,212,0.6), transparent 70%);
-      animation-delay: -6s;
-    }
-    .auth-background .orb-three {
-      top: 40%;
-      right: 35%;
-      background: radial-gradient(circle, rgba(56,189,248,0.5), transparent 70%);
-      animation-delay: -3s;
-    }
-    @keyframes floatOrb {
-      0%, 100% { transform: translate3d(0,0,0) scale(1); }
-      50% { transform: translate3d(40px, -30px, 0) scale(1.08); }
-    }
-    @keyframes auroraDrift {
-      0% { transform: rotate(0deg) scale(1); opacity: 0.55; }
-      50% { transform: rotate(160deg) scale(1.12); opacity: 0.82; }
-      100% { transform: rotate(320deg) scale(1); opacity: 0.55; }
-    }
-    .auth-shell {
-      position: relative;
-      z-index: 1;
-      width: min(1000px, 100%);
-      display: grid;
-      gap: 28px;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      align-items: stretch;
-    }
-    .auth-card {
-      position: relative;
-      border-radius: 28px;
-      padding: 36px 34px;
-      background: linear-gradient(135deg, rgba(255,255,255,0.85), rgba(232,249,255,0.72));
-      color: #0f172a;
-      border: 1px solid rgba(148,163,184,0.25);
-      box-shadow: 0 40px 90px rgba(15,23,42,0.28);
-      overflow: hidden;
-      backdrop-filter: blur(22px);
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    .auth-card.security {
-      background: linear-gradient(168deg, rgba(30,41,59,0.95), rgba(124,45,18,0.86));
-      color: #fef3c7;
-      border: 1px solid rgba(251,191,36,0.48);
-      box-shadow: 0 46px 110px rgba(124,45,18,0.35);
-    }
-    .auth-card::before,
-    .auth-card::after {
-      content: "";
-      position: absolute;
-      width: 220px;
-      height: 220px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(56,189,248,0.25), transparent 72%);
-      filter: blur(10px);
-      opacity: 0.65;
-      z-index: 0;
-      animation: cardGlow 18s linear infinite;
-    }
-    .auth-card::before { top: -80px; right: -90px; }
-    .auth-card::after { bottom: -90px; left: -70px; animation-delay: -8s; }
-    .auth-card.security::before {
-      background: radial-gradient(circle, rgba(251,191,36,0.38), transparent 78%);
-    }
-    .auth-card > * { position: relative; z-index: 1; }
-    .auth-card:hover { transform: translateY(-6px); box-shadow: 0 48px 120px rgba(15,23,42,0.32); }
-    @keyframes cardGlow {
-      0% { transform: rotate(0deg) scale(1); }
-      50% { transform: rotate(180deg) scale(1.05); }
-      100% { transform: rotate(360deg) scale(1); }
-    }
-    .security-card {
-      display: flex;
-      flex-direction: column;
-      gap: 22px;
-    }
-    .security-alert {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 14px 18px;
-      border-radius: 20px;
-      background: rgba(248,113,113,0.16);
-      border: 1px solid rgba(251,191,36,0.45);
-      box-shadow: inset 0 0 0 1px rgba(248,250,252,0.06);
-    }
-    .security-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 16px;
-      background: linear-gradient(135deg, rgba(250,204,21,0.28), rgba(248,113,113,0.34));
-      color: #fef3c7;
-      font-size: 26px;
-      font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 18px 34px rgba(248,113,113,0.32);
-    }
-    .security-copy h1 {
-      margin: 0 0 6px;
-      font-size: 28px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-    }
-    .security-copy p {
-      margin: 0;
-      color: rgba(248, 250, 252, 0.78);
-      font-size: 14px;
-      line-height: 1.6;
-    }
-    .ip-panel {
-      border-radius: 20px;
-      border: 1px solid rgba(250, 204, 21, 0.45);
-      background: linear-gradient(140deg, rgba(30,41,59,0.65), rgba(124,45,18,0.52));
-      padding: 22px 24px;
-      text-align: center;
-      box-shadow: inset 0 0 0 1px rgba(15,23,42,0.45);
-    }
-    .ip-label {
-      display: block;
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: rgba(248, 250, 252, 0.66);
-      margin-bottom: 8px;
-    }
-    .ip-value {
-      font-size: 30px;
-      font-weight: 700;
-      color: #fbbf24;
-      letter-spacing: 0.05em;
-    }
-    .ip-note {
-      display: block;
-      margin-top: 10px;
-      font-size: 12px;
-      color: rgba(248, 250, 252, 0.68);
-    }
-    .auth-header h1 {
-      margin: 0 0 8px;
-      font-size: 28px;
-      font-weight: 600;
-      color: #0f172a;
-    }
-    .auth-header p {
-      margin: 0 0 22px;
-      color: rgba(15,23,42,0.65);
-      font-size: 14px;
-      line-height: 1.7;
-    }
-    .login-ip-stamp {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 16px;
-      border-radius: 999px;
-      background: rgba(59,130,246,0.12);
-      color: rgba(15,23,42,0.68);
-      font-size: 12px;
-      font-weight: 500;
-      margin-bottom: 22px;
-      box-shadow: 0 18px 34px rgba(59,130,246,0.14);
-    }
-    .login-ip-stamp .stamp-icon {
-      font-size: 16px;
-      color: #2563eb;
-    }
-    .login-ip-stamp .stamp-value {
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: #1d4ed8;
-    }
-    .auth-tabs {
-      display: inline-flex;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.65);
-      border: 1px solid rgba(148,163,184,0.35);
-      padding: 4px;
-      gap: 4px;
-      margin-bottom: 24px;
-      position: relative;
-    }
-    .auth-tabs .tab {
-      border: none;
-      border-radius: 999px;
-      padding: 10px 22px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      background: transparent;
-      color: rgba(15,23,42,0.55);
-      transition: all 0.25s ease;
-    }
-    .auth-tabs .tab.active {
-      background: linear-gradient(135deg, #6366f1, #0ea5e9);
-      color: #f8fafc;
-      box-shadow: 0 16px 36px rgba(14,165,233,0.35);
-    }
-    .auth-content { display: none; animation: fadeIn 0.3s ease; }
-    .auth-content.active { display: block; }
-    label {
-      display: block;
-      font-size: 12px;
-      margin-bottom: 6px;
-      letter-spacing: 0.02em;
-      color: rgba(15,23,42,0.58);
-    }
-    input[type="text"], input[type="email"], input[type="password"] {
-      width: 100%;
-      border-radius: 14px;
-      border: 1px solid rgba(148,163,184,0.3);
-      background: rgba(255,255,255,0.9);
-      color: #0f172a;
-      padding: 12px 16px;
-      font-size: 14px;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-    }
-    input:focus {
-      outline: none;
-      border-color: rgba(99,102,241,0.55);
-      box-shadow: 0 16px 30px rgba(99,102,241,0.18);
-      transform: translateY(-1px);
-      background: rgba(255,255,255,0.96);
-    }
-    .form-note {
-      font-size: 11px;
-      color: rgba(15,23,42,0.5);
-      margin: 8px 0 14px;
-    }
-    button.gradient {
-      width: 100%;
-      border-radius: 14px;
-      border: none;
-      padding: 14px 18px;
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      cursor: pointer;
-      color: #f8fafc;
-      background: linear-gradient(120deg, #6366f1, #0ea5e9, #34d399);
-      background-size: 200% 200%;
-      box-shadow: 0 28px 60px rgba(99,102,241,0.38);
-      transition: transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
-      position: relative;
-      overflow: hidden;
-    }
-    button.gradient::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, transparent, rgba(255,255,255,0.35), transparent);
-      opacity: 0;
-      transition: opacity 0.25s ease;
-    }
-    button.gradient:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 32px 70px rgba(99,102,241,0.4);
-    }
-    button.gradient:hover::after { opacity: 1; }
-    button.gradient.loading { opacity: 0.6; cursor: wait; }
-    .security-card button {
-      width: 100%;
-      border-radius: 14px;
-      border: none;
-      padding: 14px 18px;
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      cursor: pointer;
-      color: #0f172a;
-      background: linear-gradient(120deg, #f97316, #fb7185);
-      box-shadow: 0 28px 56px rgba(248,113,113,0.32);
-      transition: transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
-      position: relative;
-      overflow: hidden;
-    }
-    .security-card button::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, transparent, rgba(255,255,255,0.35), transparent);
-      opacity: 0;
-      transition: opacity 0.25s ease;
-    }
-    .security-card button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 34px 70px rgba(248,113,113,0.35);
-    }
-    .security-card button:hover::after { opacity: 1; }
-    .security-card button:disabled,
-    button.gradient.loading {
-      opacity: 0.55;
-      cursor: wait;
-      transform: none;
-    }
-    .security-status,
-    .form-status {
-      margin-top: 16px;
-      font-size: 13px;
-      min-height: 20px;
-      text-align: center;
-      color: rgba(15,23,42,0.65);
-    }
-    .security-card .security-status { color: rgba(226,232,240,0.85); }
-    .form-status.info,
-    .security-status.info { color: rgba(148, 163, 184, 0.9); }
-    .form-status.success,
-    .security-status.success { color: #34d399; }
-    .form-status.error,
-    .security-status.error { color: #f87171; }
-    .hidden { display: none !important; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px);} to { opacity: 1; transform: translateY(0);} }
-    @media (max-width: 720px) {
-      .auth-card { padding: 28px 26px; border-radius: 22px; }
-      .auth-shell { gap: 20px; }
-    }
-    @media (max-width: 480px) {
-      body.auth-body { padding: 32px 18px; }
-      .security-card h1 { font-size: 24px; }
-      .ip-value { font-size: 24px; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurora - Future Experience (Glassmorphism)</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
 </head>
-<body class="auth-body">
-  <div class="auth-background">
-    <span class="orb orb-one"></span>
-    <span class="orb orb-two"></span>
-    <span class="orb orb-three"></span>
-  </div>
-  <?php $clientIp = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'; ?>
-  <div class="auth-shell">
-    <section class="auth-card security security-card" id="securityGate">
-      <div class="security-alert" role="alert">
-        <span class="security-icon" aria-hidden="true">⚠️</span>
-        <div class="security-copy">
-          <h1>AKAY NUSANTARA - Security Check</h1>
-          <p>Validasi alamat IP kamu sebelum memasuki Dashboard Generator.</p>
+<body>
+    <div class="background-overlay"></div>
+    <div class="container">
+        <header class="glass-navbar">
+            <div class="logo">AURORA</div>
+            <nav>
+                <ul>
+                    <li><a href="#home">HOME</a></li>
+                    <li><a href="#features">FEATURES</a></li>
+                    <li><a href="#pricing">PRICING</a></li>
+                    <li><a href="#" id="openLoginModal">LOGIN</a></li>
+                    <li><a href="#contact">CONTACT</a></li>
+                </ul>
+            </nav>
+            <button id="theme-toggle" class="glass-toggle">
+                ☀️ Light
+            </button>
+        </header>
+
+        <main class="glass-hero-card" id="home">
+            <div class="content">
+                <h1 class="hero-title">Experience the Future</h1>
+                <p class="hero-subtitle">Revolutizing Connectivity &amp; Innovation</p>
+                <a href="#learn" class="btn-learn-more">LEARN MORE</a>
+            </div>
+            <div class="image-placeholder"></div>
+        </main>
+
+        <section class="feature-cards" id="features">
+            <div class="glass-card" id="pricing">
+                <i class="icon">☁️</i>
+                <h3>Cloud Integration</h3>
+            </div>
+            <div class="glass-card">
+                <i class="icon">⚙️</i>
+                <h3>Advanced AI</h3>
+            </div>
+            <div class="glass-card">
+                <i class="icon">🔒</i>
+                <h3>Secure Data</h3>
+            </div>
+        </section>
+
+        <footer class="footer" id="contact">
+            Powered by Aurora Technologies
+        </footer>
+    </div>
+
+    <div id="loginModal" class="modal-overlay">
+        <div class="glass-modal">
+            <span class="close-btn">&times;</span>
+            <h2 class="modal-title">Member Login</h2>
+            <form class="login-form">
+                <div class="input-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="input-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn-login">SIGN IN</button>
+                <div class="login-status" aria-live="polite"></div>
+            </form>
+            <p class="forgot-link">Forgot Password?</p>
         </div>
-      </div>
-      <div class="ip-panel">
-        <span class="ip-label">Your IP Address</span>
-        <span class="ip-value" id="securityIp"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
-        <span class="ip-note">Aktivitas login kamu dipantau untuk mencegah pembagian tidak sah.</span>
-      </div>
-      <button type="button" id="securityContinue">Lanjutkan</button>
-       <span class="ip-note">Dikembangkan oleh AKAY STUDIO</span>
-      <div class="security-status" id="securityStatus"></div>
-    </section>
+    </div>
 
-    <main class="auth-card main hidden" id="authPanel">
-      <header class="auth-header">
-        <h1>AKAY NUSANTARA</h1>
-        <p>Masuk dengan akun kamu atau registrasi cepat menggunakan Freepik API key aktif.</p>
-      </header>
-      <div class="login-ip-stamp">
-        <span class="stamp-icon" aria-hidden="true">🔒</span>
-        <span>IP Kamu:</span>
-        <span class="stamp-value"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
-      </div>
-      <div class="auth-tabs" role="tablist">
-        <button type="button" class="tab active" data-target="login" aria-selected="true">Login</button>
-        <button type="button" class="tab" data-target="register" aria-selected="false">Register</button>
-      </div>
-      <section class="auth-content active" data-panel="login" id="loginPanel">
-        <form id="loginForm" autocomplete="off">
-          <label for="loginUsername">Username</label>
-          <input type="text" id="loginUsername" name="username" autocomplete="username" required>
-          <label for="loginPassword">Password</label>
-          <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
-          <button type="submit" class="gradient" id="loginSubmit">Masuk</button>
-        </form>
-        <div class="form-status" id="loginStatus"></div>
-      </section>
-      <section class="auth-content" data-panel="register" id="registerPanel">
-        <form id="registerForm" autocomplete="off">
-          <label for="registerApiKey">Freepik API Key</label>
-          <input type="text" id="registerApiKey" name="freepik_api_key" autocomplete="off" required>
-          <div class="form-note">Pastikan API key aktif dan belum pernah ditautkan ke akun lain.</div>
-          <label for="registerUsername">Username</label>
-          <input type="text" id="registerUsername" name="username" autocomplete="new-username" required>
-          <label for="registerEmail">Email</label>
-          <input type="email" id="registerEmail" name="email" autocomplete="email" required>
-          <label for="registerPassword">Password</label>
-          <input type="password" id="registerPassword" name="password" autocomplete="new-password" required>
-          <button type="submit" class="gradient" id="registerSubmit">Daftar</button>
-        </form>
-        <div class="form-status" id="registerStatus"></div>
-    </section>
-  </main>
-  </div>
+    <script>
+        const toggleButton = document.getElementById('theme-toggle');
+        const body = document.body;
+        const loginModal = document.getElementById('loginModal');
+        const openLoginModalBtn = document.getElementById('openLoginModal');
+        const closeLoginModalBtn = document.querySelector('.close-btn');
+        const loginForm = document.querySelector('.login-form');
+        const loginStatus = document.querySelector('.login-status');
+        const loginButton = loginForm ? loginForm.querySelector('.btn-login') : null;
+        const endpoint = <?= json_encode($_SERVER['PHP_SELF'] ?? '') ?>;
 
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const securityGate = document.getElementById('securityGate');
-      const authPanel = document.getElementById('authPanel');
-      const securityContinue = document.getElementById('securityContinue');
-      const securityStatus = document.getElementById('securityStatus');
-      const loginForm = document.getElementById('loginForm');
-      const registerForm = document.getElementById('registerForm');
-      const loginStatus = document.getElementById('loginStatus');
-      const registerStatus = document.getElementById('registerStatus');
-      const loginSubmit = document.getElementById('loginSubmit');
-      const registerSubmit = document.getElementById('registerSubmit');
-      const tabs = document.querySelectorAll('.auth-tabs .tab');
-      const panels = document.querySelectorAll('.auth-content');
+        function updateStatus(message, type = 'info') {
+            if (!loginStatus) return;
+            loginStatus.textContent = message || '';
+            loginStatus.dataset.state = type;
+        }
 
-      const ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>';
+        function toggleTheme() {
+            const isDarkMode = body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
 
-      function setStatus(el, message, type = 'info') {
-        if (!el) return;
-        el.textContent = message || '';
-        el.classList.remove('info', 'success', 'error');
-        el.classList.add(type);
-      }
+            if (isDarkMode) {
+                toggleButton.innerHTML = '🌙 Dark';
+            } else {
+                toggleButton.innerHTML = '☀️ Light';
+            }
+        }
 
-      function toggleAuthPanel(show) {
-        if (!securityGate || !authPanel) return;
-        if (show) {
-          securityGate.classList.add('hidden');
-          authPanel.classList.remove('hidden');
-          const username = document.getElementById('loginUsername');
-          if (username) username.focus();
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            body.classList.add('dark-mode');
+            toggleButton.innerHTML = '🌙 Dark';
         } else {
-          authPanel.classList.add('hidden');
-          securityGate.classList.remove('hidden');
+            toggleButton.innerHTML = '☀️ Light';
         }
-      }
+        toggleButton.addEventListener('click', toggleTheme);
 
-      async function runSecurityCheck() {
-        if (!securityContinue) return;
-        if (securityContinue.disabled) return;
+        openLoginModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            loginModal.classList.add('active');
+            updateStatus('');
+            if (loginForm) {
+                loginForm.reset();
+                const firstInput = loginForm.querySelector('input');
+                if (firstInput) {
+                    firstInput.focus();
+                }
+            }
+        });
 
-        securityContinue.disabled = true;
-        securityContinue.classList.add('loading');
-        setStatus(securityStatus, 'Memvalidasi alamat IP…', 'info');
+        closeLoginModalBtn.addEventListener('click', () => {
+            loginModal.classList.remove('active');
+        });
 
-        try {
-          const res = await fetch(`${ENDPOINT}?api=security-check`, {
-            method: 'POST',
-            credentials: 'same-origin'
-          });
-          const data = await res.json();
-          if (!res.ok || !data || !data.ok) {
-            const err = (data && (data.error || data.message)) || `HTTP ${res.status}`;
-            throw new Error(typeof err === 'string' ? err : JSON.stringify(err));
-          }
-          setStatus(securityStatus, 'IP terverifikasi. Silakan login.', 'success');
-          toggleAuthPanel(true);
-        } catch (err) {
-          console.error('Security check gagal', err);
-          setStatus(securityStatus, `Security check gagal: ${err.message}`, 'error');
-        } finally {
-          securityContinue.classList.remove('loading');
-          securityContinue.disabled = false;
+        loginModal.addEventListener('click', (e) => {
+            if (e.target === loginModal) {
+                loginModal.classList.remove('active');
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && loginModal.classList.contains('active')) {
+                loginModal.classList.remove('active');
+            }
+        });
+
+        if (loginForm && loginButton) {
+            loginForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+
+                const formData = new FormData(loginForm);
+                const username = formData.get('username');
+                const password = formData.get('password');
+
+                if (!username || !password) {
+                    updateStatus('Lengkapi username dan password.', 'error');
+                    return;
+                }
+
+                loginButton.disabled = true;
+                loginButton.classList.add('loading');
+                updateStatus('Memproses login…', 'info');
+
+                try {
+                    const response = await fetch(`${endpoint}?api=login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ username, password })
+                    });
+                    const data = await response.json().catch(() => null);
+
+                    if (!response.ok || !data || !data.ok) {
+                        const errorMessage = data && (data.error || data.message) ? data.error || data.message : `HTTP ${response.status}`;
+                        throw new Error(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage));
+                    }
+
+                    updateStatus('Login berhasil! Mengarahkan…', 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 600);
+                } catch (error) {
+                    updateStatus(error.message || 'Login gagal. Coba lagi.', 'error');
+                } finally {
+                    loginButton.disabled = false;
+                    loginButton.classList.remove('loading');
+                }
+            });
         }
-      }
-
-      if (securityContinue) {
-        securityContinue.addEventListener('click', runSecurityCheck);
-      }
-
-      tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-          const target = tab.dataset.target;
-          tabs.forEach(btn => {
-            btn.classList.toggle('active', btn === tab);
-            btn.setAttribute('aria-selected', btn === tab ? 'true' : 'false');
-          });
-          panels.forEach(panel => {
-            panel.classList.toggle('active', panel.dataset.panel === target);
-          });
-        });
-      });
-
-      function formDataFrom(form) {
-        const out = {};
-        if (!form) return out;
-        new FormData(form).forEach((value, key) => {
-          if (typeof value === 'string') {
-            out[key] = value.trim();
-          } else {
-            out[key] = value;
-          }
-        });
-        return out;
-      }
-
-      if (loginForm && loginSubmit) {
-        loginForm.addEventListener('submit', async event => {
-          event.preventDefault();
-          if (loginSubmit.disabled) return;
-
-          const payload = formDataFrom(loginForm);
-          if (!payload.username || !payload.password) {
-            setStatus(loginStatus, 'Isi username dan password kamu.', 'error');
-            return;
-          }
-
-          loginSubmit.disabled = true;
-          loginSubmit.classList.add('loading');
-          setStatus(loginStatus, 'Memproses login…', 'info');
-
-          try {
-            const res = await fetch(`${ENDPOINT}?api=login`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'same-origin',
-              body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            if (!res.ok || !data || !data.ok) {
-              const err = data && (data.error || data.message) ? data.error || data.message : `HTTP ${res.status}`;
-              throw new Error(typeof err === 'string' ? err : JSON.stringify(err));
-            }
-            setStatus(loginStatus, 'Login berhasil! Mengarahkan…', 'success');
-            setTimeout(() => window.location.reload(), 650);
-          } catch (err) {
-            console.error('Login gagal', err);
-            setStatus(loginStatus, err.message || 'Login gagal. Coba lagi.', 'error');
-          } finally {
-            loginSubmit.disabled = false;
-            loginSubmit.classList.remove('loading');
-          }
-        });
-      }
-
-      if (registerForm && registerSubmit) {
-        registerForm.addEventListener('submit', async event => {
-          event.preventDefault();
-          if (registerSubmit.disabled) return;
-
-          const payload = formDataFrom(registerForm);
-          if (!payload.freepik_api_key || !payload.username || !payload.email || !payload.password) {
-            setStatus(registerStatus, 'Lengkapi seluruh field registrasi.', 'error');
-            return;
-          }
-
-          registerSubmit.disabled = true;
-          registerSubmit.classList.add('loading');
-          setStatus(registerStatus, 'Memvalidasi API key…', 'info');
-
-          try {
-            const res = await fetch(`${ENDPOINT}?api=register`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'same-origin',
-              body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            if (!res.ok || !data || !data.ok) {
-              const err = data && (data.error || data.message) ? data.error || data.message : `HTTP ${res.status}`;
-              throw new Error(typeof err === 'string' ? err : JSON.stringify(err));
-            }
-            setStatus(registerStatus, 'Registrasi berhasil! Silakan login.', 'success');
-            registerForm.reset();
-            tabs.forEach(btn => {
-              const isLogin = btn.dataset.target === 'login';
-              btn.classList.toggle('active', isLogin);
-              btn.setAttribute('aria-selected', isLogin ? 'true' : 'false');
-            });
-            panels.forEach(panel => {
-              panel.classList.toggle('active', panel.dataset.panel === 'login');
-            });
-          } catch (err) {
-            console.error('Registrasi gagal', err);
-            setStatus(registerStatus, err.message || 'Registrasi gagal. Periksa data kamu.', 'error');
-          } finally {
-            registerSubmit.disabled = false;
-            registerSubmit.classList.remove('loading');
-          }
-        });
-      }
-
-      if (!securityGate) {
-        authPanel?.classList.remove('hidden');
-      }
-    });
-  </script>
-
+    </script>
+</body>
+</html>
 <?php
     exit;
 }
