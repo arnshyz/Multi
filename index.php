@@ -6596,7 +6596,15 @@ body[data-theme="dark"] .profile-credit {
       }
     }
 
-    return { taskId, status, generated, extraUrl, references: usedGeminiRefs, geminiModeUsed: usedGeminiMode };
+    return {
+      taskId,
+      status,
+      generated,
+      extraUrl,
+      references: usedGeminiRefs,
+      geminiModeUsed: usedGeminiMode,
+      formData
+    };
   }
 
   async function fetchStatus(modelId, taskId) {
@@ -6692,7 +6700,15 @@ body[data-theme="dark"] .profile-credit {
     setStatus('Membuat task ke Freepik…');
 
     try {
-      const { taskId, status, generated, extraUrl, references, geminiModeUsed } = await createTask(modelId);
+      const {
+        taskId,
+        status,
+        generated,
+        extraUrl,
+        references,
+        geminiModeUsed,
+        formData
+      } = await createTask(modelId);
       await spendCoins(COIN_COST_STANDARD);
       const jobId = uuid();
 
@@ -6706,7 +6722,7 @@ body[data-theme="dark"] .profile-credit {
         status: status || (taskId ? 'CREATED' : 'COMPLETED'),
         generated: generated || [],
         extraUrl: extraUrl || null,
-        prompt: formData.prompt || null
+        prompt: formData ? formData.prompt || null : null
       };
 
       if (modelId === 'gemini') {
