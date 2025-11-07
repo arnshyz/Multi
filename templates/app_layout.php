@@ -4082,9 +4082,6 @@ body::after {
       const locked = !featureAvailableForCurrentUser(featureKey);
       const label = getFeatureLabel(featureKey);
       btn.classList.toggle('locked', locked);
-      if (typeof btn.disabled === 'boolean') {
-        btn.disabled = locked;
-      }
       if (locked) {
         btn.setAttribute('aria-disabled', 'true');
         btn.title = `${label} terkunci oleh admin.`;
@@ -4103,9 +4100,6 @@ body::after {
       const locked = !featureAvailableForCurrentUser(key);
       const label = getFeatureLabel(key);
       btn.classList.toggle('locked', locked);
-      if (typeof btn.disabled === 'boolean') {
-        btn.disabled = locked;
-      }
       if (locked) {
         btn.setAttribute('aria-disabled', 'true');
         btn.title = `${label} terkunci oleh admin.`;
@@ -7790,9 +7784,6 @@ body::after {
 
   navButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      if (btn.disabled) {
-        return;
-      }
       const target = btn.dataset.target || 'viewDashboard';
       const featureKey = btn.dataset.feature || (target === 'viewHub' ? 'imageGen' : undefined);
       if (featureKey && !featureAvailableForCurrentUser(featureKey)) {
