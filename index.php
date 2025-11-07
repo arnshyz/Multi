@@ -1054,12 +1054,39 @@ if (!auth_is_logged_in()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AKAY.IO - Cinematic Videos Instantly</title>
+    <title>AKAY.IO - Artificial Intelligence Tool</title>
+    <meta name="description" content="Transformasi data, kreasi, dan strategi Anda dengan kecerdasan buatan.">
+    <link rel="icon" type="image/png" href="/logo.png">
+    <meta property="og:url" content="https://www.akay.io/">
+    <meta property="og:image" content="https://i.pcmag.com/imagery/articles/02hgT9Zk2u7PcF9ybJhuQDS-1.fit_lim.v1724605536.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body class="light-mode">
+    <body class="light-mode">
+    
+    <div class="security-gate-overlay" id="securityGateOverlay">
+        <section class="auth-card security security-card glass-card" id="securityGate">
+            <div class="security-alert" role="alert">
+                <span class="security-icon" aria-hidden="true">⚠️</span>
+                <div class="security-copy">
+                    <h1>Security Check</h1>
+                    <p>Validasi alamat IP Anda sebelum memasuki Website.</p>
+                </div>
+            </div>
+            <div class="ip-panel">
+                <span class="ip-label">Your IP Address</span>
+                <span class="ip-value" id="securityIp">...loading IP...</span> 
+                <span class="ip-note">Aktivitas login Anda dipantau untuk mencegah pembagian tidak sah.</span>
+            </div>
+            <button type="button" id="securityContinue" class="btn-primary">Lanjutkan</button>
+            <span class="ip-note small-note">Dikembangkan oleh AKAY STUDIO</span>
+            <div class="security-status" id="securityStatus"></div>
+        </section>
+    </div>
     <div class="background">
         <div class="shape shape-1"></div>
         <div class="shape shape-2"></div>
@@ -1070,7 +1097,7 @@ if (!auth_is_logged_in()) {
         <div class="navbar glass-card">
             <div class="logo">
                 <img src="logo.png" alt="AKAY.IO Logo" class="logo-icon">
-                AKAY.IO
+                AKAY
             </div>
 
             <nav class="desktop-menu">
@@ -1108,11 +1135,11 @@ if (!auth_is_logged_in()) {
     <main class="hero-section" id="product">
         <div class="hero-text">
             <h1>
-                <span class="gradient-text">Cinematic Videos</span>
-                Instantly
+                <span class="gradient-text">Hasilkan Konten</span>
+                Instan
             </h1>
-            <p>Powered by <strong>Veo 3.1 &amp; Sora 2</strong> — The world's most advanced AI video generation models</p>
-            <p class="subtitle-mobile">Generate studio-quality videos without any technical skills.</p>
+            <p>Powered by <strong>Kling 2.5 Pro &amp; Seedance </strong> — Model generasi video AI tercanggih di sidoarjo</p>
+            <p class="subtitle-mobile">menghasilkan video berkualitas studio tanpa keterampilan teknis apa pun.</p>
 
             <div class="cta-area">
                 <a href="#" class="cta-button">
@@ -1148,6 +1175,7 @@ if (!auth_is_logged_in()) {
         <div class="modal-content glass-card">
             <button class="close-btn" type="button" aria-label="Tutup">&times;</button>
             <h2 id="login-modal-title">Login ke AKAY.IO</h2>
+            
             <form>
                 <input type="text" name="username" placeholder="Username" required autocomplete="username">
                 <input type="password" name="password" placeholder="Password" required autocomplete="current-password">
@@ -1160,12 +1188,17 @@ if (!auth_is_logged_in()) {
     <div id="signup-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="signup-modal-title">
         <div class="modal-content glass-card">
             <button class="close-btn" type="button" aria-label="Tutup">&times;</button>
-            <h2 id="signup-modal-title">Daftar Akun Baru</h2>
+            <h2 id="signup-modal-title">Hubungi No Dibawah</h2>
+            <div class="login-ip-stamp">
+        <span class="stamp-icon" aria-hidden="true">🔒</span>
+        <span>Untuk Sementara Pendaftaran Di tutup:</span>
+        <span class="stamp-value"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
+      </div>
             <form>
                 <input type="text" name="username" placeholder="Nama Pengguna" required autocomplete="username">
                 <input type="email" name="email" placeholder="Email" autocomplete="email">
                 <input type="password" name="password" placeholder="Password" required autocomplete="new-password">
-                <button type="submit" class="btn-primary">Sign Up</button>
+                </button href="wa.me/6282213316764">0818-404-222</button/>
                 <div class="form-status" data-role="signup-status" aria-live="polite"></div>
             </form>
         </div>
@@ -1173,20 +1206,20 @@ if (!auth_is_logged_in()) {
 
     <section class="product-features" aria-labelledby="product-section-title">
         <div class="product-header">
-            <h2 class="product-title" id="product-section-title">The AI Video Ad Maker</h2>
-            <p class="product-subtitle">built for instant performance</p>
-            <p class="product-description">Turn any product page into a winning video ad—created, tested, and optimized in seconds.</p>
+            <h2 class="product-title" id="product-section-title">Pembuat Iklan Video AI</h2>
+            <p class="product-subtitle">dibangun untuk kinerja instan</p>
+            <p class="product-description">Ubah halaman produk apa pun menjadi iklan video yang unggul—dibuat, diuji, dan dioptimalkan dalam hitungan detik.</p>
         </div>
 
         <div class="feature-card glass-card">
             <div class="feature-image">
-                <span class="image-badge">UGC Affiliate</span>
-                <img src="https://via.placeholder.com/250x350/9966FF/FFFFFF?text=Product+1" alt="Instant UGC Video Generation">
+                <span class="image-badge">UGC Affiliate & Seller</span>
+                <img src="https://xxx.akay.web.id/fp_20251106_171107_26c79bb5.png" alt="Instant UGC Video Generation">
             </div>
             <div class="feature-content">
                 <span class="feature-tag">AI-POWERED</span>
-                <h3>Instant UGC Video Generation</h3>
-                <p>Transform any product into authentic user-generated content videos in minutes. Our AI discovers music, engaging videos that look like they come from real customers.</p>
+                <h3>Pembuatan Video UGC Instan</h3>
+                <p>Ubah produk apa pun menjadi video konten buatan pengguna yang autentik dalam hitungan menit. AI kami menemukan musik dan video menarik yang tampak seperti berasal dari pelanggan sungguhan.</p>
                 <a href="#" class="btn-try-now">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
@@ -1201,7 +1234,7 @@ if (!auth_is_logged_in()) {
             <div class="feature-content">
                 <span class="feature-tag">LIGHTNING FAST</span>
                 <h3>Real-Time Ad Optimization</h3>
-                <p>Automatically test multiple variations and optimize for maximum conversion. Our AI analyzes performance and adapts your ads in real-time for best results.</p>
+                <p>Uji berbagai variasi secara otomatis dan optimalkan untuk konversi maksimal. AI kami menganalisis performa dan menyesuaikan iklan Anda secara real-time untuk hasil terbaik.</p>
                 <a href="#" class="btn-try-now">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
@@ -1216,7 +1249,7 @@ if (!auth_is_logged_in()) {
             <div class="feature-content">
                 <span class="feature-tag">PERFORMANCE</span>
                 <h3>Data-Driven Insights</h3>
-                <p>Get detailed analytics on what works and what doesn't. Track engagement, conversions, and ROI across all your video ads with actionable insights.</p>
+                <p>Dapatkan analisis mendetail tentang apa yang berhasil dan apa yang tidak. Lacak interaksi, konversi, dan ROI di semua iklan video Anda dengan wawasan yang dapat ditindaklanjuti.</p>
                 <a href="#" class="btn-try-now">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
@@ -1231,7 +1264,7 @@ if (!auth_is_logged_in()) {
             <div class="feature-content">
                 <span class="feature-tag">SMART TARGETING</span>
                 <h3>Audience Precision</h3>
-                <p>Reach the right audience at the right time. Our AI automatically identifies and targets your ideal customers based on behavior and engagement patterns.</p>
+                <p>Jangkau audiens yang tepat di waktu yang tepat. AI kami secara otomatis mengidentifikasi dan menargetkan pelanggan ideal Anda berdasarkan perilaku dan pola interaksi..</p>
                 <a href="#" class="btn-try-now">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
@@ -1241,8 +1274,8 @@ if (!auth_is_logged_in()) {
 
     <section class="use-cases" id="use-cases" aria-labelledby="use-cases-title">
         <div class="use-cases-header">
-            <h2 id="use-cases-title">How AKAY.IO Works</h2>
-            <p>From inspiration to optimization—your complete workflow for creating winning video ads.</p>
+            <h2 id="use-cases-title">Cara Kerja AKAY.IO</h2>
+            <p>Dari inspirasi hingga pengoptimalan—alur kerja lengkap Anda untuk membuat iklan video yang unggul.</p>
         </div>
 
         <div class="workflow-grid">
@@ -1250,8 +1283,8 @@ if (!auth_is_logged_in()) {
                 <div class="card-icon"><i class="fas fa-search"></i></div>
                 <div class="card-number">01</div>
                 <h4>Get Inspired</h4>
-                <p class="card-subtitle">Find what works.</p>
-                <p>Explore top-performing ads across your category or competition by hook, selling point, and visuals.</p>
+                <p class="card-subtitle">Temukan apa yang berhasil.</p>
+                <p>Jelajahi iklan berkinerja terbaik di seluruh kategori atau pesaing Anda berdasarkan daya tarik, nilai jual, dan visual.</p>
                 <div class="underline-blue"></div>
             </div>
 
@@ -1259,8 +1292,8 @@ if (!auth_is_logged_in()) {
                 <div class="card-icon"><i class="fas fa-rocket"></i></div>
                 <div class="card-number">02</div>
                 <h4>Create Winning Ads</h4>
-                <p class="card-subtitle">From link to launch, instantly.</p>
-                <p>Turn a product URL or static asset into scroll-stopping video ads. Customize with music, emotion, or voiceover.</p>
+                <p class="card-subtitle">Dari tautan hingga peluncuran, seketika.</p>
+                <p>Ubah URL produk atau aset statis menjadi iklan video yang memukau. Sesuaikan dengan musik, emosi, atau sulih suara.</p>
                 <div class="underline-red"></div>
             </div>
 
@@ -1268,8 +1301,8 @@ if (!auth_is_logged_in()) {
                 <div class="card-icon"><i class="fas fa-rocket"></i></div>
                 <div class="card-number">03</div>
                 <h4>Launch and Test</h4>
-                <p class="card-subtitle">Test everything with rigor.</p>
-                <p>Run creative with scores of video variants. Discover winners by key format, hook, or audience—automatically.</p>
+                <p class="card-subtitle">Uji semuanya dengan teliti.</p>
+                <p>Berkreasilah dengan beragam varian video. Temukan pemenang berdasarkan format utama, konten, atau audiens—secara otomatis.</p>
                 <div class="underline-orange"></div>
             </div>
 
@@ -1277,8 +1310,8 @@ if (!auth_is_logged_in()) {
                 <div class="card-icon"><i class="fas fa-rocket"></i></div>
                 <div class="card-number">04</div>
                 <h4>Learn and Optimize</h4>
-                <p class="card-subtitle">Know what’s working—and why.</p>
-                <p>Get real-time insights on ROAS, CPA, and other key metrics. Spot fatigue and rapidly improve campaigns.</p>
+                <p class="card-subtitle">Ketahui apa yang berhasil—dan alasannya.</p>
+                <p>Dapatkan wawasan real-time tentang ROAS, CPA, dan metrik penting lainnya. Kenali kelelahan dan tingkatkan kampanye dengan cepat.</p>
                 <div class="underline-cyan"></div>
             </div>
         </div>
@@ -1353,7 +1386,7 @@ if (!auth_is_logged_in()) {
                     <span class="currency">Rp</span>
                     <span class="price-value" data-final-price="399000">399.000</span>
                 </div>
-                <p class="price-lifetime">/ lifetime</p>
+                <p class="price-lifetime">/ month</p>
                 <div class="price-strikeout">
                     <p>Rp <del>500.000</del></p>
                     <span class="save-badge">Save 20%</span>
@@ -1383,7 +1416,7 @@ if (!auth_is_logged_in()) {
                     <span class="currency">Rp</span>
                     <span class="price-value" data-final-price="699000">699.000</span>
                 </div>
-                <p class="price-lifetime">/ lifetime</p>
+                <p class="price-lifetime">/ month</p>
 
                 <div class="key-features">
                     <h4>Key Features:</h4>
@@ -1399,13 +1432,13 @@ if (!auth_is_logged_in()) {
 
                 <a href="#" class="btn-plan-select">
                     <span class="icon-part"><i class="fas fa-arrow-right"></i></span>
-                    <span class="text-part">Get Lifetime Access</span>
+                    <span class="text-part">Get Master Access</span>
                 </a>
             </div>
         </div>
 
         <div class="contact-footer">
-            <p>Need a custom solution? <a href="#">Contact us</a> for enterprise pricing</p>
+            <p>Need a custom solution? <a href="wa.me/62818404222">Contact us</a> for enterprise pricing</p>
         </div>
     </section>
 
@@ -1413,14 +1446,14 @@ if (!auth_is_logged_in()) {
         <div class="review-header">
             <h2 id="review-section-title">Loved by Marketers</h2>
             <p>who create winning ads</p>
-            <p class="review-subtitle">Join thousands of marketers who are crushing their ad campaigns with AI-powered video creation.</p>
+            <p class="review-subtitle">Bergabunglah dengan ribuan pemasar yang sukses dalam kampanye iklan mereka dengan pembuatan video bertenaga AI.</p>
         </div>
 
         <div class="reviews-grid">
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Yo, the Veo 3.1 unlimited feature is literally insane. I'm pumping out ads like crazy and not worrying about credits running out. Game changer for my workflow, honestly."</p>
+                <p class="review-text">"Wah, fitur unlimited Veo 3.1 benar-benar gila. Saya menonton iklan gila-gilaan tanpa khawatir kehabisan kredit. Sungguh, ini mengubah alur kerja saya."</p>
                 <div class="review-tag">Unlimited Veo 3.1</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">S</div>
@@ -1434,7 +1467,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Ducks, Akaygen for UGC content is fire! The videos look so authentic, you'd swear they're from real customers. My conversion rates went through the roof. Can't believe how good this is."</p>
+                <p class="review-text">"Anjay, Akaygen untuk konten UGC keren banget! Videonya terlihat autentik banget, sampai-sampai kamu bisa bersumpah kalau itu dari pelanggan asli. Tingkat konversi saya melonjak drastis. Nggak nyangka ini bagus banget."</p>
                 <div class="review-tag">AkayGen UGC Master</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">M</div>
@@ -1448,7 +1481,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Okay so Sora 2 at Rp 500 is absolutely wild. Other platforms charging Rp 15,000 for the same thing. Like, are you kidding me? This pricing is unreal. Already saved thousands this month."</p>
+                <p class="review-text">"Oke, Sora 2 seharga Rp500 itu benar-benar gila. Platform lain mematok harga Rp15.000 untuk barang yang sama. Masa sih? Harga segitu nggak masuk akal. Sudah hemat ribuan bulan ini."</p>
                 <div class="review-tag">Sora 2 - Rp 500 only</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">E</div>
@@ -1462,7 +1495,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"The combo of unlimited Veo + cheap Sora 2 is just ridiculous value. I'm testing so many variations now. My clients are stoked with the results. This platform is lowkey a cheat code."</p>
+                <p class="review-text">"Kombinasi Veo tanpa batas + Sora 2 yang murah sungguh luar biasa nilainya. Saya sedang menguji banyak variasinya sekarang. Klien saya sangat puas dengan hasilnya. Platform ini sebenarnya adalah kode curang."</p>
                 <div class="review-tag">Testing 100+ variations</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">D</div>
@@ -1476,7 +1509,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"NexaGen UGC videos are chef's kiss. They look so real that my followers think I hired actual creators. And the fact that it's unlimited? Bruh, I'm never going back to manual editing."</p>
+                <p class="review-text">"Video UGC AkayGen itu keren banget. Saking nyatanya, pengikut saya sampai mengira saya mempekerjakan kreator sungguhan. Dan faktanya videonya nggak terbatas? Aduh, saya nggak akan pernah kembali ke pengeditan manual."</p>
                 <div class="review-tag">100% organic look</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">J</div>
@@ -1490,7 +1523,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Compared AKAY.IO with 3 competitors and honestly, no contest. Veo 3.1 unlimited + Sora 2 at insane prices + NexaGen quality? Canceled everything else. This is THE tool now."</p>
+                <p class="review-text">"Membandingkan AKAY.IO dengan 3 pesaing dan jujur ​​saja, tidak ada tandingannya. Veo 3.1 unlimited + Sora 2 dengan harga gila-gilaan + kualitas NexaGen? Batalkan semua yang lain. Ini dia alatnya sekarang."</p>
                 <div class="review-tag">Switched from 3 platforms</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">A</div>
@@ -1529,7 +1562,7 @@ if (!auth_is_logged_in()) {
                     <img src="logo.png" alt="AKAY.IO Logo" class="logo-icon">
                     AKAY NUSANTARA
                 </div>
-                <p class="footer-description">AI-powered video ads that convert. Create winning ads in seconds with the power of artificial intelligence.</p>
+                <p class="footer-description">Iklan video bertenaga AI yang menghasilkan konversi. Buat iklan yang sukses dalam hitungan detik dengan kekuatan kecerdasan buatan..</p>
 
                 <div class="social-icons">
                     <a href="#" class="icon-circle"><i class="fab fa-tiktok"></i></a>
@@ -1577,6 +1610,7 @@ if (!auth_is_logged_in()) {
             </div>
         </div>
     </footer>
+    
 
     <script>
         const endpoint = <?= json_encode($_SERVER['PHP_SELF'] ?? '') ?>;
@@ -1656,6 +1690,43 @@ if (!auth_is_logged_in()) {
                 icon.classList.add(theme === 'dark' ? 'fa-sun' : 'fa-moon');
             }
         }
+
+const securityGateOverlay = document.getElementById('securityGateOverlay');
+const securityIpElement = document.getElementById('securityIp');
+const securityContinueBtn = document.getElementById('securityContinue');
+
+// 1. Ambil IP Publik dari API (membutuhkan koneksi internet)
+function fetchPublicIp() {
+    // Menggunakan API publik yang aman untuk mendapatkan alamat IP
+    fetch('https://api.ipify.org?format=json') 
+        .then(response => response.json())
+        .then(data => {
+            securityIpElement.textContent = data.ip;
+        })
+        .catch(error => {
+            console.error('Failed to fetch IP:', error);
+            securityIpElement.textContent = 'IP Not Found';
+        });
+}
+
+// 2. Sembunyikan Gerbang Keamanan saat tombol diklik
+securityContinueBtn.addEventListener('click', () => {
+    // Tambahkan class 'hidden' untuk memulai animasi transisi dan menyembunyikan
+    securityGateOverlay.classList.add('hidden'); 
+    
+    // Hapus overlay sepenuhnya setelah transisi selesai
+    setTimeout(() => {
+        securityGateOverlay.style.display = 'none';
+    }, 500); // Sesuaikan dengan durasi transisi CSS
+});
+
+
+// Panggil fungsi saat DOM sudah dimuat
+document.addEventListener('DOMContentLoaded', () => {
+    // ... (Pastikan semua kode inisialisasi lain ada di sini) ...
+    
+    fetchPublicIp(); // Ambil IP saat halaman dimuat
+});
 
         const savedTheme = localStorage.getItem('akay-theme') || 'light';
         setTheme(savedTheme);
@@ -1896,8 +1967,9 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>AKAY Generator – AI Hub + Filmmaker + UGC</title>
+  <title>Dasboard – AI Hub + Filmmaker + UGC</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/logo.png">
   <style>
 
 :root {
@@ -2917,15 +2989,21 @@ body[data-theme="light"] .profile-avatar {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #1f2937;
-  background: linear-gradient(90deg, #f97316, #facc15);
-  box-shadow: 0 6px 16px rgba(250, 204, 21, 0.35);
+  
+  /* --- WARNA EMAS BERKILAU --- */
+  color: #583f08; /* Teks Cokelat Tua/Emas Gelap */
+  background: linear-gradient(90deg, #ffd700, #ffec85); /* Gradasi Emas Kuning ke Emas Terang */
+  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.5); /* Bayangan Emas */
+  /* --- AKHIR WARNA EMAS BERKILAU --- */
+  
   overflow: hidden;
 }
+
 .profile-badge::before {
-  content: "\1F451";
+  content: "\1F451"; /* Ikon Mahkota */
   font-size: 12px;
 }
+
 .profile-badge::after {
   content: "";
   position: absolute;
@@ -2933,14 +3011,116 @@ body[data-theme="light"] .profile-avatar {
   left: -60%;
   width: 50%;
   height: 100%;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  
+  /* Efek Kilau/Shine */
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); 
   animation: badgeShine 2.8s linear infinite;
 }
+
 @keyframes badgeShine {
   0% { left: -60%; }
   60% { left: 120%; }
   100% { left: 120%; }
 }
+
+.topup-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  
+  /* --- WARNA PINK --- */
+  color: #fce7f3; /* Teks Pink Sangat Muda */
+  background: linear-gradient(90deg, #db2777, #f472b6); /* Gradasi Pink Tua ke Pink Muda */
+  box-shadow: 0 6px 16px rgba(236, 72, 153, 0.35); /* Bayangan Pink */
+  /* --- AKHIR WARNA PINK --- */
+  
+  overflow: hidden;
+}
+
+.topup-badge::before {
+  content: "\1F451"; /* Ikon Mahkota */
+  font-size: 12px;
+}
+
+.topup-badge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 50%;
+  height: 100%;
+  
+  /* Efek Shine (Kilau) */
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  animation: badgeShine 2.8s linear infinite;
+}
+
+@keyframes badgeShine {
+  0% { left: -60%; }
+  60% { left: 120%; }
+  100% { left: 120%; }
+}
+
+.verified-badge-star {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  
+  width: 28px; /* Ukuran badge */
+  height: 28px; /* Ukuran badge */
+  
+  /* --- Bentuk Bintang Bergerigi (Custom Clip-Path) --- */
+  /* Ini adalah perkiraan untuk bentuk bintang bergerigi seperti gambar */
+  clip-path: polygon(
+    50% 0%, 65% 15%, 100% 19%, 85% 35%, 100% 61%, 75% 65%, 70% 100%, 50% 85%, 30% 100%, 25% 65%, 0% 61%, 15% 35%, 0% 19%, 35% 15%
+  );
+  
+  /* --- WARNA BIRU BERKILAU --- */
+  color: #f0f8ff; /* Warna ikon centang: Biru sangat muda/putih */
+  background: linear-gradient(90deg, #1e3a8a, #3b82f6); /* Gradasi Biru Tua ke Biru Terang */
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5); /* Bayangan Biru */
+  /* --- AKHIR WARNA BIRU BERKILAU --- */
+  
+  overflow: hidden; /* Penting untuk efek kilau */
+}
+
+.verified-badge-star::before {
+  /* Ikon centang (simbol Unicode) */
+  content: "\2713"; /* Centang standar. Gunakan \2714 untuk centang tebal */
+  font-size: 16px; /* Ukuran ikon centang */
+  line-height: 1; 
+  z-index: 2; /* Pastikan ikon di atas kilauan */
+}
+
+.verified-badge-star::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%; 
+  width: 70%; 
+  height: 100%;
+  
+  /* Efek Kilau/Shine */
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); 
+  animation: badgeShine 2.5s linear infinite; 
+  z-index: 1; /* Di bawah ikon centang, di atas background badge */
+}
+
+/* Keyframes untuk Animasi Kilauan */
+@keyframes badgeShine {
+  0% { left: -100%; }
+  60% { left: 150%; } 
+  100% { left: 150%; }
+}
+
 .profile-username {
   font-size: 11px;
   color: var(--muted);
@@ -2996,13 +3176,15 @@ body[data-theme="light"] .profile-credit {
   border: none;
   outline: none;
   border-radius: 10px;
-  background: linear-gradient(120deg, rgba(249, 115, 22, 0.95), rgba(250, 204, 21, 0.85));
-  color: #1f2937;
+  
+  /* --- GRADASI PINK BERKILAU --- */
+  background: linear-gradient(120deg, rgba(236, 72, 153, 0.95), rgba(244, 114, 182, 0.85)); /* Pink Tua ke Pink Muda */
+  color: #ffffff; /* Teks Putih agar kontras */
   font-size: 12px;
   font-weight: 600;
   padding: 8px 12px;
   cursor: pointer;
-  box-shadow: 0 14px 28px rgba(249, 115, 22, 0.25);
+  box-shadow: 0 14px 28px rgba(236, 72, 153, 0.35); /* Bayangan Pink Tua */
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   display: inline-flex;
   align-items: center;
@@ -3011,12 +3193,17 @@ body[data-theme="light"] .profile-credit {
   text-decoration: none;
   white-space: nowrap;
 }
+
 .profile-topup:hover {
   transform: translateY(-1px);
-  box-shadow: 0 16px 30px rgba(249, 115, 22, 0.32);
+  /* --- BOX-SHADOW HOVER (LEBIH MENYALA) --- */
+  box-shadow: 0 16px 30px rgba(236, 72, 153, 0.5); /* Bayangan Pink yang lebih kuat saat hover */
 }
+
+/* --- KONDISI ALERT (Jika Diperlukan) --- */
 .profile-card--alert .profile-topup {
-  background: linear-gradient(120deg, rgba(248, 113, 113, 0.95), rgba(251, 191, 36, 0.8));
+  /* Menggunakan gradasi Pink/Ungu yang berbeda untuk status alert */
+  background: linear-gradient(120deg, rgba(147, 51, 234, 0.95), rgba(192, 132, 252, 0.8));
 }
 .logout-btn {
   border-radius: 12px;
@@ -4839,7 +5026,7 @@ body[data-theme="light"] .profile-credit {
   </button>
   <div class="sidebar">
   <div class="sidebar-brand">
-    <div class="sidebar-title">AKAY-AI V2</div>
+    <div class="sidebar-title">AKAY.IO</div>
     <div class="sidebar-sub">AI Hub • Filmmaker • UGC Tool</div>
   </div>
   <nav class="sidebar-nav">
@@ -4931,16 +5118,27 @@ body[data-theme="light"] .profile-credit {
   <main class="workspace-main">
     <div class="mobile-coin-banner" id="mobileCoinBanner" role="status" aria-live="polite">
       <div class="mobile-coin-info">
-        <span class="mobile-coin-label">Saldo Kredit</span>
+        <span class="mobile-coin-label">Sisa Saldo Kredit</span>
         <span class="mobile-coin-value" id="mobileCoinValue">0</span>
       </div>
-      <button type="button" class="profile-topup mobile-coin-topup" id="mobileCoinTopup">Top Up</button>
+      <button type="button" class="topup-badge" id="mobileCoinTopup">Top Up</button>
     </div>
     <div id="viewDashboard" class="dashboard-view app-view">
       <section class="overview-hero">
         <div class="hero-text">
           <h1>Dashboard Overview</h1>
           <p>Selamat datang kembali! Pantau progress generate konten dan saldo koin kamu.</p>
+          <div class="profile-main">
+          <div class="profile-avatar" id="profileAvatarMobile">FM</div>
+          <div class="profile-text">
+            <div class="profile-title">
+              <span class="profile-display" id="profileDisplayMobile">User</span>
+              <span class="verified-badge-star"></span>
+              <span class="profile-badge" id="profileBadgeMobile">PRO</span>
+            </div>
+            <div class="profile-username" id="profileUsernameMobile">@username</div>
+          </div>
+        </div>
         </div>
         <div class="hero-actions">
           <button type="button" class="profile-topup" id="heroTopup">Top Up Credit</button>
@@ -4971,22 +5169,12 @@ body[data-theme="light"] .profile-credit {
       </section>
 
       <div class="profile-card profile-card--mobile" id="profileCardMobile">
-        <div class="profile-main">
-          <div class="profile-avatar" id="profileAvatarMobile">FM</div>
-          <div class="profile-text">
-            <div class="profile-title">
-              <span class="profile-display" id="profileDisplayMobile">User</span>
-              <span class="profile-badge" id="profileBadgeMobile">PRO</span>
-            </div>
-            <div class="profile-username" id="profileUsernameMobile">@username</div>
-          </div>
-        </div>
+        
         <div class="profile-credit">
           <span class="credit-label">Credit</span>
           <span class="credit-value" id="profileCoinsMobile">0</span>
           <span class="credit-status"><span class="status-dot"></span><span id="profileStatusMobile">Live</span></span>
         </div>
-        <button type="button" class="profile-topup" id="profileTopupMobile">Top Up Credit</button>
       </div>
     </div>
 
@@ -5164,19 +5352,16 @@ body[data-theme="light"] .profile-credit {
             <div id="fieldsTitle" class="form-section-title">Image Generator</div>
 
           <div id="geminiModeSection" class="gemini-mode-section hidden">
-            <div class="form-section-title">Gemini Flash Modes</div>
+            <div class="form-section-title">PILIH MODE</div>
             <div class="gemini-mode-toggle">
               <button type="button" class="gemini-mode-btn active" data-gemini-mode="text">
-                <strong>Mode 1 · Text-to-Image</strong>
-                <span>Kirim deskripsi tanpa gambar referensi.</span>
+                <strong>Text-to-Image</strong>
               </button>
               <button type="button" class="gemini-mode-btn" data-gemini-mode="single">
-                <strong>Mode 2 · Single Image-to-Image</strong>
-                <span>Unggah 1 gambar + caption untuk editing.</span>
+                <strong>Image-to-Image</strong>
               </button>
               <button type="button" class="gemini-mode-btn" data-gemini-mode="multi">
-                <strong>⭐ Mode 3 · Multi-Image Reference</strong>
-                <span>Kombinasikan 2-3 gambar referensi + caption.</span>
+                <strong>⭐ Multi-Image Reference</strong>
               </button>
             </div>
             <div id="geminiModeDescription" class="gemini-mode-desc">
@@ -5354,7 +5539,7 @@ body[data-theme="light"] .profile-credit {
       <div id="filmScenesEmpty" class="film-empty-state">
         <div>
           <div class="film-empty-icon">🎬</div>
-          <div class="subtitle">No scenes yet</div>
+          <div class="subtitle">Hasil Generate Akan Muncul Disini</div>
           <div class="muted" style="font-size:11px">
             Upload character image dan isi story brief di sisi kanan, lalu klik “Generate Scenes”.
           </div>
@@ -5378,10 +5563,28 @@ body[data-theme="light"] .profile-credit {
         <div id="filmCharacterDrop" class="film-dropzone">
           <input id="filmCharacterInput" type="file" accept="image/*" style="display:none">
           <div id="filmCharacterIdle" class="film-drop-inner">
-            <div style="margin-bottom:4px;">Upload character image</div>
-            <span>PNG, JPG · dipakai konsisten untuk semua scene</span>
+            <div style="margin-bottom:4px;">Upload Foto Kamu</div>
+            <span>PNG, JPG · rekomendasi foto Close UP</span>
           </div>
           <img id="filmCharacterPreview" class="film-character-preview" style="display:none" alt="Character preview">
+        </div>
+      </div>
+
+<div>
+        <div class="small-label">Filmmaker State Custom</div>
+        <div id="filmStatePicker" class="ugc-style-picker film-state-picker">
+          <button type="button" id="filmStateTrigger" class="ugc-style-trigger">
+            <div class="ugc-style-trigger-main">
+              <span id="filmStateIcon" class="ugc-style-icon">🎬</span>
+              <div class="ugc-style-trigger-text">
+                <div id="filmStateLabel" class="ugc-style-label">AUTO STATE</div>
+                <div id="filmStateDescription" class="ugc-style-description">Tidak Memilih · diproses oleh server</div>
+              </div>
+            </div>
+            <span class="ugc-style-caret">▾</span>
+          </button>
+          <div id="filmStateMenu" class="ugc-style-menu hidden"></div>
+          <input type="hidden" id="filmStateValue" value="auto">
         </div>
       </div>
 
@@ -5406,23 +5609,7 @@ body[data-theme="light"] .profile-credit {
         </div>
       </div>
 
-      <div>
-        <div class="small-label">Filmmaker State Custom</div>
-        <div id="filmStatePicker" class="ugc-style-picker film-state-picker">
-          <button type="button" id="filmStateTrigger" class="ugc-style-trigger">
-            <div class="ugc-style-trigger-main">
-              <span id="filmStateIcon" class="ugc-style-icon">🎬</span>
-              <div class="ugc-style-trigger-text">
-                <div id="filmStateLabel" class="ugc-style-label">AUTO STATE</div>
-                <div id="filmStateDescription" class="ugc-style-description">Tidak Memilih · diproses oleh server</div>
-              </div>
-            </div>
-            <span class="ugc-style-caret">▾</span>
-          </button>
-          <div id="filmStateMenu" class="ugc-style-menu hidden"></div>
-          <input type="hidden" id="filmStateValue" value="auto">
-        </div>
-      </div>
+      
 
       <div>
         <button type="button" id="filmGenerateBtn" style="width:100%;margin-top:4px;">
@@ -5559,7 +5746,7 @@ body[data-theme="light"] .profile-credit {
     <button type="button" class="topup-modal__close" id="topupCloseBtn">&times;</button>
     <h3 class="topup-modal__title">Pilih nominal Top Up</h3>
     <div class="topup-modal__options" id="topupOptions"></div>
-    <button type="button" class="profile-topup topup-modal__confirm" id="topupConfirmBtn" disabled>Top Up via WhatsApp</button>
+    <button type="button" class="topup-badge" id="topupConfirmBtn" disabled>Top Up via WhatsApp</button>
     <div class="topup-modal__hint" id="topupHint">Pilih nominal untuk lanjut ke WhatsApp.</div>
   </div>
 </div>
@@ -8690,7 +8877,7 @@ body[data-theme="light"] .profile-credit {
     }
 
     submitBtn.disabled = true;
-    setStatus('Membuat task ke Freepik…');
+    setStatus('Server proses generate..');
 
     try {
       const {
