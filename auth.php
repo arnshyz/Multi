@@ -60,6 +60,13 @@ function auth_platform_default_generators(?string $now = null): array
             'enabled' => true,
             'updated_at' => $now,
         ],
+        'geminiStudio' => [
+            'key' => 'geminiStudio',
+            'label' => 'Gemini Studio',
+            'description' => 'Akses Gemini Text, Speech, dan Veo.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
     ];
 }
 
@@ -173,6 +180,8 @@ function auth_storage_default(): array
             'ipChecks' => [],
             'updated_at' => $now,
         ],
+        'announcements' => [],
+        'metrics' => auth_metrics_defaults($now),
     ];
 }
 
@@ -389,6 +398,26 @@ function auth_storage_read(bool $fresh = false): array
         }
     }
 
+    if (!isset($data['announcements']) || !is_array($data['announcements'])) {
+        $data['announcements'] = [];
+        $changed = true;
+    }
+    $normalizedAnnouncements = auth_announcements_normalize($data['announcements']);
+    if ($normalizedAnnouncements !== $data['announcements']) {
+        $data['announcements'] = $normalizedAnnouncements;
+        $changed = true;
+    }
+
+    if (!isset($data['metrics']) || !is_array($data['metrics'])) {
+        $data['metrics'] = auth_metrics_defaults();
+        $changed = true;
+    }
+    $normalizedMetrics = auth_metrics_normalize($data['metrics']);
+    if ($normalizedMetrics !== $data['metrics']) {
+        $data['metrics'] = $normalizedMetrics;
+        $changed = true;
+    }
+
     $data['accounts'] = array_values(array_map('auth_normalize_account', $data['accounts']));
 
     if (!auth_accounts_contains_admin($data['accounts'])) {
@@ -457,6 +486,366 @@ function auth_platform_admin_view($platform = null): array
         ],
         'generators' => $generators,
     ];
+}
+
+function auth_metrics_defaults(?string $now = null): array
+{
+    $now = $now ?: gmdate('c');
+
+    return [
+        'total_generations' => 0,
+        'recent_activity' => [],
+        'updated_at' => $now,
+    ];
+}
+
+function auth_metrics_normalize($metrics, ?string $now = null): array
+{
+    $now = $now ?: gmdate('c');
+    if (!is_array($metrics)) {
+        $metrics = [];
+    }
+
+    $normalized = [
+        'total_generations' => isset($metrics['total_generations'])
+            ? max(0, (int)$metrics['total_generations'])
+            : 0,
+        'recent_activity' => [],
+        'updated_at' => isset($metrics['updated_at']) && is_string($metrics['updated_at']) && $metrics['updated_at'] !== ''
+            ? (string)$metrics['updated_at']
+            : $now,
+    ];
+
+    if (isset($metrics['recent_activity']) && is_array($metrics['recent_activity'])) {
+        foreach ($metrics['recent_activity'] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $entryId = isset($item['id']) && $item['id'] !== '' ? (string)$item['id'] : uniqid('act_', true);
+            $timestamp = isset($item['timestamp']) && $item['timestamp'] !== ''
+                ? (string)$item['timestamp']
+                : $now;
+
+            $normalized['recent_activity'][] = [
+                'id' => $entryId,
+                'type' => isset($item['type']) ? (string)$item['type'] : 'generation',
+                'source' => isset($item['source']) ? (string)$item['source'] : '',
+                'user_id' => isset($item['user_id']) && $item['user_id'] !== '' ? (string)$item['user_id'] : null,
+                'username' => isset($item['username']) ? (string)$item['username'] : '',
+                'detail' => isset($item['detail']) ? (string)$item['detail'] : '',
+                'timestamp' => $timestamp,
+            ];
+        }
+    }
+
+    $normalized['recent_activity'] = array_slice($normalized['recent_activity'], 0, 20);
+
+    return $normalized;
+}
+
+function auth_metrics_snapshot(): array
+{
+    $data = auth_storage_read();
+    $metrics = auth_metrics_normalize($data['metrics'] ?? null);
+    $accounts = isset($data['accounts']) && is_array($data['accounts'])
+        ? array_map('auth_normalize_account', $data['accounts'])
+        : [];
+
+    $now = time();
+    $threshold = 15 * 60; // 15 menit
+    $onlineUsers = 0;
+    $generatorUsers = 0;
+
+    foreach ($accounts as $account) {
+        if (!is_array($account)) {
+            continue;
+        }
+
+        $isAdmin = ($account['role'] ?? 'user') === 'admin';
+        $isRestricted = auth_is_account_restricted($account);
+
+        if (!$isAdmin && !$isRestricted && !empty($account['last_login_at'])) {
+            $ts = strtotime((string)$account['last_login_at']);
+            if ($ts !== false && ($now - $ts) <= $threshold) {
+                $onlineUsers++;
+            }
+        }
+
+        if (!$isAdmin && !$isRestricted && !empty($account['generation_count'])) {
+            $generatorUsers++;
+        }
+    }
+
+    return [
+        'online_users' => $onlineUsers,
+        'total_generations' => (int)$metrics['total_generations'],
+        'generator_users' => $generatorUsers,
+        'recent_activity' => $metrics['recent_activity'],
+        'updated_at' => $metrics['updated_at'],
+    ];
+}
+
+function auth_metrics_record_generation(string $source, array $context = []): void
+{
+    $source = trim($source);
+    if ($source === '') {
+        $source = 'unknown';
+    }
+
+    $data = auth_storage_read();
+    $metrics = auth_metrics_normalize($data['metrics'] ?? null);
+    $now = gmdate('c');
+
+    $metrics['total_generations'] = (int)$metrics['total_generations'] + 1;
+
+    $entry = [
+        'id' => uniqid('act_', true),
+        'type' => isset($context['type']) ? (string)$context['type'] : 'generation',
+        'source' => $source,
+        'user_id' => isset($context['user_id']) && $context['user_id'] !== '' ? (string)$context['user_id'] : null,
+        'username' => isset($context['username']) ? (string)$context['username'] : '',
+        'detail' => isset($context['detail']) ? (string)$context['detail'] : '',
+        'timestamp' => $now,
+    ];
+
+    array_unshift($metrics['recent_activity'], $entry);
+    $metrics['recent_activity'] = array_slice($metrics['recent_activity'], 0, 20);
+    $metrics['updated_at'] = $now;
+
+    if ($entry['user_id'] !== null) {
+        foreach ($data['accounts'] as &$account) {
+            if (!is_array($account) || ($account['id'] ?? null) !== $entry['user_id']) {
+                continue;
+            }
+            $normalized = auth_normalize_account($account);
+            $normalized['generation_count'] = (int)$normalized['generation_count'] + 1;
+            $normalized['last_generation_at'] = $now;
+            $normalized['updated_at'] = $now;
+            $account = $normalized;
+            break;
+        }
+        unset($account);
+    }
+
+    $data['metrics'] = $metrics;
+    auth_storage_write($data);
+}
+
+function auth_announcements_normalize($announcements, ?string $now = null): array
+{
+    $now = $now ?: gmdate('c');
+    if (!is_array($announcements)) {
+        $announcements = [];
+    }
+
+    $normalized = [];
+    foreach ($announcements as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $id = isset($item['id']) && $item['id'] !== '' ? (string)$item['id'] : uniqid('note_', true);
+        $title = trim((string)($item['title'] ?? ''));
+        if ($title === '') {
+            $title = 'Informasi';
+        }
+        $description = trim((string)($item['description'] ?? ''));
+        $publishedAt = isset($item['published_at']) && $item['published_at'] !== ''
+            ? (string)$item['published_at']
+            : $now;
+        $createdAt = isset($item['created_at']) && $item['created_at'] !== ''
+            ? (string)$item['created_at']
+            : $now;
+        $updatedAt = isset($item['updated_at']) && $item['updated_at'] !== ''
+            ? (string)$item['updated_at']
+            : $now;
+
+        $normalized[] = [
+            'id' => $id,
+            'title' => $title,
+            'description' => $description,
+            'published_at' => $publishedAt,
+            'created_at' => $createdAt,
+            'updated_at' => $updatedAt,
+        ];
+    }
+
+    usort($normalized, static function ($a, $b) {
+        return strcmp($b['published_at'], $a['published_at']);
+    });
+
+    return $normalized;
+}
+
+function auth_announcements_admin_view(): array
+{
+    $data = auth_storage_read();
+    return auth_announcements_normalize($data['announcements'] ?? []);
+}
+
+function auth_announcements_public_view(): array
+{
+    $items = auth_announcements_admin_view();
+    $now = gmdate('c');
+
+    return array_values(array_filter($items, static function ($item) use ($now) {
+        if (!isset($item['published_at'])) {
+            return false;
+        }
+        $ts = strtotime((string)$item['published_at']);
+        if ($ts === false) {
+            return false;
+        }
+        return $ts <= strtotime($now) + 1;
+    }));
+}
+
+function auth_announcements_add(array $payload, array &$errors = [])
+{
+    $errors = [];
+    $title = isset($payload['title']) ? trim((string)$payload['title']) : '';
+    $description = isset($payload['description']) ? trim((string)$payload['description']) : '';
+    $publishedRaw = isset($payload['published_at']) ? trim((string)$payload['published_at']) : '';
+
+    if ($title === '') {
+        $errors['title'] = 'Judul wajib diisi.';
+    }
+    if ($description === '') {
+        $errors['description'] = 'Deskripsi wajib diisi.';
+    }
+
+    $publishedTs = $publishedRaw !== '' ? strtotime($publishedRaw) : false;
+    if ($publishedTs === false) {
+        $publishedTs = time();
+    }
+    $publishedAt = gmdate('c', $publishedTs);
+
+    if ($errors) {
+        return null;
+    }
+
+    $data = auth_storage_read();
+    $announcements = auth_announcements_normalize($data['announcements'] ?? []);
+    $now = gmdate('c');
+
+    $announcement = [
+        'id' => uniqid('note_', true),
+        'title' => $title,
+        'description' => $description,
+        'published_at' => $publishedAt,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ];
+
+    array_unshift($announcements, $announcement);
+    $announcements = auth_announcements_normalize($announcements);
+
+    $data['announcements'] = $announcements;
+    auth_storage_write($data);
+
+    return $announcement;
+}
+
+function auth_announcements_update(string $id, array $changes, array &$errors = [])
+{
+    $errors = [];
+    $id = trim($id);
+    if ($id === '') {
+        $errors['id'] = 'ID pengumuman wajib diisi.';
+        return null;
+    }
+
+    $data = auth_storage_read();
+    $announcements = auth_announcements_normalize($data['announcements'] ?? []);
+    $found = null;
+
+    foreach ($announcements as &$item) {
+        if (($item['id'] ?? '') !== $id) {
+            continue;
+        }
+        $found = &$item;
+        break;
+    }
+    unset($item);
+
+    if ($found === null) {
+        $errors['id'] = 'Pengumuman tidak ditemukan.';
+        return null;
+    }
+
+    if (array_key_exists('title', $changes)) {
+        $title = trim((string)$changes['title']);
+        if ($title === '') {
+            $errors['title'] = 'Judul wajib diisi.';
+        } else {
+            $found['title'] = $title;
+        }
+    }
+
+    if (array_key_exists('description', $changes)) {
+        $description = trim((string)$changes['description']);
+        if ($description === '') {
+            $errors['description'] = 'Deskripsi wajib diisi.';
+        } else {
+            $found['description'] = $description;
+        }
+    }
+
+    if (array_key_exists('published_at', $changes)) {
+        $publishedRaw = trim((string)$changes['published_at']);
+        $publishedTs = $publishedRaw !== '' ? strtotime($publishedRaw) : false;
+        if ($publishedTs === false) {
+            $errors['published_at'] = 'Tanggal publikasi tidak valid.';
+        } else {
+            $found['published_at'] = gmdate('c', $publishedTs);
+        }
+    }
+
+    if ($errors) {
+        return null;
+    }
+
+    $found['updated_at'] = gmdate('c');
+    $announcements = auth_announcements_normalize($announcements);
+    $data['announcements'] = $announcements;
+    auth_storage_write($data);
+
+    return $found;
+}
+
+function auth_announcements_delete(string $id, array &$errors = []): bool
+{
+    $errors = [];
+    $id = trim($id);
+    if ($id === '') {
+        $errors['id'] = 'ID pengumuman wajib diisi.';
+        return false;
+    }
+
+    $data = auth_storage_read();
+    $announcements = auth_announcements_normalize($data['announcements'] ?? []);
+    $before = count($announcements);
+    $announcements = array_values(array_filter($announcements, static function ($item) use ($id) {
+        return isset($item['id']) && $item['id'] !== $id;
+    }));
+
+    if ($before === count($announcements)) {
+        $errors['id'] = 'Pengumuman tidak ditemukan.';
+        return false;
+    }
+
+    $data['announcements'] = $announcements;
+    auth_storage_write($data);
+
+    return true;
+}
+
+function auth_is_account_restricted(array $account): bool
+{
+    if (($account['role'] ?? 'user') === 'admin') {
+        return false;
+    }
+
+    return !empty($account['is_banned']) || !empty($account['is_blocked']);
 }
 
 function auth_platform_set_generator(string $key, bool $enabled)
@@ -632,6 +1021,10 @@ function auth_normalize_account($account): array
     $account['updated_at'] = isset($account['updated_at']) ? (string)$account['updated_at'] : gmdate('c');
     $account['last_login_at'] = isset($account['last_login_at']) ? (string)$account['last_login_at'] : null;
     $account['last_login_ip'] = isset($account['last_login_ip']) ? (string)$account['last_login_ip'] : null;
+    $account['generation_count'] = isset($account['generation_count']) ? max(0, (int)$account['generation_count']) : 0;
+    $account['last_generation_at'] = isset($account['last_generation_at']) && $account['last_generation_at'] !== ''
+        ? (string)$account['last_generation_at']
+        : null;
     $account['ip_history'] = array_values(array_filter(
         isset($account['ip_history']) && is_array($account['ip_history']) ? $account['ip_history'] : [],
         function ($entry) {
@@ -1088,6 +1481,9 @@ function auth_account_admin_view(array $account): array
         'freepik_api_key' => $account['freepik_api_key'] ?? null,
         'is_banned' => !empty($account['is_banned']),
         'is_blocked' => !empty($account['is_blocked']),
+        'generation_count' => (int)($account['generation_count'] ?? 0),
+        'last_generation_at' => $account['last_generation_at'] ?? null,
+        'restricted' => auth_is_account_restricted($account),
         'theme' => $account['theme'] ?? 'dark',
         'avatar_url' => $account['avatar_url'] ?? null,
         'created_at' => $account['created_at'] ?? null,
@@ -1112,6 +1508,9 @@ function auth_account_public_payload(array $account): array
         'avatar_url' => $account['avatar_url'] ?? null,
         'is_banned' => !empty($account['is_banned']),
         'is_blocked' => !empty($account['is_blocked']),
+        'generation_count' => (int)($account['generation_count'] ?? 0),
+        'last_generation_at' => $account['last_generation_at'] ?? null,
+        'restricted' => auth_is_account_restricted($account),
         'created_at' => $account['created_at'] ?? null,
         'updated_at' => $account['updated_at'] ?? null,
         'last_login_at' => $account['last_login_at'] ?? null,

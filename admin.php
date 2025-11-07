@@ -142,7 +142,13 @@ if (isset($_GET['api'])) {
                 'nextKey' => compute_next_key($data),
                 'activeKeyCount' => count_active_keys($data),
                 'platform' => auth_platform_admin_view($data['platform'] ?? null),
+                'announcements' => auth_announcements_admin_view(),
+                'metrics' => auth_metrics_snapshot(),
             ]);
+            break;
+
+        case 'metrics':
+            respond_ok(['metrics' => auth_metrics_snapshot()]);
             break;
 
         case 'addUser':
@@ -355,6 +361,58 @@ if (isset($_GET['api'])) {
             respond_ok(['platform' => auth_platform_admin_view($platform)]);
             break;
 
+        case 'addAnnouncement':
+            $payload = read_payload();
+            $errors = [];
+            $announcement = auth_announcements_add($payload, $errors);
+            if (!$announcement) {
+                $status = isset($errors['title']) || isset($errors['description']) ? 422 : 500;
+                respond_json([
+                    'ok' => false,
+                    'status' => $status,
+                    'error' => $errors ?: 'Gagal menyimpan pengumuman.',
+                ], $status);
+            }
+            respond_ok(['announcement' => $announcement], 201);
+            break;
+
+        case 'updateAnnouncement':
+            $payload = read_payload();
+            $id = isset($payload['id']) ? (string)$payload['id'] : '';
+            if ($id === '') {
+                respond_error('ID pengumuman wajib diisi', 422);
+            }
+            $errors = [];
+            $updated = auth_announcements_update($id, $payload, $errors);
+            if (!$updated) {
+                $status = isset($errors['id']) && $errors['id'] === 'Pengumuman tidak ditemukan.' ? 404 : 422;
+                respond_json([
+                    'ok' => false,
+                    'status' => $status,
+                    'error' => $errors ?: 'Gagal memperbarui pengumuman.',
+                ], $status);
+            }
+            respond_ok(['announcement' => $updated]);
+            break;
+
+        case 'deleteAnnouncement':
+            $payload = read_payload();
+            $id = isset($payload['id']) ? (string)$payload['id'] : '';
+            if ($id === '') {
+                respond_error('ID pengumuman wajib diisi', 422);
+            }
+            $errors = [];
+            if (!auth_announcements_delete($id, $errors)) {
+                $status = isset($errors['id']) && $errors['id'] === 'Pengumuman tidak ditemukan.' ? 404 : 422;
+                respond_json([
+                    'ok' => false,
+                    'status' => $status,
+                    'error' => $errors ?: 'Gagal menghapus pengumuman.',
+                ], $status);
+            }
+            respond_ok(['deleted' => true]);
+            break;
+
         default:
             respond_error('Endpoint tidak ditemukan', 404);
     }
@@ -362,21 +420,21 @@ if (isset($_GET['api'])) {
 }
   ?>
   <!DOCTYPE html>
-  <html lang="id" data-theme="light">
+  <html lang="id" data-theme="dark">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Control Center</title>
     <script>
       (function () {
-        var theme = 'light';
+        var theme = 'dark';
         try {
           var stored = localStorage.getItem('akay-theme');
-          if (stored === 'dark') {
-            theme = 'dark';
+          if (stored === 'light' || stored === 'dark') {
+            theme = stored;
           }
         } catch (error) {
-          theme = 'light';
+          theme = 'dark';
         }
         var root = document.documentElement;
         root.setAttribute('data-theme', theme);
@@ -562,7 +620,154 @@ if (isset($_GET['api'])) {
     .grid {
       display: grid;
       gap: 24px;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      align-items: start;
+    }
+    .dashboard-grid {
+      margin-top: 12px;
+    }
+    .panel-accounts {
+      grid-column: 1 / -1;
+    }
+    .metric-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+    .metric-card {
+      border-radius: 18px;
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 22px 48px var(--card-shadow);
+    }
+    .metric-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .metric-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .metric-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .activity-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .activity-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-radius: 16px;
+      border: 1px dashed var(--btn-border);
+      background: var(--rotation-bg);
+      padding: 16px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .activity-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--generator-bg);
+      border: 1px solid var(--btn-border);
+    }
+    .activity-item strong {
+      font-size: 13px;
+      color: var(--text);
+    }
+    .activity-item span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .announcement-board {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .announcement-form {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      align-items: end;
+    }
+    .announcement-form .field-full {
+      grid-column: 1 / -1;
+    }
+    .announcement-hint {
+      font-size: 12px;
+      color: var(--muted);
+      grid-column: 1 / -1;
+    }
+    .announcement-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      grid-column: 1 / -1;
+    }
+    .announcement-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .announcement-item {
+      border-radius: 16px;
+      border: 1px solid var(--card-border);
+      background: var(--generator-bg);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .announcement-item header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .announcement-item h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .announcement-item time {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .announcement-item p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .announcement-item .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .announcement-empty {
+      border-radius: 14px;
+      border: 1px dashed var(--btn-border);
+      background: var(--rotation-bg);
+      padding: 18px;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
     }
     .panel {
       background: var(--panel);
@@ -917,7 +1122,7 @@ if (isset($_GET['api'])) {
     }
   </style>
 </head>
-<body class="light-mode">
+<body class="dark-mode">
   <script>
     (function () {
       var root = document.documentElement;
@@ -975,7 +1180,73 @@ if (isset($_GET['api'])) {
 
     <div id="toast" class="toast"></div>
 
-    <section class="grid">
+    <section class="grid dashboard-grid">
+      <article class="panel panel-metrics">
+        <header class="panel-header">
+          <div>
+            <h2>Realtime Monitoring</h2>
+            <span class="panel-sub">Pantau aktivitas platform secara langsung</span>
+          </div>
+          <span class="panel-meta" id="metricsUpdatedAt">Update —</span>
+        </header>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <span class="metric-label">User Online</span>
+            <span class="metric-value" id="metricOnline">0</span>
+            <span class="metric-meta">Login dalam 15 menit terakhir</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Aktif Generate</span>
+            <span class="metric-value" id="metricActiveUsers">0</span>
+            <span class="metric-meta">User yang pernah generate konten</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Total Generate</span>
+            <span class="metric-value" id="metricTotalGenerations">0</span>
+            <span class="metric-meta">Akumulasi seluruh job</span>
+          </div>
+        </div>
+        <div class="activity-section">
+          <div class="announcement-hint">Recent Activity</div>
+          <div class="activity-list" id="recentActivityList">
+            <div class="announcement-empty">Belum ada aktivitas terbaru.</div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel panel-announcements">
+        <header class="panel-header">
+          <div>
+            <h2>Info &amp; Pengumuman</h2>
+            <span class="panel-sub">Bagikan notifikasi yang muncul di dashboard user</span>
+          </div>
+        </header>
+        <form id="announcementForm" class="announcement-form" novalidate>
+          <div class="field field-full">
+            <label for="announcementTitle">Judul</label>
+            <input id="announcementTitle" type="text" class="input" placeholder="Contoh: Maintenance malam ini" required>
+          </div>
+          <div class="field field-full">
+            <label for="announcementDescription">Deskripsi</label>
+            <textarea id="announcementDescription" class="input" rows="3" placeholder="Tuliskan detail informasi..." required></textarea>
+          </div>
+          <div class="field">
+            <label for="announcementPublished">Tanggal &amp; Jam</label>
+            <input id="announcementPublished" type="datetime-local" class="input">
+          </div>
+          <div class="announcement-hint" id="announcementFormHint">Mode: tambah pengumuman baru.</div>
+          <div class="announcement-actions">
+            <button type="button" class="btn ghost" id="announcementCancel" hidden>Batal</button>
+            <button type="submit" class="btn primary" id="announcementSubmit">Publikasikan</button>
+          </div>
+        </form>
+        <div class="announcement-list" id="announcementList">
+          <div class="announcement-empty">Belum ada pengumuman aktif.</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid management-grid">
       <article class="panel panel-accounts">
         <header class="panel-header">
           <div>
@@ -1108,7 +1379,15 @@ if (isset($_GET['api'])) {
         platform: {
           maintenance: { active: false, message: '', updated_at: null },
           generators: []
-        }
+        },
+        metrics: {
+          online_users: 0,
+          generator_users: 0,
+          total_generations: 0,
+          updated_at: null,
+          recent_activity: []
+        },
+        announcements: []
       };
 
       const toastEl = document.getElementById('toast');
@@ -1137,7 +1416,23 @@ if (isset($_GET['api'])) {
       const maintenanceMessage = document.getElementById('maintenanceMessage');
       const maintenanceStatus = document.getElementById('maintenanceStatus');
       const generatorList = document.getElementById('generatorList');
+      const metricsOnline = document.getElementById('metricOnline');
+      const metricsActiveUsers = document.getElementById('metricActiveUsers');
+      const metricsTotalGenerations = document.getElementById('metricTotalGenerations');
+      const metricsUpdatedAt = document.getElementById('metricsUpdatedAt');
+      const recentActivityList = document.getElementById('recentActivityList');
+      const announcementForm = document.getElementById('announcementForm');
+      const announcementTitle = document.getElementById('announcementTitle');
+      const announcementDescription = document.getElementById('announcementDescription');
+      const announcementPublished = document.getElementById('announcementPublished');
+      const announcementSubmit = document.getElementById('announcementSubmit');
+      const announcementCancel = document.getElementById('announcementCancel');
+      const announcementFormHint = document.getElementById('announcementFormHint');
+      const announcementList = document.getElementById('announcementList');
       let toastTimer = null;
+      let metricsTimer = null;
+      const METRICS_REFRESH_INTERVAL = 20000;
+      let announcementEditingId = null;
 
       function showToast(message, type = 'info') {
         if (!toastEl) return;
@@ -1204,6 +1499,158 @@ if (isset($_GET['api'])) {
         const d = new Date(iso);
         if (Number.isNaN(d.getTime())) return '—';
         return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      }
+
+      function normalizeMetrics(metrics) {
+        if (!metrics || typeof metrics !== 'object') {
+          return { online_users: 0, generator_users: 0, total_generations: 0, updated_at: null, recent_activity: [] };
+        }
+        const online = Number.isFinite(Number(metrics.online_users)) ? Number(metrics.online_users) : 0;
+        const generatorUsers = Number.isFinite(Number(metrics.generator_users)) ? Number(metrics.generator_users) : 0;
+        const total = Number.isFinite(Number(metrics.total_generations)) ? Number(metrics.total_generations) : 0;
+        const updated = metrics.updated_at && typeof metrics.updated_at === 'string' ? metrics.updated_at : null;
+        const activities = Array.isArray(metrics.recent_activity) ? metrics.recent_activity : [];
+        return {
+          online_users: online,
+          generator_users: generatorUsers,
+          total_generations: total,
+          updated_at: updated,
+          recent_activity: activities.filter(item => item && typeof item === 'object')
+        };
+      }
+
+      function renderMetrics() {
+        const metrics = normalizeMetrics(state.metrics);
+        state.metrics = metrics;
+        if (metricsOnline) metricsOnline.textContent = metrics.online_users.toLocaleString('id-ID');
+        if (metricsActiveUsers) metricsActiveUsers.textContent = metrics.generator_users.toLocaleString('id-ID');
+        if (metricsTotalGenerations) metricsTotalGenerations.textContent = metrics.total_generations.toLocaleString('id-ID');
+        if (metricsUpdatedAt) {
+          metricsUpdatedAt.textContent = metrics.updated_at ? `Update ${formatDate(metrics.updated_at)}` : 'Update —';
+        }
+        if (!recentActivityList) return;
+        recentActivityList.innerHTML = '';
+        if (!metrics.recent_activity.length) {
+          const empty = document.createElement('div');
+          empty.className = 'announcement-empty';
+          empty.textContent = 'Belum ada aktivitas terbaru.';
+          recentActivityList.appendChild(empty);
+          return;
+        }
+        metrics.recent_activity.slice(0, 10).forEach(entry => {
+          const item = document.createElement('div');
+          item.className = 'activity-item';
+          const title = document.createElement('strong');
+          const username = entry.username && entry.username !== '' ? entry.username : null;
+          const detailLabel = entry.detail && entry.detail !== '' ? entry.detail : null;
+          const sourceLabel = entry.source && entry.source !== '' ? entry.source : entry.type || 'activity';
+          title.textContent = username ? `@${username}` : detailLabel || sourceLabel;
+          const detail = document.createElement('span');
+          detail.textContent = detailLabel || sourceLabel;
+          const time = document.createElement('span');
+          time.textContent = formatDate(entry.timestamp);
+          item.appendChild(title);
+          item.appendChild(detail);
+          item.appendChild(time);
+          recentActivityList.appendChild(item);
+        });
+      }
+
+      function isoFromLocalDateTime(value) {
+        if (!value) return null;
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return parsed.toISOString();
+      }
+
+      function resetAnnouncementForm() {
+        announcementEditingId = null;
+        if (announcementForm) announcementForm.reset();
+        if (announcementCancel) announcementCancel.hidden = true;
+        if (announcementSubmit) announcementSubmit.textContent = 'Publikasikan';
+        if (announcementFormHint) announcementFormHint.textContent = 'Mode: tambah pengumuman baru.';
+        if (announcementPublished) announcementPublished.value = '';
+      }
+
+      function setAnnouncementEditing(item) {
+        if (!item) {
+          resetAnnouncementForm();
+          return;
+        }
+        announcementEditingId = item.id;
+        if (announcementTitle) announcementTitle.value = item.title || '';
+        if (announcementDescription) announcementDescription.value = item.description || '';
+        if (announcementPublished) {
+          if (item.published_at) {
+            const date = new Date(item.published_at);
+            if (!Number.isNaN(date.getTime())) {
+              const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+                .toISOString()
+                .slice(0, 16);
+              announcementPublished.value = local;
+            } else {
+              announcementPublished.value = '';
+            }
+          } else {
+            announcementPublished.value = '';
+          }
+        }
+        if (announcementCancel) announcementCancel.hidden = false;
+        if (announcementSubmit) announcementSubmit.textContent = 'Simpan Perubahan';
+        if (announcementFormHint) announcementFormHint.textContent = 'Mode: edit pengumuman.';
+      }
+
+      function renderAnnouncements() {
+        if (!announcementList) return;
+        announcementList.innerHTML = '';
+        const items = Array.isArray(state.announcements) ? state.announcements : [];
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'announcement-empty';
+          empty.textContent = 'Belum ada pengumuman aktif.';
+          announcementList.appendChild(empty);
+          return;
+        }
+        items.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'announcement-item';
+          const header = document.createElement('header');
+          const title = document.createElement('h3');
+          title.textContent = item.title || 'Informasi';
+          const time = document.createElement('time');
+          time.dateTime = item.published_at || '';
+          time.textContent = item.published_at ? formatDate(item.published_at) : '—';
+          header.appendChild(title);
+          header.appendChild(time);
+          card.appendChild(header);
+          if (item.description) {
+            const desc = document.createElement('p');
+            desc.textContent = item.description;
+            card.appendChild(desc);
+          }
+          const actions = document.createElement('div');
+          actions.className = 'actions';
+          const editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'btn ghost';
+          editBtn.textContent = 'Edit';
+          editBtn.dataset.action = 'edit-announcement';
+          editBtn.dataset.id = item.id;
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'btn ghost danger';
+          deleteBtn.textContent = 'Hapus';
+          deleteBtn.dataset.action = 'delete-announcement';
+          deleteBtn.dataset.id = item.id;
+          actions.appendChild(editBtn);
+          actions.appendChild(deleteBtn);
+          card.appendChild(actions);
+          announcementList.appendChild(card);
+        });
+
+        if (announcementEditingId && !items.some(entry => entry && entry.id === announcementEditingId)) {
+          resetAnnouncementForm();
+        }
       }
 
       function defaultPlatformState() {
@@ -1292,9 +1739,13 @@ if (isset($_GET['api'])) {
           state.nextKey = data.nextKey || null;
           state.activeKeyCount = data.activeKeyCount || 0;
           state.platform = normalizePlatform(data.platform);
+          state.metrics = normalizeMetrics(data.metrics);
+          state.announcements = Array.isArray(data.announcements) ? data.announcements : [];
           renderAccounts();
           renderKeys();
           renderPlatform();
+          renderMetrics();
+          renderAnnouncements();
         } catch (err) {
           handleApiError(err, 'Gagal memuat data');
         }
@@ -1420,6 +1871,7 @@ if (isset($_GET['api'])) {
             const pieces = [emailText, `@${account.username || 'unknown'}`, String(account.subscription || 'free').toUpperCase()];
             if (created) pieces.push(created);
             if (lastLogin) pieces.push(lastLogin);
+            if (account.last_generation_at) pieces.push(`Generate ${formatDate(account.last_generation_at)}`);
             metaEl.textContent = pieces.join(' · ');
           }
           if (roleChip) {
@@ -1435,6 +1887,11 @@ if (isset($_GET['api'])) {
             statusRow.innerHTML = '';
             statusRow.appendChild(makeChip(account.is_banned ? 'Banned' : 'Active', account.is_banned ? 'danger' : 'success'));
             statusRow.appendChild(makeChip(account.is_blocked ? 'Blocked' : 'Live', account.is_blocked ? 'warning' : 'info'));
+            const genCount = Number.isFinite(Number(account.generation_count)) ? Number(account.generation_count) : 0;
+            statusRow.appendChild(makeChip(`${genCount} generate`, 'accent'));
+            if (account.restricted) {
+              statusRow.appendChild(makeChip('Restricted', 'warning'));
+            }
           }
           if (displayInput) displayInput.value = account.display_name || '';
           if (usernameInput) usernameInput.value = account.username || '';
@@ -1924,7 +2381,103 @@ if (isset($_GET['api'])) {
         }
       });
 
+      if (announcementForm) {
+        announcementForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const title = announcementTitle ? announcementTitle.value.trim() : '';
+          const description = announcementDescription ? announcementDescription.value.trim() : '';
+          if (!title || !description) {
+            showToast('Judul dan deskripsi wajib diisi', 'error');
+            return;
+          }
+          const publishedAt = announcementPublished && announcementPublished.value
+            ? isoFromLocalDateTime(announcementPublished.value)
+            : null;
+          const payload = { title, description };
+          if (publishedAt) payload.published_at = publishedAt;
+          if (announcementSubmit) announcementSubmit.disabled = true;
+          try {
+            if (announcementEditingId) {
+              payload.id = announcementEditingId;
+              const response = await apiCall('updateAnnouncement', payload);
+              const updated = response.data && response.data.announcement;
+              if (updated) {
+                state.announcements = state.announcements.map(item => item.id === updated.id ? updated : item);
+                renderAnnouncements();
+              }
+              showToast('Pengumuman diperbarui', 'success');
+            } else {
+              const response = await apiCall('addAnnouncement', payload);
+              const created = response.data && response.data.announcement;
+              if (created) {
+                state.announcements.unshift(created);
+                renderAnnouncements();
+              }
+              showToast('Pengumuman ditambahkan', 'success');
+            }
+            resetAnnouncementForm();
+          } catch (err) {
+            handleApiError(err, announcementEditingId ? 'Gagal memperbarui pengumuman' : 'Gagal menambah pengumuman');
+          } finally {
+            if (announcementSubmit) announcementSubmit.disabled = false;
+          }
+        });
+      }
+
+      if (announcementCancel) {
+        announcementCancel.addEventListener('click', () => {
+          resetAnnouncementForm();
+        });
+      }
+
+      if (announcementList) {
+        announcementList.addEventListener('click', async event => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) return;
+          const action = target.dataset.action;
+          if (!action) return;
+          const id = target.dataset.id;
+          if (!id) return;
+          if (action === 'edit-announcement') {
+            const item = state.announcements.find(entry => entry && entry.id === id);
+            if (item) setAnnouncementEditing(item);
+            return;
+          }
+          if (action === 'delete-announcement') {
+            if (!confirm('Hapus pengumuman ini?')) return;
+            try {
+              await apiCall('deleteAnnouncement', { id });
+              state.announcements = state.announcements.filter(entry => entry && entry.id !== id);
+              renderAnnouncements();
+              if (announcementEditingId === id) {
+                resetAnnouncementForm();
+              }
+              showToast('Pengumuman dihapus', 'success');
+            } catch (err) {
+              handleApiError(err, 'Gagal menghapus pengumuman');
+            }
+          }
+        });
+      }
+
+      function scheduleMetricsRefresh() {
+        if (metricsTimer) clearInterval(metricsTimer);
+        metricsTimer = setInterval(async () => {
+          try {
+            const json = await apiCall('metrics', {}, 'GET');
+            const data = json.data || {};
+            state.metrics = normalizeMetrics(data.metrics || data);
+            renderMetrics();
+          } catch (err) {
+            console.warn('Gagal memuat metrics:', err);
+          }
+        }, METRICS_REFRESH_INTERVAL);
+      }
+
       loadState();
+      renderMetrics();
+      renderAnnouncements();
+      scheduleMetricsRefresh();
     })();
   </script>
 </body>

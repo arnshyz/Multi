@@ -359,6 +359,31 @@ header {
     transition: border-color 0.2s;
 }
 
+.modal-content .modal-label {
+    display: block;
+    text-align: left;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 6px;
+}
+
+.modal-content .api-key-field {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.modal-content .api-key-field input {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.modal-content .api-key-field button {
+    flex-shrink: 0;
+    width: 130px;
+}
+
 .dark-mode .modal-content form input {
     background-color: rgba(255, 255, 255, 0.08);
 }
@@ -391,6 +416,12 @@ header {
 .form-status[data-state="error"] { color: #ef4444; }
 .form-status[data-state="success"] { color: #10b981; }
 .form-status[data-state="info"] { color: var(--text-color); opacity: 0.8; }
+
+.form-status.small {
+    font-size: 0.85rem;
+    margin-top: -6px;
+    margin-bottom: 10px;
+}
 
 /* --- 7. Mobile Layout & Media Queries (max-width: 768px) --- */
 @media (max-width: 1024px) {

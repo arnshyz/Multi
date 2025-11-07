@@ -541,6 +541,51 @@ if ($requestedApi === 'logout') {
     ]);
 }
 
+if ($requestedApi === 'validate-freepik') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk validasi API key.'
+        ], 405);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $apiKey = isset($payload['freepik_api_key']) ? trim((string)$payload['freepik_api_key']) : '';
+    if ($apiKey === '') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => ['apiKey' => 'API key wajib diisi.']
+        ], 422);
+    }
+
+    $error = null;
+    if (auth_validate_freepik_api_key($apiKey, $error)) {
+        auth_json_response([
+            'ok' => true,
+            'status' => 200,
+            'message' => 'API key valid dan aktif.'
+        ]);
+    }
+
+    $status = 422;
+    if ($error !== null && (strpos($error, 'Tidak dapat') === 0 || strpos($error, 'Endpoint verifikasi') === 0)) {
+        $status = 503;
+    }
+
+    auth_json_response([
+        'ok' => false,
+        'status' => $status,
+        'error' => ['apiKey' => $error ?: 'API key tidak valid.']
+    ], $status);
+}
+
 if ($requestedApi === 'register') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         auth_json_response([
@@ -644,6 +689,7 @@ if ($requestedApi === 'account') {
 
     $payload = auth_account_public_payload($account);
     $payload['platform'] = auth_platform_public_view();
+    $payload['announcements'] = auth_announcements_public_view();
 
     auth_json_response([
         'ok' => true,
@@ -668,6 +714,14 @@ if ($requestedApi === 'account-theme') {
             'status' => 401,
             'error' => 'Sesi berakhir, silakan login ulang.'
         ], 401);
+    }
+
+    if (auth_is_account_restricted($account)) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 403,
+            'error' => 'Akun Anda diblokir atau dibanned. Hubungi admin untuk bantuan.'
+        ], 403);
     }
 
     $raw = file_get_contents('php://input');
@@ -1101,14 +1155,23 @@ if ($requestedApi === 'gemini') {
         $responseData = is_array($result['data']) ? $result['data'] : [];
         $text = gemini_extract_text($responseData);
 
+        $responsePayload = [
+            'model' => $model,
+            'text' => $text,
+            'raw' => $responseData,
+        ];
+
+        auth_metrics_record_generation('gemini', [
+            'type' => 'gemini-text',
+            'detail' => $model,
+            'user_id' => $account['id'] ?? null,
+            'username' => $account['username'] ?? '',
+        ]);
+
         auth_json_response([
             'ok' => true,
             'status' => 200,
-            'data' => [
-                'model' => $model,
-                'text' => $text,
-                'raw' => $responseData,
-            ],
+            'data' => $responsePayload,
         ]);
     }
 
@@ -1197,15 +1260,24 @@ if ($requestedApi === 'gemini') {
             ], 502);
         }
 
+        $responsePayload = [
+            'model' => $model,
+            'audio' => $audio['data'],
+            'mimeType' => $audio['mime'] ?? $mimeType,
+            'raw' => $responseData,
+        ];
+
+        auth_metrics_record_generation('gemini', [
+            'type' => 'gemini-speech',
+            'detail' => $model . '|' . $voice,
+            'user_id' => $account['id'] ?? null,
+            'username' => $account['username'] ?? '',
+        ]);
+
         auth_json_response([
             'ok' => true,
             'status' => 200,
-            'data' => [
-                'model' => $model,
-                'audio' => $audio['data'],
-                'mimeType' => $audio['mime'] ?? $mimeType,
-                'raw' => $responseData,
-            ],
+            'data' => $responsePayload,
         ]);
     }
 
@@ -1281,15 +1353,24 @@ if ($requestedApi === 'gemini') {
             $operation = (string)$responseData['operation'];
         }
 
+        $responsePayload = [
+            'model' => $model,
+            'operation' => $operation,
+            'videoUrls' => $videoUrls,
+            'raw' => $responseData,
+        ];
+
+        auth_metrics_record_generation('gemini', [
+            'type' => 'gemini-veo',
+            'detail' => $model,
+            'user_id' => $account['id'] ?? null,
+            'username' => $account['username'] ?? '',
+        ]);
+
         auth_json_response([
             'ok' => true,
             'status' => 200,
-            'data' => [
-                'model' => $model,
-                'operation' => $operation,
-                'videoUrls' => $videoUrls,
-                'raw' => $responseData,
-            ],
+            'data' => $responsePayload,
         ]);
     }
 
@@ -1309,6 +1390,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
             'ok'     => false,
             'status' => 405,
             'error'  => 'Gunakan metode POST untuk upload'
+        ]);
+        exit;
+    }
+
+    $account = auth_current_account();
+    if ($account && auth_is_account_restricted($account)) {
+        echo json_encode([
+            'ok' => false,
+            'status' => 403,
+            'error' => 'Akun Anda diblokir atau dibanned. Hubungi admin untuk bantuan.'
         ]);
         exit;
     }
@@ -1406,6 +1497,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
 if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     header('Content-Type: application/json; charset=utf-8');
 
+    $account = auth_current_account();
+    if ($account && auth_is_account_restricted($account)) {
+        echo json_encode([
+            'ok' => false,
+            'status' => 403,
+            'error' => 'Akun Anda diblokir atau dibanned. Hubungi admin untuk bantuan.'
+        ]);
+        exit;
+    }
+
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
     $url = $payload['url'] ?? '';
@@ -1478,6 +1579,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
 // ====== PROXY AJAX: ?api=freepik ======
 if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     header('Content-Type: application/json; charset=utf-8');
+
+    $account = auth_current_account();
+    if ($account && auth_is_account_restricted($account)) {
+        echo json_encode([
+            'ok' => false,
+            'status' => 403,
+            'error' => 'Akun Anda diblokir atau dibanned. Hubungi admin untuk bantuan.'
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
 
     $selectedApiKey = freepik_next_api_key();
     if (!$selectedApiKey) {
@@ -1563,8 +1674,19 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         }
     }
 
+    $success = $statusCode >= 200 && $statusCode < 300;
+
+    if ($success && isset($payload['method']) && strtoupper((string)$payload['method']) !== 'GET' && $account) {
+        auth_metrics_record_generation('freepik', [
+            'type' => 'freepik',
+            'detail' => isset($payload['path']) ? (string)$payload['path'] : '',
+            'user_id' => $account['id'] ?? null,
+            'username' => $account['username'] ?? '',
+        ]);
+    }
+
     echo json_encode([
-        'ok'     => $statusCode >= 200 && $statusCode < 300,
+        'ok'     => $success,
         'status' => $statusCode,
         'data'   => $data
     ], JSON_UNESCAPED_SLASHES);
@@ -1731,17 +1853,25 @@ if (!auth_is_logged_in()) {
     <div id="signup-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="signup-modal-title">
         <div class="modal-content glass-card">
             <button class="close-btn" type="button" aria-label="Tutup">&times;</button>
-            <h2 id="signup-modal-title">Hubungi No Dibawah</h2>
-            <div class="login-ip-stamp">
-        <span class="stamp-icon" aria-hidden="true">🔒</span>
-        <span>Untuk Sementara Pendaftaran Di tutup:</span>
-        <span class="stamp-value"><?= htmlspecialchars($clientIp, ENT_QUOTES) ?></span>
-      </div>
+            <h2 id="signup-modal-title">Daftar Akun Baru</h2>
             <form>
-                <input type="text" name="username" placeholder="Nama Pengguna" required autocomplete="username">
-                <input type="email" name="email" placeholder="Email" autocomplete="email">
-                <input type="password" name="password" placeholder="Password" required autocomplete="new-password">
-                </button href="wa.me/6282213316764">0818-404-222</button/>
+                <label for="signupFreepikKey" class="modal-label">Freepik API Key</label>
+                <div class="api-key-field">
+                    <input type="text" id="signupFreepikKey" name="freepik_api_key" placeholder="Masukkan Freepik API key" required autocomplete="off">
+                    <button type="button" class="btn-primary" id="freepikValidateBtn">Validasi</button>
+                </div>
+                <div class="form-status small" data-role="apikey-status" aria-live="polite"></div>
+
+                <label for="signupUsername" class="modal-label">Username</label>
+                <input type="text" id="signupUsername" name="username" placeholder="Nama Pengguna" required autocomplete="username">
+
+                <label for="signupEmail" class="modal-label">Email</label>
+                <input type="email" id="signupEmail" name="email" placeholder="Email" required autocomplete="email">
+
+                <label for="signupPassword" class="modal-label">Password</label>
+                <input type="password" id="signupPassword" name="password" placeholder="Password" required autocomplete="new-password" minlength="6">
+
+                <button type="submit" class="btn-primary" id="signupSubmit" disabled>Daftar</button>
                 <div class="form-status" data-role="signup-status" aria-live="polite"></div>
             </form>
         </div>
@@ -2174,6 +2304,13 @@ if (!auth_is_logged_in()) {
         const signupForm = signupModal ? signupModal.querySelector('form') : null;
         const loginStatus = loginForm ? loginForm.querySelector('[data-role="login-status"]') : null;
         const signupStatus = signupForm ? signupForm.querySelector('[data-role="signup-status"]') : null;
+        const apiKeyStatus = signupForm ? signupForm.querySelector('[data-role="apikey-status"]') : null;
+        const signupApiKeyInput = document.getElementById('signupFreepikKey');
+        const freepikValidateBtn = document.getElementById('freepikValidateBtn');
+        const signupSubmitBtn = document.getElementById('signupSubmit');
+        let freepikValidated = false;
+        let freepikValidating = false;
+        let signupSubmitting = false;
 
         function setBodyOverflow(hidden) {
             document.body.style.overflow = hidden ? 'hidden' : 'auto';
@@ -2355,6 +2492,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     signupStatus.textContent = '';
                     signupStatus.dataset.state = '';
                 }
+                if (apiKeyStatus) {
+                    setStatus(apiKeyStatus, '', null);
+                }
+                freepikValidated = false;
+                freepikValidating = false;
+                if (signupApiKeyInput) {
+                    signupApiKeyInput.value = '';
+                }
+                refreshSignupControls();
                 openModal(signupModal);
                 if (signupForm) {
                     const firstInput = signupForm.querySelector('input');
@@ -2388,6 +2534,59 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        if (signupApiKeyInput) {
+            signupApiKeyInput.addEventListener('input', () => {
+                freepikValidated = false;
+                if (apiKeyStatus) {
+                    setStatus(apiKeyStatus, '', null);
+                }
+                refreshSignupControls();
+            });
+        }
+
+        if (freepikValidateBtn) {
+            freepikValidateBtn.addEventListener('click', async () => {
+                if (!signupApiKeyInput) {
+                    return;
+                }
+
+                const apiKey = signupApiKeyInput.value.trim();
+                if (!apiKey) {
+                    setStatus(apiKeyStatus, 'Masukkan Freepik API key terlebih dahulu.', 'error');
+                    signupApiKeyInput.focus();
+                    return;
+                }
+
+                freepikValidating = true;
+                refreshSignupControls();
+                setStatus(apiKeyStatus, 'Memvalidasi API key…', 'info');
+
+                try {
+                    const response = await fetch(`${endpoint}?api=validate-freepik`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ freepik_api_key: apiKey })
+                    });
+                    const data = await response.json().catch(() => null);
+
+                    if (!response.ok || !data || !data.ok) {
+                        const message = extractErrorMessage(data ? data.error : null, `HTTP ${response.status}`);
+                        throw new Error(message || 'Validasi API key gagal.');
+                    }
+
+                    freepikValidated = true;
+                    setStatus(apiKeyStatus, 'API key valid dan aktif.', 'success');
+                } catch (error) {
+                    freepikValidated = false;
+                    setStatus(apiKeyStatus, error.message || 'Validasi API key gagal.', 'error');
+                } finally {
+                    freepikValidating = false;
+                    refreshSignupControls();
+                }
+            });
+        }
+
         function setStatus(el, message, state) {
             if (!el) return;
             el.textContent = message || '';
@@ -2397,6 +2596,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 delete el.dataset.state;
             }
         }
+
+        function refreshSignupControls() {
+            if (signupSubmitBtn) {
+                signupSubmitBtn.disabled = signupSubmitting || !freepikValidated;
+            }
+            if (freepikValidateBtn) {
+                const hasKey = signupApiKeyInput && signupApiKeyInput.value.trim() !== '';
+                freepikValidateBtn.disabled = freepikValidating || !hasKey;
+            }
+        }
+
+        refreshSignupControls();
 
         function extractErrorMessage(errorData, fallback) {
             if (!errorData) return fallback;
@@ -2468,18 +2679,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 const username = formData.get('username');
                 const email = formData.get('email');
                 const password = formData.get('password');
+                const apiKey = signupApiKeyInput ? signupApiKeyInput.value.trim() : (formData.get('freepik_api_key') || '').trim();
 
                 if (!username || !password) {
                     setStatus(signupStatus, 'Username dan password wajib diisi.', 'error');
                     return;
                 }
 
-                const submitButton = signupForm.querySelector('button[type="submit"]');
+                if (!apiKey) {
+                    setStatus(apiKeyStatus, 'Masukkan Freepik API key terlebih dahulu.', 'error');
+                    if (signupApiKeyInput) signupApiKeyInput.focus();
+                    return;
+                }
+
+                if (!freepikValidated) {
+                    setStatus(apiKeyStatus, 'Validasi API key Freepik sebelum mendaftar.', 'error');
+                    if (signupApiKeyInput) signupApiKeyInput.focus();
+                    return;
+                }
+
+                const submitButton = signupSubmitBtn || signupForm.querySelector('button[type="submit"]');
+                signupSubmitting = true;
                 if (submitButton) submitButton.disabled = true;
+                refreshSignupControls();
                 setStatus(signupStatus, 'Mendaftarkan akun…', 'info');
 
                 try {
-                    const payload = { username, password };
+                    const payload = { username, password, freepik_api_key: apiKey };
                     if (email) {
                         payload.email = email;
                     }
@@ -2494,10 +2720,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (!response.ok || !data || !data.ok) {
                         const message = extractErrorMessage(data ? data.error || data.message : null, `HTTP ${response.status}`);
+                        if (data && data.error && data.error.apiKey) {
+                            freepikValidated = false;
+                            refreshSignupControls();
+                            setStatus(apiKeyStatus, extractErrorMessage(data.error.apiKey, message), 'error');
+                        }
                         throw new Error(message);
                     }
 
                     setStatus(signupStatus, 'Registrasi berhasil! Silakan login.', 'success');
+                    freepikValidated = false;
+                    if (signupApiKeyInput) signupApiKeyInput.value = '';
+                    if (apiKeyStatus) setStatus(apiKeyStatus, '', null);
+                    refreshSignupControls();
                     setTimeout(() => {
                         closeModal(signupModal);
                         if (loginForm) {
@@ -2508,7 +2743,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (error) {
                     setStatus(signupStatus, error.message || 'Registrasi gagal. Coba lagi.', 'error');
                 } finally {
+                    signupSubmitting = false;
                     if (submitButton) submitButton.disabled = false;
+                    refreshSignupControls();
                 }
             });
         }
@@ -2736,6 +2973,27 @@ body[data-theme="light"] {
   align-self: flex-start;
 }
 
+.restriction-banner {
+  margin-bottom: 20px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  background: rgba(250, 204, 21, 0.12);
+  color: var(--text);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+}
+
+.restriction-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.restriction-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
 .mobile-coin-banner {
   display: none;
   align-items: center;
@@ -2779,6 +3037,141 @@ body[data-theme="light"] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 18px;
+}
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+.metric-card {
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.16);
+}
+.metric-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.metric-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+}
+.metric-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+.activity-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 16px;
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.25);
+  padding: 16px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.activity-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(30, 41, 59, 0.65);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+}
+.activity-item strong {
+  font-size: 13px;
+  color: var(--text);
+}
+.activity-item span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.announcement-board {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.announcement-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.announcement-form .field-full {
+  grid-column: 1 / -1;
+}
+.announcement-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.announcement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.announcement-item {
+  border-radius: 16px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  background: rgba(15, 23, 42, 0.4);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.announcement-item header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.announcement-item h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.announcement-item time {
+  font-size: 12px;
+  color: var(--muted);
+}
+.announcement-item p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.announcement-item .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.announcement-item .actions .btn {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.announcement-empty {
+  border-radius: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.22);
+  padding: 18px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
 }
 .dashboard-view {
   display: flex;
@@ -5919,6 +6312,15 @@ body[data-theme="light"] .profile-credit {
       <button type="button" class="topup-badge" id="mobileCoinTopup">Top Up</button>
     </div>
     <div id="viewDashboard" class="dashboard-view app-view">
+      <div id="accountRestrictionBanner" class="restriction-banner" hidden>
+        <div class="restriction-content">
+          <span class="restriction-icon" aria-hidden="true">⚠️</span>
+          <div>
+            <strong>Akun dibatasi.</strong>
+            <div id="accountRestrictionMessage">Akun Anda sedang dibatasi oleh admin. Hubungi admin untuk reaktivasi.</div>
+          </div>
+        </div>
+      </div>
       <section class="overview-hero">
         <div class="hero-text">
           <h1>Dashboard Overview</h1>
@@ -5963,8 +6365,20 @@ body[data-theme="light"] .profile-credit {
         </article>
       </section>
 
+      <article id="dashboardAnnouncements" class="card-soft announcement-board" hidden>
+        <div class="header" style="margin-bottom:8px;">
+          <div>
+            <div class="title" style="font-size:16px;">Informasi Terbaru</div>
+            <div class="subtitle">Pengumuman resmi dari admin akan tampil di sini.</div>
+          </div>
+        </div>
+        <div class="announcement-list" id="dashboardAnnouncementList">
+          <div class="announcement-empty">Belum ada informasi terbaru.</div>
+        </div>
+      </article>
+
       <div class="profile-card profile-card--mobile" id="profileCardMobile">
-        
+
         <div class="profile-credit">
           <span class="credit-label">Credit</span>
           <span class="credit-value" id="profileCoinsMobile">0</span>
@@ -6776,6 +7190,10 @@ body[data-theme="light"] .profile-credit {
     mobileCoinTopup,
     document.getElementById('profileTopupMobile')
   ].filter(Boolean);
+  const restrictionBanner = document.getElementById('accountRestrictionBanner');
+  const restrictionMessageEl = document.getElementById('accountRestrictionMessage');
+  const dashboardAnnouncementsEl = document.getElementById('dashboardAnnouncements');
+  const dashboardAnnouncementList = document.getElementById('dashboardAnnouncementList');
   const filmProgressEl = document.getElementById('filmProgress');
   const filmProgressFill = document.getElementById('filmProgressFill');
   const filmProgressValue = document.getElementById('filmProgressValue');
@@ -6800,6 +7218,7 @@ body[data-theme="light"] .profile-credit {
   let currentTheme = 'dark';
   let platformState = defaultPlatformState();
   let selectedTopupAmount = null;
+  let currentAnnouncements = [];
 
   const COIN_COST_STANDARD = 1;
   const COIN_COST_FILM_PER_SCENE = 1;
@@ -6862,12 +7281,19 @@ body[data-theme="light"] .profile-credit {
     if (currentAccount && currentAccount.role === 'admin') {
       return true;
     }
+    if (accountRestricted()) {
+      return false;
+    }
     const entry = platformState.generators[featureKey];
     if (!entry) return true;
     return entry.enabled !== false;
   }
 
   function showFeatureLockedMessage(featureKey) {
+    if (accountRestricted()) {
+      showRestrictionNotice();
+      return;
+    }
     const label = getFeatureLabel(featureKey);
     const message = platformState.maintenance.message || 'Generator sedang maintenance. Silakan coba lagi nanti.';
     alert(`🔒 ${label} sedang dikunci oleh admin.\n${message}`);
@@ -6927,6 +7353,123 @@ body[data-theme="light"] .profile-credit {
       el.classList.add(mode);
     }
     el.style.display = 'block';
+  }
+
+  function formatAnnouncementTime(iso) {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function renderDashboardAnnouncements(items) {
+    currentAnnouncements = Array.isArray(items) ? items.slice() : [];
+    if (!dashboardAnnouncementList) {
+      if (dashboardAnnouncementsEl) dashboardAnnouncementsEl.hidden = true;
+      return;
+    }
+
+    dashboardAnnouncementList.innerHTML = '';
+
+    if (!currentAnnouncements.length) {
+      const empty = document.createElement('div');
+      empty.className = 'announcement-empty';
+      empty.textContent = 'Belum ada informasi terbaru.';
+      dashboardAnnouncementList.appendChild(empty);
+      if (dashboardAnnouncementsEl) dashboardAnnouncementsEl.hidden = true;
+      return;
+    }
+
+    currentAnnouncements.forEach(item => {
+      if (!item || typeof item !== 'object') return;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'announcement-item';
+
+      const header = document.createElement('header');
+      const title = document.createElement('h3');
+      title.textContent = item.title || 'Informasi';
+      header.appendChild(title);
+
+      const time = document.createElement('time');
+      time.dateTime = item.published_at || '';
+      time.textContent = formatAnnouncementTime(item.published_at);
+      header.appendChild(time);
+      wrapper.appendChild(header);
+
+      if (item.description) {
+        const desc = document.createElement('p');
+        desc.textContent = item.description;
+        wrapper.appendChild(desc);
+      }
+
+      dashboardAnnouncementList.appendChild(wrapper);
+    });
+
+    if (dashboardAnnouncementsEl) {
+      dashboardAnnouncementsEl.hidden = false;
+    }
+  }
+
+  function accountRestricted(account = currentAccount) {
+    if (!account || typeof account !== 'object') {
+      return false;
+    }
+    if ((account.role || 'user') === 'admin') {
+      return false;
+    }
+    if (Object.prototype.hasOwnProperty.call(account, 'restricted')) {
+      if (account.restricted) {
+        return true;
+      }
+    }
+    return !!account.is_banned || !!account.is_blocked;
+  }
+
+  function showRestrictionNotice(message) {
+    const info = message || 'Akun Anda sedang dibatasi oleh admin. Hubungi admin untuk bantuan lebih lanjut.';
+    alert(`⚠️ ${info}`);
+  }
+
+  function setDisabledState(element, disabled) {
+    if (!element) return;
+    const value = !!disabled;
+    if (typeof element.disabled === 'boolean') {
+      element.disabled = value;
+    } else if (value) {
+      element.setAttribute('aria-disabled', 'true');
+    } else {
+      element.removeAttribute('aria-disabled');
+    }
+    element.classList.toggle('is-disabled', value);
+  }
+
+  function applyAccountRestrictions(account = currentAccount) {
+    const restricted = accountRestricted(account);
+    if (restrictionBanner) {
+      restrictionBanner.hidden = !restricted;
+    }
+    if (restrictionMessageEl) {
+      let message = 'Akun Anda sedang dibatasi oleh admin. Hubungi admin untuk reaktivasi.';
+      if (account && account.is_banned) {
+        message = 'Akun Anda dibanned oleh admin. Hubungi admin untuk membuka blokir.';
+      } else if (account && account.is_blocked) {
+        message = 'Akun Anda diblokir sementara oleh admin. Hubungi admin untuk bantuan.';
+      }
+      restrictionMessageEl.textContent = message;
+    }
+
+    setDisabledState(submitBtn, restricted);
+    setDisabledState(filmGenerateBtn, restricted);
+    setDisabledState(ugcGenerateBtn, restricted);
+    setDisabledState(geminiTextSubmitBtn, restricted);
+    setDisabledState(geminiSpeechSubmitBtn, restricted);
+    setDisabledState(geminiVeoSubmitBtn, restricted);
+    refreshTopupConfirm();
   }
 
   function applyAvatarToElement(el, avatarUrl, initials) {
@@ -7067,6 +7610,8 @@ body[data-theme="light"] .profile-credit {
       showFeatureLockedMessage('geminiStudio');
       showView('viewDashboard');
     }
+
+    applyAccountRestrictions(currentAccount);
   }
 
   function getWhatsappMessage(amount) {
@@ -7078,14 +7623,16 @@ body[data-theme="light"] .profile-credit {
 
   function refreshTopupConfirm() {
     if (!topupConfirmBtn) return;
-    if (!selectedTopupAmount) {
-      topupConfirmBtn.disabled = true;
-      if (topupHintEl) topupHintEl.textContent = 'Pilih nominal untuk lanjut ke WhatsApp.';
-      return;
-    }
-    topupConfirmBtn.disabled = false;
+    const disabled = !selectedTopupAmount || accountRestricted();
+    setDisabledState(topupConfirmBtn, disabled);
     if (topupHintEl) {
-      topupHintEl.textContent = `Konfirmasi top up ${selectedTopupAmount} credit via WhatsApp.`;
+      if (disabled && !selectedTopupAmount) {
+        topupHintEl.textContent = 'Pilih nominal untuk lanjut ke WhatsApp.';
+      } else if (disabled) {
+        topupHintEl.textContent = 'Akun sedang dibatasi. Hubungi admin untuk top up.';
+      } else {
+        topupHintEl.textContent = `Konfirmasi top up ${selectedTopupAmount} credit via WhatsApp.`;
+      }
     }
   }
 
@@ -7122,6 +7669,10 @@ body[data-theme="light"] .profile-credit {
   }
 
   function openTopupModal() {
+    if (accountRestricted()) {
+      showRestrictionNotice('Top up tidak tersedia karena akun Anda sedang dibatasi.');
+      return;
+    }
     buildTopupOptions();
     resetTopupSelection();
     refreshTopupConfirm();
@@ -7146,6 +7697,10 @@ body[data-theme="light"] .profile-credit {
 
   function launchTopupWhatsapp() {
     if (!selectedTopupAmount) return;
+    if (accountRestricted()) {
+      showRestrictionNotice('Tidak dapat melanjutkan top up karena akun dibatasi.');
+      return;
+    }
     const message = getWhatsappMessage(selectedTopupAmount);
     const url = `${TOPUP_WHATSAPP}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank', 'noopener');
@@ -7199,6 +7754,10 @@ body[data-theme="light"] .profile-credit {
 
   topupOpeners.forEach(btn => {
     btn.addEventListener('click', () => {
+      if (accountRestricted()) {
+        showRestrictionNotice('Top up tidak tersedia karena akun Anda sedang dibatasi.');
+        return;
+      }
       openTopupModal();
     });
   });
@@ -7771,6 +8330,7 @@ body[data-theme="light"] .profile-credit {
     }
 
     profileCard.classList.toggle('profile-card--alert', isBanned || isBlocked);
+    applyAccountRestrictions(account);
     updateDashboardStats();
   }
 
@@ -7809,6 +8369,8 @@ body[data-theme="light"] .profile-credit {
       applyPlatformState(account.platform || null);
       applyTheme(account.theme || currentTheme);
       updateProfileCard(account);
+      renderDashboardAnnouncements(account.announcements || []);
+      applyAccountRestrictions(account);
       setDriveAccess(true);
       if (driveLoaded) {
         renderDriveItems();
@@ -7820,6 +8382,8 @@ body[data-theme="light"] .profile-credit {
       applyTheme(currentTheme);
       currentAccount = null;
       applyPlatformState(null);
+      renderDashboardAnnouncements([]);
+      applyAccountRestrictions(null);
       driveItems = [];
       driveLoaded = false;
       setDriveAccess(false);
@@ -8038,7 +8602,6 @@ body[data-theme="light"] .profile-credit {
   setDriveAccess(false);
   updateDriveSummary();
   renderDriveItems();
-  loadAccountState();
 
   // ===== GEMINI MODES =====
   const GEMINI_MODE_META = {
@@ -8144,30 +8707,38 @@ body[data-theme="light"] .profile-credit {
       type: 'image',
       path: '/v1/ai/text-to-image/seedream-v4',
       statusPath: taskId => `/v1/ai/text-to-image/seedream-v4/${taskId}`,
-      buildBody: f => ({ prompt: f.prompt, num_images: f.numImages || 1 })
+      buildBody: f => {
+        const body = { prompt: f.prompt, num_images: f.numImages || 1 };
+        if (f.aspectRatio) {
+          body.aspect_ratio = f.aspectRatio;
+        }
+        return body;
+      }
     },
     seedream4edit: {
-    id: 'seedream4edit',
-    label: 'Seedream 4 Edit',
-    type: 'image',
-    // WAJIB: pakai endpoint EDIT, bukan seedream-v4
-    path: '/v1/ai/text-to-image/seedream-v4-edit',
-    statusPath: taskId => `/v1/ai/text-to-image/seedream-v4-edit/${taskId}`,
-    buildBody: f => {
-      const refs = [];
-      // product images
-      if (Array.isArray(f.productImages)) refs.push(...f.productImages);
-      // model image optional
-      if (f.modelImage) refs.push(f.modelImage);
+      id: 'seedream4edit',
+      label: 'Seedream 4 Edit',
+      type: 'image',
+      // WAJIB: pakai endpoint EDIT, bukan seedream-v4
+      path: '/v1/ai/text-to-image/seedream-v4-edit',
+      statusPath: taskId => `/v1/ai/text-to-image/seedream-v4-edit/${taskId}`,
+      buildBody: f => {
+        const refs = [];
+        // product images
+        if (Array.isArray(f.productImages)) refs.push(...f.productImages);
+        // model image optional
+        if (f.modelImage) refs.push(f.modelImage);
 
-      return {
-        prompt: f.prompt,
-        aspect_ratio: f.aspect_ratio || 'square_1_1',
-        guidance_scale: 2.5,
-        reference_images: refs  // <== ini yang bikin produk mengikuti foto upload
-      };
-    }
-  },
+        const aspect = f.aspectRatio || f.aspect_ratio;
+
+        return {
+          prompt: f.prompt,
+          aspect_ratio: aspect || 'square_1_1',
+          guidance_scale: 2.5,
+          reference_images: refs  // <== ini yang bikin produk mengikuti foto upload
+        };
+      }
+    },
 
     fluxPro11: {
       id: 'fluxPro11',
@@ -8721,12 +9292,12 @@ body[data-theme="light"] .profile-credit {
       }
       button.classList.add('is-loading');
     } else {
-      button.disabled = false;
       const original = button.dataset.originalLabel || '';
       if (original && button.textContent !== original) {
         button.textContent = original;
       }
       button.classList.remove('is-loading');
+      setDisabledState(button, accountRestricted());
     }
   }
 
@@ -9006,6 +9577,10 @@ body[data-theme="light"] .profile-credit {
   }
 
   function ensureGeminiAccess() {
+    if (accountRestricted()) {
+      showRestrictionNotice();
+      return false;
+    }
     if (!featureAvailableForCurrentUser('geminiStudio')) {
       showFeatureLockedMessage('geminiStudio');
       return false;
@@ -10295,6 +10870,11 @@ body[data-theme="light"] .profile-credit {
       return;
     }
 
+    if (accountRestricted()) {
+      showRestrictionNotice();
+      return;
+    }
+
     if (!currentAccount) {
       setStatus('Data akun belum siap, coba lagi sesaat lagi.', 'err');
       return;
@@ -10361,7 +10941,7 @@ body[data-theme="light"] .profile-credit {
       console.error(err);
       setStatus('Error: ' + err.message, 'err');
     } finally {
-      submitBtn.disabled = false;
+      submitBtn.disabled = accountRestricted();
     }
   });
 
@@ -11192,7 +11772,7 @@ body[data-theme="light"] .profile-credit {
     }
 
     startFilmPolling();
-    filmGenerateBtn.disabled = false;
+    filmGenerateBtn.disabled = accountRestricted();
   });
 
   const UGC_IDEA_COUNT = 5;
@@ -11783,7 +12363,7 @@ body[data-theme="light"] .profile-credit {
         }
       }
     }
-    ugcGenerateBtn.disabled = false;
+    ugcGenerateBtn.disabled = accountRestricted();
   }
 
   ugcGenerateBtn.addEventListener('click', () => { ugcGenerate(); });
@@ -11931,6 +12511,8 @@ document.addEventListener('keydown', event => {
 
 
   // ===== INIT =====
+  applyAccountRestrictions(currentAccount);
+  loadAccountState();
   setFeature('imageGen');
   jobs.filter(j => !finalStatus(j.status)).forEach(job => startJobProgress(job));
   renderJobs();
