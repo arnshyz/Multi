@@ -1,6 +1,6 @@
 <?php
 $appPageKey = 'profile';
-$appTitle = 'Dashboard – AI Hub + Filmmaker + UGC';
+$appTitle = 'Profile – AI Hub + Filmmaker + UGC';
 $appInitialView = 'viewDashboard';
 $appAllowedViews = ['viewDashboard'];
 $appInitialFeature = '';
