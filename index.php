@@ -12,13 +12,16 @@ function auth_json_response($payload, $status = 200)
 }
 
 // ====== CONFIG FREEPIK ======
-$FREEPIK_API_KEYS = [
-    getenv('FREEPIK_API_KEY_1') ?: 'FPSXbcc5610f664682840d2dfd832d74fc03',
-    getenv('FREEPIK_API_KEY_2') ?: 'FPSX06967c376cb6d87d9c551ccb33ed4d56',
-    getenv('FREEPIK_API_KEY_3') ?: 'REPLACE_WITH_API_KEY_3',
-    getenv('FREEPIK_API_KEY_4') ?: 'REPLACE_WITH_API_KEY_4',
-    getenv('FREEPIK_API_KEY_5') ?: 'REPLACE_WITH_API_KEY_5',
-];
+$FREEPIK_API_KEYS = [];
+$FREEPIK_API_KEYS_RAW = getenv('FREEPIK_API_KEYS');
+if (is_string($FREEPIK_API_KEYS_RAW) && trim($FREEPIK_API_KEYS_RAW) !== '') {
+    $FREEPIK_API_KEYS = preg_split('/[\r\n,]+/', $FREEPIK_API_KEYS_RAW, -1, PREG_SPLIT_NO_EMPTY);
+    $FREEPIK_API_KEYS = array_map('trim', $FREEPIK_API_KEYS);
+    $FREEPIK_API_KEYS = array_filter($FREEPIK_API_KEYS, static function ($value) {
+        return $value !== '';
+    });
+    $FREEPIK_API_KEYS = array_values($FREEPIK_API_KEYS);
+}
 
 $FREEPIK_BASE_URL = 'https://api.freepik.com';
 
@@ -31,7 +34,7 @@ $FREEPIK_REDIS_CONFIG = [
     'key'      => getenv('FREEPIK_REDIS_KEY') ?: 'freepik:api-keys',
 ];
 
-$GEMINI_API_KEY = getenv('GEMINI_API_KEY') ?: '';
+$GEMINI_API_KEY = trim((string)getenv('GEMINI_API_KEY'));
 $GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com';
 
 function app_base_url(): string
