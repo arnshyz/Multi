@@ -25,7 +25,7 @@
             "theme": "dark",
             "avatar_url": "https://akay.web.id/generated/upload_20251107_074848_e1d78736.png",
             "created_at": "2025-11-06T17:02:21+00:00",
-            "updated_at": "2025-11-07T10:30:24+00:00",
+            "updated_at": "2025-11-07T13:23:40+00:00",
             "last_login_at": "2025-11-07T10:28:02+00:00",
             "last_login_ip": "112.215.153.58",
             "ip_history": [
@@ -116,17 +116,7 @@
                 }
             ],
             "source": "default",
-            "drive_items": [
-                {
-                    "id": "drive_690dbc96a46dc7.93905723",
-                    "type": "video",
-                    "url": "https://cdn-magnific.freepik.com/wan_v22_0943f532-2026-42a5-8ba6-c16f48cfb769.mp4?token=exp=1762507083~hmac=0536510f2bdce4b57bb0ae69b3d806a74a840a47d3df4ec3a36d7edcab128e80",
-                    "thumbnail_url": null,
-                    "model": "wan720",
-                    "prompt": "Pria begerak pelan, sangat dramatis",
-                    "created_at": "2025-11-07T09:32:06.412Z"
-                }
-            ]
+            "drive_items": []
         },
         {
             "id": "acct_690cd545b88eb3.54906339",
@@ -140,13 +130,28 @@
             "coins": 25,
             "is_banned": false,
             "is_blocked": false,
-            "theme": "light",
-            "avatar_url": "https://akay.web.id/generated/upload_20251107_073118_1d8fba02.png",
+            "theme": "dark",
+            "avatar_url": null,
             "created_at": "2025-11-06T17:05:09+00:00",
-            "updated_at": "2025-11-07T08:11:59+00:00",
-            "last_login_at": "2025-11-07T07:59:46+00:00",
+            "updated_at": "2025-11-07T13:31:53+00:00",
+            "last_login_at": "2025-11-07T13:31:53+00:00",
             "last_login_ip": "182.8.122.139",
             "ip_history": [
+                {
+                    "ip": "182.8.122.139",
+                    "timestamp": "2025-11-07T13:31:53+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "182.8.122.139",
+                    "timestamp": "2025-11-07T13:30:01+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "182.8.122.139",
+                    "timestamp": "2025-11-07T12:34:41+00:00",
+                    "type": "login"
+                },
                 {
                     "ip": "182.8.122.139",
                     "timestamp": "2025-11-07T07:59:46+00:00",
@@ -228,16 +233,21 @@
             "password_hash": "$2y$10$8BUQIcJQ.Nzcuw9kErHMx.e1euhVcS8bcHzKo8uEFidOTRJfvwflG",
             "freepik_api_key": null,
             "subscription": "pro",
-            "coins": 4997,
+            "coins": 4996,
             "is_banned": false,
             "is_blocked": false,
             "theme": "light",
             "avatar_url": "https://akay.web.id/generated/upload_20251107_072836_45c750d5.png",
             "created_at": "2025-11-07T06:49:34+00:00",
-            "updated_at": "2025-11-07T08:12:06+00:00",
-            "last_login_at": "2025-11-07T07:19:30+00:00",
+            "updated_at": "2025-11-07T13:29:27+00:00",
+            "last_login_at": "2025-11-07T13:28:04+00:00",
             "last_login_ip": "182.8.122.139",
             "ip_history": [
+                {
+                    "ip": "182.8.122.139",
+                    "timestamp": "2025-11-07T13:28:04+00:00",
+                    "type": "login"
+                },
                 {
                     "ip": "182.8.122.139",
                     "timestamp": "2025-11-07T07:19:30+00:00",
@@ -247,31 +257,13 @@
             "source": "admin",
             "drive_items": [
                 {
-                    "id": "drive_690d9ea4df7152.01051407",
+                    "id": "drive_690df43741d631.76630228",
                     "type": "image",
-                    "url": "https://api.freepik.com/v1/ai/beta/images/download/fc5bc638-5b73-48d7-93b1-d0230e90a022/high.png",
+                    "url": "https://cdn-magnific.freepik.com/result_NANO_BANANA_d9bb8db8-93dc-4855-b29c-35aa89386d45_0.png?token=exp=1762525760~hmac=5e31f825ea2e594a4b06d442a3ffdf7c2b247002dbe26fa8cd21fd6493a7c9de&size=stable",
                     "thumbnail_url": null,
-                    "model": "removeBg",
-                    "prompt": null,
-                    "created_at": "2025-11-07T07:24:17.401Z"
-                },
-                {
-                    "id": "drive_690d9e79bc6e99.61287545",
-                    "type": "image",
-                    "url": "https://api.freepik.com/v1/ai/beta/images/download/c6354d77-793f-433a-9cdd-376d6cc42fe5/high.png",
-                    "thumbnail_url": null,
-                    "model": "removeBg",
-                    "prompt": null,
-                    "created_at": "2025-11-07T07:23:34.252Z"
-                },
-                {
-                    "id": "drive_690d9e56047ec1.21842875",
-                    "type": "image",
-                    "url": "https://api.freepik.com/v1/ai/beta/images/download/bde4c3d0-428e-4f02-83c4-636dd6447f89/high.png",
-                    "thumbnail_url": null,
-                    "model": "removeBg",
-                    "prompt": null,
-                    "created_at": "2025-11-07T07:22:58.489Z"
+                    "model": "gemini",
+                    "prompt": "Seekor monyet sedang bersama wanita muda indonesia yang cantik",
+                    "created_at": "2025-11-07T13:29:27.126Z"
                 }
             ]
         },
@@ -354,20 +346,6 @@
                 "enabled": true,
                 "updated_at": "2024-01-01T00:00:00Z"
             },
-            "textGen": {
-                "key": "textGen",
-                "label": "Text Generator",
-                "description": "Generate konten teks menggunakan Gemini 1.5 Flash.",
-                "enabled": true,
-                "updated_at": "2025-11-07T00:00:00+00:00"
-            },
-            "textSpeech": {
-                "key": "textSpeech",
-                "label": "Text-to-Speech",
-                "description": "Konversi teks menjadi audio dengan Gemini.",
-                "enabled": true,
-                "updated_at": "2025-11-07T00:00:00+00:00"
-            },
             "filmmaker": {
                 "key": "filmmaker",
                 "label": "Filmmaker",
@@ -386,6 +364,34 @@
     },
     "security": {
         "ipChecks": [
+            {
+                "type": "login",
+                "timestamp": "2025-11-07T13:31:53+00:00",
+                "ip": "182.8.122.139",
+                "username": "tester",
+                "role": "user"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-07T13:30:01+00:00",
+                "ip": "182.8.122.139",
+                "username": "tester",
+                "role": "user"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-07T13:28:04+00:00",
+                "ip": "182.8.122.139",
+                "username": "wibiso",
+                "role": "user"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-07T12:34:41+00:00",
+                "ip": "182.8.122.139",
+                "username": "tester",
+                "role": "user"
+            },
             {
                 "type": "login",
                 "timestamp": "2025-11-07T10:28:27+00:00",
@@ -661,6 +667,6 @@
                 "ip": "182.8.125.19"
             }
         ],
-        "updated_at": "2025-11-07T10:28:27+00:00"
+        "updated_at": "2025-11-07T13:31:53+00:00"
     }
 }
