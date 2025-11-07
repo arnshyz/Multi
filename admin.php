@@ -360,24 +360,123 @@ if (isset($_GET['api'])) {
     }
     exit;
 }
-?>
-<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Control Center</title>
-  <style>
+  ?>
+  <!DOCTYPE html>
+  <html lang="id" data-theme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Control Center</title>
+    <script>
+      (function () {
+        var theme = 'light';
+        try {
+          var stored = localStorage.getItem('akay-theme');
+          if (stored === 'dark') {
+            theme = 'dark';
+          }
+        } catch (error) {
+          theme = 'light';
+        }
+        var root = document.documentElement;
+        root.setAttribute('data-theme', theme);
+        root.classList.remove('light-mode', 'dark-mode');
+        root.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
+      })();
+    </script>
+    <style>
     :root {
+      color-scheme: light;
+      --bg: #f8fafc;
+      --panel: rgba(255,255,255,0.86);
+      --panel-border: rgba(148,163,184,0.28);
+      --panel-shadow: rgba(15,23,42,0.08);
+      --page-background: radial-gradient(circle at top, rgba(165,180,252,0.35), transparent 55%),
+                        radial-gradient(circle at bottom, rgba(59,130,246,0.18), transparent 50%),
+                        #f8fafc;
+      --text: #0f172a;
+      --muted: rgba(71,85,105,0.85);
+      --accent: #4f46e5;
+      --danger: #dc2626;
+      --success: #15803d;
+      --warning: #ca8a04;
+      --panel-meta: rgba(71,85,105,0.85);
+      --toast-bg: rgba(255,255,255,0.95);
+      --toast-border: rgba(79,70,229,0.35);
+      --toast-shadow: rgba(15,23,42,0.08);
+      --back-link-bg: rgba(148,163,184,0.18);
+      --back-link-border: rgba(148,163,184,0.35);
+      --btn-bg: rgba(148,163,184,0.18);
+      --btn-border: rgba(148,163,184,0.35);
+      --btn-ghost-border: rgba(148,163,184,0.35);
+      --btn-hover-shadow: rgba(15,23,42,0.12);
+      --input-bg: rgba(248,250,252,0.95);
+      --input-border: rgba(148,163,184,0.35);
+      --input-focus-border: rgba(79,70,229,0.45);
+      --input-focus-ring: rgba(79,70,229,0.2);
+      --empty-border: rgba(148,163,184,0.35);
+      --chip-bg: rgba(99,102,241,0.14);
+      --chip-border: rgba(99,102,241,0.25);
+      --chip-text: #3730a3;
+      --chip-accent-text: #312e81;
+      --info-text: rgba(37,99,235,0.9);
+      --chip-coins: rgba(37,99,235,0.9);
+      --rotation-bg: rgba(148,163,184,0.16);
+      --maintenance-bg: rgba(148,163,184,0.12);
+      --generator-bg: rgba(148,163,184,0.16);
+      --card-bg: rgba(255,255,255,0.9);
+      --card-border: rgba(79,70,229,0.18);
+      --card-shadow: rgba(15,23,42,0.05);
+      --accent-soft: rgba(99,102,241,0.16);
+      --accent-strong: rgba(99,102,241,0.38);
+      --highlight-text: #312e81;
+    }
+
+    :root[data-theme='dark'] {
+      color-scheme: dark;
       --bg: #020617;
       --panel: rgba(15,23,42,0.82);
       --panel-border: rgba(96,165,250,0.18);
+      --panel-shadow: rgba(15,23,42,0.25);
+      --page-background: radial-gradient(circle at top, rgba(30,64,175,0.35), transparent 55%),
+                        radial-gradient(circle at bottom, rgba(59,130,246,0.2), transparent 50%),
+                        #030712;
       --text: #e2e8f0;
       --muted: rgba(148,163,184,0.8);
       --accent: rgba(99,102,241,0.92);
       --danger: #f87171;
       --success: #34d399;
       --warning: #facc15;
+      --panel-meta: rgba(226,232,240,0.75);
+      --toast-bg: rgba(15,23,42,0.9);
+      --toast-border: rgba(99,102,241,0.35);
+      --toast-shadow: rgba(2,6,23,0.35);
+      --back-link-bg: rgba(15,23,42,0.6);
+      --back-link-border: rgba(148,163,184,0.3);
+      --btn-bg: rgba(15,23,42,0.6);
+      --btn-border: rgba(148,163,184,0.3);
+      --btn-ghost-border: rgba(148,163,184,0.3);
+      --btn-hover-shadow: rgba(15,23,42,0.35);
+      --input-bg: rgba(10,15,30,0.7);
+      --input-border: rgba(148,163,184,0.2);
+      --input-focus-border: rgba(99,102,241,0.45);
+      --input-focus-ring: rgba(99,102,241,0.18);
+      --empty-border: rgba(148,163,184,0.3);
+      --chip-bg: rgba(99,102,241,0.18);
+      --chip-border: rgba(99,102,241,0.35);
+      --chip-text: #c7d2fe;
+      --chip-accent-text: #c7d2fe;
+      --info-text: rgba(96,165,250,0.9);
+      --chip-coins: rgba(96,165,250,0.95);
+      --rotation-bg: rgba(15,23,42,0.55);
+      --maintenance-bg: rgba(10,15,30,0.55);
+      --generator-bg: rgba(12,16,32,0.7);
+      --card-bg: rgba(12,16,32,0.82);
+      --card-border: rgba(99,102,241,0.18);
+      --card-shadow: rgba(15,23,42,0.35);
+      --accent-soft: rgba(99,102,241,0.22);
+      --accent-strong: rgba(99,102,241,0.5);
+      --highlight-text: #c7d2fe;
     }
     * {
       box-sizing: border-box;
@@ -386,11 +485,10 @@ if (isset($_GET['api'])) {
       margin: 0;
       min-height: 100vh;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: radial-gradient(circle at top, rgba(30,64,175,0.35), transparent 55%),
-                  radial-gradient(circle at bottom, rgba(59,130,246,0.2), transparent 50%),
-                  #030712;
+      background: var(--page-background);
       color: var(--text);
       padding: 32px 16px 48px;
+      transition: background 0.3s ease, color 0.3s ease;
     }
     .wrapper {
       width: min(1120px, 100%);
@@ -420,15 +518,15 @@ if (isset($_GET['api'])) {
       align-self: flex-start;
       padding: 8px 14px;
       border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.3);
+      border: 1px solid var(--back-link-border);
       color: var(--text);
       text-decoration: none;
-      background: rgba(15,23,42,0.6);
-      transition: transform 0.2s ease, border-color 0.2s ease;
+      background: var(--back-link-bg);
+      transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
     }
     .back-link:hover {
       transform: translateY(-1px);
-      border-color: rgba(99,102,241,0.4);
+      border-color: var(--accent-strong);
     }
     .toast {
       position: fixed;
@@ -436,18 +534,18 @@ if (isset($_GET['api'])) {
       right: 20px;
       padding: 10px 16px;
       border-radius: 10px;
-      background: rgba(15,23,42,0.9);
-      border: 1px solid rgba(99,102,241,0.35);
+      background: var(--toast-bg);
+      border: 1px solid var(--toast-border);
       color: var(--text);
       font-size: 13px;
       line-height: 1.4;
       max-width: 360px;
       white-space: pre-line;
-      box-shadow: 0 10px 30px rgba(2,6,23,0.35);
+      box-shadow: 0 10px 30px var(--toast-shadow);
       opacity: 0;
       transform: translateY(-10px);
       pointer-events: none;
-      transition: opacity 0.2s ease, transform 0.2s ease;
+      transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
     }
     .toast.show {
       opacity: 1;
@@ -471,7 +569,7 @@ if (isset($_GET['api'])) {
       border: 1px solid var(--panel-border);
       border-radius: 20px;
       padding: 20px;
-      box-shadow: 0 25px 60px rgba(15,23,42,0.25);
+      box-shadow: 0 25px 60px var(--panel-shadow);
       backdrop-filter: blur(18px);
       display: flex;
       flex-direction: column;
@@ -499,7 +597,7 @@ if (isset($_GET['api'])) {
     .panel-meta {
       margin: 4px 0 0;
       font-size: 13px;
-      color: rgba(226,232,240,0.75);
+      color: var(--panel-meta);
       max-width: 420px;
       line-height: 1.5;
     }
@@ -540,27 +638,27 @@ if (isset($_GET['api'])) {
     .input {
       width: 100%;
       border-radius: 10px;
-      border: 1px solid rgba(148,163,184,0.2);
-      background: rgba(10,15,30,0.7);
+      border: 1px solid var(--input-border);
+      background: var(--input-bg);
       color: var(--text);
       padding: 10px 12px;
       font-size: 13px;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
       resize: vertical;
     }
     .input:focus {
       outline: none;
-      border-color: rgba(99,102,241,0.45);
-      box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
+      border-color: var(--input-focus-border);
+      box-shadow: 0 0 0 3px var(--input-focus-ring);
     }
     .btn {
       border-radius: 999px;
-      border: 1px solid transparent;
+      border: 1px solid var(--btn-border);
       padding: 8px 16px;
       font-size: 13px;
       cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-      background: rgba(15,23,42,0.6);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+      background: var(--btn-bg);
       color: var(--text);
     }
     .btn.primary {
@@ -569,7 +667,8 @@ if (isset($_GET['api'])) {
       box-shadow: 0 12px 24px rgba(59,130,246,0.35);
     }
     .btn.ghost {
-      border-color: rgba(148,163,184,0.3);
+      border-color: var(--btn-ghost-border);
+      background: transparent;
     }
     .btn.danger {
       border-color: rgba(248,113,113,0.4);
@@ -581,7 +680,7 @@ if (isset($_GET['api'])) {
     }
     .btn:not(:disabled):hover {
       transform: translateY(-1px);
-      box-shadow: 0 12px 24px rgba(15,23,42,0.35);
+      box-shadow: 0 12px 24px var(--btn-hover-shadow);
     }
     .btn.small {
       padding: 6px 12px;
@@ -595,19 +694,21 @@ if (isset($_GET['api'])) {
     .empty {
       padding: 20px;
       border-radius: 14px;
-      border: 1px dashed rgba(148,163,184,0.3);
+      border: 1px dashed var(--empty-border);
       color: var(--muted);
       font-size: 13px;
       text-align: center;
     }
     .card {
       border-radius: 18px;
-      border: 1px solid rgba(99,102,241,0.18);
-      background: rgba(12,16,32,0.82);
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
       padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 14px;
+      box-shadow: 0 18px 36px var(--card-shadow);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     .account-card.is-admin {
       border-color: rgba(250,204,21,0.35);
@@ -638,9 +739,9 @@ if (isset($_GET['api'])) {
       font-size: 11px;
       padding: 3px 8px;
       border-radius: 999px;
-      background: rgba(99,102,241,0.18);
-      border: 1px solid rgba(99,102,241,0.35);
-      color: #c7d2fe;
+      background: var(--chip-bg);
+      border: 1px solid var(--chip-border);
+      color: var(--chip-text);
     }
     .chip.success {
       background: rgba(52,211,153,0.18);
@@ -658,14 +759,14 @@ if (isset($_GET['api'])) {
       color: var(--warning);
     }
     .chip.accent {
-      background: rgba(99,102,241,0.22);
-      border-color: rgba(129,140,248,0.45);
-      color: #c7d2fe;
+      background: var(--accent-soft);
+      border-color: var(--accent-strong);
+      color: var(--chip-accent-text);
     }
     .chip.info {
       background: rgba(59,130,246,0.18);
       border-color: rgba(59,130,246,0.35);
-      color: rgba(96,165,250,0.9);
+      color: var(--info-text);
     }
     .chip-admin {
       border-color: rgba(250,204,21,0.35);
@@ -673,7 +774,7 @@ if (isset($_GET['api'])) {
       color: rgba(250,204,21,0.9);
     }
     .chip-coins strong {
-      color: rgba(96,165,250,0.95);
+      color: var(--chip-coins);
     }
     .card-body {
       display: flex;
@@ -705,12 +806,14 @@ if (isset($_GET['api'])) {
       color: var(--muted);
       padding: 10px 12px;
       border-radius: 10px;
-      border: 1px solid rgba(148,163,184,0.25);
-      background: rgba(15,23,42,0.55);
+      border: 1px solid var(--btn-ghost-border);
+      background: var(--rotation-bg);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     .rotation-info.highlight {
-      border-color: rgba(99,102,241,0.5);
-      color: #c7d2fe;
+      border-color: var(--accent-strong);
+      background: var(--accent-soft);
+      color: var(--highlight-text);
     }
     .key-card.next-key {
       border-color: rgba(129,140,248,0.6);
@@ -725,8 +828,8 @@ if (isset($_GET['api'])) {
       gap: 12px;
       padding: 12px;
       border-radius: 14px;
-      border: 1px solid rgba(99,102,241,0.14);
-      background: rgba(10,15,30,0.55);
+      border: 1px solid var(--btn-ghost-border);
+      background: var(--maintenance-bg);
     }
     .maintenance-toggle {
       display: flex;
@@ -752,8 +855,8 @@ if (isset($_GET['api'])) {
     }
     .generator-card {
       border-radius: 16px;
-      border: 1px solid rgba(148,163,184,0.22);
-      background: rgba(12,16,32,0.7);
+      border: 1px solid var(--btn-ghost-border);
+      background: var(--generator-bg);
       padding: 14px;
       display: flex;
       justify-content: space-between;
@@ -814,7 +917,53 @@ if (isset($_GET['api'])) {
     }
   </style>
 </head>
-<body>
+<body class="light-mode">
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var body = document.body;
+
+      function applyTheme(mode) {
+        var theme = mode === 'dark' ? 'dark' : 'light';
+        root.setAttribute('data-theme', theme);
+        root.classList.remove('light-mode', 'dark-mode');
+        root.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
+        if (body) {
+          body.classList.remove('light-mode', 'dark-mode');
+          body.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
+        }
+      }
+
+      var initial = root.getAttribute('data-theme');
+      if (initial !== 'dark' && initial !== 'light') {
+        initial = 'light';
+      }
+      applyTheme(initial);
+
+      try {
+        var stored = localStorage.getItem('akay-theme');
+        if (stored === 'dark' || stored === 'light') {
+          applyTheme(stored);
+        }
+      } catch (error) {
+        /* ignore access errors */
+      }
+
+      window.addEventListener('storage', function (event) {
+        if (event.key === 'akay-theme') {
+          applyTheme(event.newValue);
+        }
+      });
+
+      window.addEventListener('akay-theme-change', function (event) {
+        if (event && Object.prototype.hasOwnProperty.call(event, 'detail')) {
+          applyTheme(event.detail);
+        }
+      });
+
+      window.__akayApplyTheme = applyTheme;
+    })();
+  </script>
   <div class="wrapper">
     <header class="top">
       <div>

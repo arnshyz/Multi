@@ -1,5 +1,6 @@
 /* --- 0. Global Reset and Variables --- */
 :root {
+    color-scheme: light;
     /* Light Mode Variables */
     --color-primary: #5A47D7;
     --color-secondary: #745CFF;
@@ -24,8 +25,13 @@
     --transition-duration: 0.3s;
 }
 
+:root[data-theme='dark'] {
+    color-scheme: dark;
+}
+
 /* Dark Mode Overrides */
-.dark-mode {
+.dark-mode,
+:root[data-theme='dark'] {
     --text-color: var(--color-text-light);
     --bg-color: var(--color-bg-dark);
     --glass-bg: var(--color-glass-dark);

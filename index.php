@@ -1050,7 +1050,7 @@ if (!auth_is_logged_in()) {
     header('Cache-Control: no-store, max-age=0');
     ?>
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1061,12 +1061,28 @@ if (!auth_is_logged_in()) {
     <meta property="og:image" content="https://i.pcmag.com/imagery/articles/02hgT9Zk2u7PcF9ybJhuQDS-1.fit_lim.v1724605536.jpg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
+    <script>
+        (function () {
+            var theme = 'light';
+            try {
+                var stored = localStorage.getItem('akay-theme');
+                if (stored === 'dark') {
+                    theme = 'dark';
+                }
+            } catch (error) {
+                theme = 'light';
+            }
+            var root = document.documentElement;
+            root.setAttribute('data-theme', theme);
+            root.classList.remove('light-mode', 'dark-mode');
+            root.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
+        })();
+    </script>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body class="light-mode">
-    <body class="light-mode">
     
     <div class="security-gate-overlay" id="securityGateOverlay">
         <section class="auth-card security security-card glass-card" id="securityGate">
@@ -1619,6 +1635,7 @@ if (!auth_is_logged_in()) {
         const mobileMenu = document.getElementById('mobile-menu');
         const darkModeToggle = document.getElementById('dark-mode-toggle');
         const bodyEl = document.body;
+        const rootEl = document.documentElement;
 
         const loginModal = document.getElementById('login-modal');
         const signupModal = document.getElementById('signup-modal');
@@ -1678,17 +1695,43 @@ if (!auth_is_logged_in()) {
             updateMenuIcon();
         }
 
-        function setTheme(mode) {
+        function setTheme(mode, options = {}) {
             const theme = mode === 'dark' ? 'dark' : 'light';
-            bodyEl.classList.remove('light-mode', 'dark-mode');
-            bodyEl.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
-            localStorage.setItem('akay-theme', theme);
+
+            if (rootEl) {
+                rootEl.setAttribute('data-theme', theme);
+                rootEl.classList.remove('light-mode', 'dark-mode');
+                rootEl.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
+            }
+
+            if (bodyEl) {
+                bodyEl.classList.remove('light-mode', 'dark-mode');
+                bodyEl.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
+            }
+
+            if (options.persist !== false) {
+                try {
+                    localStorage.setItem('akay-theme', theme);
+                } catch (error) {
+                    /* no-op */
+                }
+            }
 
             const icon = darkModeToggle ? darkModeToggle.querySelector('i') : null;
             if (icon) {
                 icon.classList.remove('fa-moon', 'fa-sun');
                 icon.classList.add(theme === 'dark' ? 'fa-sun' : 'fa-moon');
             }
+
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                try {
+                    window.dispatchEvent(new CustomEvent('akay-theme-change', { detail: theme }));
+                } catch (error) {
+                    /* ignore event errors */
+                }
+            }
+
+            return theme;
         }
 
 const securityGateOverlay = document.getElementById('securityGateOverlay');
@@ -1728,8 +1771,23 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchPublicIp(); // Ambil IP saat halaman dimuat
 });
 
-        const savedTheme = localStorage.getItem('akay-theme') || 'light';
+        let savedTheme = 'light';
+        try {
+            const storedTheme = localStorage.getItem('akay-theme');
+            if (storedTheme === 'dark') {
+                savedTheme = 'dark';
+            }
+        } catch (error) {
+            savedTheme = 'light';
+        }
         setTheme(savedTheme);
+
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'akay-theme') {
+                const next = event.newValue === 'dark' ? 'dark' : 'light';
+                setTheme(next, { persist: false });
+            }
+        });
 
         if (darkModeToggle) {
             darkModeToggle.addEventListener('click', () => {
