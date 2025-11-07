@@ -19,32 +19,35 @@ $shouldRenderView = static function (string $viewId) use ($appAllowedViews) {
 
 :root {
   font-family: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color-scheme: light;
-  --surface: linear-gradient(135deg, #eef2ff 0%, #f9fbff 55%, #ffffff 100%);
-  --sidebar-bg: rgba(255, 255, 255, 0.95);
-  --sidebar-border: rgba(214, 226, 245, 0.75);
-  --card: #ffffff;
-  --card-soft: #f6f8ff;
-  --card-overlay: rgba(255, 255, 255, 0.96);
-  --border: rgba(208, 217, 235, 0.7);
-  --text: #0f172a;
-  --muted: rgba(71, 85, 105, 0.72);
-  --accent: #3b82f6;
-  --accent-soft: rgba(59, 130, 246, 0.18);
-  --danger: #ef4444;
-  --success: #16a34a;
-  --warning: #f59e0b;
-  --shadow: rgba(15, 23, 42, 0.08);
-  --halo-primary: rgba(79, 70, 229, 0.16);
-  --halo-secondary: rgba(14, 165, 233, 0.12);
-  --glass: rgba(255, 255, 255, 0.72);
-  --input-bg: #ffffff;
-  --input-border: rgba(203, 213, 225, 0.75);
-  --sidebar-text-muted: rgba(100, 116, 139, 0.75);
-  --stat-bg: rgba(59, 130, 246, 0.1);
+  color-scheme: dark;
+  --surface: radial-gradient(circle at 25% -10%, rgba(124, 58, 237, 0.18), transparent 55%),
+              radial-gradient(circle at 80% 20%, rgba(14, 165, 233, 0.16), transparent 65%),
+              #030712;
+  --sidebar-bg: rgba(8, 12, 24, 0.78);
+  --sidebar-border: rgba(129, 140, 248, 0.32);
+  --card: rgba(12, 16, 32, 0.72);
+  --card-soft: rgba(15, 20, 38, 0.6);
+  --card-overlay: rgba(10, 14, 30, 0.78);
+  --border: rgba(99, 102, 241, 0.28);
+  --text: #e2e8f0;
+  --muted: rgba(148, 163, 184, 0.78);
+  --accent: #818cf8;
+  --accent-soft: rgba(129, 140, 248, 0.25);
+  --danger: #f87171;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --shadow: rgba(2, 6, 23, 0.6);
+  --halo-primary: rgba(99, 102, 241, 0.32);
+  --halo-secondary: rgba(56, 189, 248, 0.26);
+  --glass: rgba(9, 14, 30, 0.65);
+  --input-bg: rgba(10, 15, 30, 0.75);
+  --input-border: rgba(99, 102, 241, 0.28);
+  --sidebar-text-muted: rgba(148, 163, 184, 0.7);
+  --stat-bg: rgba(99, 102, 241, 0.22);
 }
 body {
   margin: 0;
+  min-height: 100vh;
   background: var(--surface);
   color: var(--text);
   transition: background 0.35s ease, color 0.35s ease;
@@ -80,7 +83,7 @@ body::after {
   inset: -40vh -40vw;
   pointer-events: none;
   background: radial-gradient(circle at center, var(--halo-primary), transparent 60%);
-  opacity: 0.35;
+  opacity: 0.45;
   filter: blur(160px);
   animation: orbitGlow 32s linear infinite;
   z-index: 0;
@@ -94,56 +97,6 @@ body::after {
   from { transform: rotate(0deg) scale(1.05); }
   50% { transform: rotate(180deg) scale(1.08); }
   to { transform: rotate(360deg) scale(1.05); }
-}
-body[data-theme="dark"] {
-  color-scheme: dark;
-  --surface: radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.16), transparent 55%), #050914;
-  --sidebar-bg: rgba(13, 16, 28, 0.92);
-  --sidebar-border: rgba(30, 41, 59, 0.8);
-  --card: rgba(15, 23, 42, 0.92);
-  --card-soft: rgba(17, 24, 39, 0.88);
-  --card-overlay: rgba(17, 24, 39, 0.9);
-  --border: rgba(51, 65, 85, 0.6);
-  --text: #f8fafc;
-  --muted: rgba(203, 213, 225, 0.75);
-  --accent: #6366f1;
-  --accent-soft: rgba(99, 102, 241, 0.22);
-  --danger: #f87171;
-  --success: #34d399;
-  --warning: #facc15;
-  --shadow: rgba(2, 6, 23, 0.55);
-  --halo-primary: rgba(99, 102, 241, 0.25);
-  --halo-secondary: rgba(14, 165, 233, 0.22);
-  --glass: rgba(15, 23, 42, 0.65);
-  --input-bg: rgba(15, 23, 42, 0.9);
-  --input-border: rgba(75, 85, 99, 0.6);
-  --sidebar-text-muted: rgba(148, 163, 184, 0.75);
-  --stat-bg: rgba(37, 99, 235, 0.18);
-}
-body[data-theme="light"] {
-  color-scheme: light;
-  --surface: linear-gradient(135deg, #eef2ff 0%, #f7faff 60%, #ffffff 100%);
-  --sidebar-bg: rgba(255, 255, 255, 0.97);
-  --sidebar-border: rgba(214, 226, 245, 0.85);
-  --card: #ffffff;
-  --card-soft: #f7f9ff;
-  --card-overlay: rgba(255, 255, 255, 0.97);
-  --border: rgba(209, 220, 238, 0.75);
-  --text: #0f172a;
-  --muted: rgba(71, 85, 105, 0.68);
-  --accent: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.18);
-  --danger: #ef4444;
-  --success: #16a34a;
-  --warning: #f59e0b;
-  --shadow: rgba(15, 23, 42, 0.08);
-  --halo-primary: rgba(79, 70, 229, 0.18);
-  --halo-secondary: rgba(16, 185, 129, 0.14);
-  --glass: rgba(255, 255, 255, 0.78);
-  --input-bg: #ffffff;
-  --input-border: rgba(205, 214, 231, 0.85);
-  --sidebar-text-muted: rgba(100, 116, 139, 0.7);
-  --stat-bg: rgba(37, 99, 235, 0.1);
 }
 * { box-sizing: border-box; }
 .workspace {
@@ -871,13 +824,20 @@ body[data-theme="light"] {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 .sidebar-link.locked {
-  opacity: 0.45;
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 .sidebar-link.locked .nav-label::after {
-  content: '•';
-  margin-left: 6px;
-  font-size: 12px;
-  color: rgba(248, 113, 113, 0.9);
+  content: 'TERKUNCI';
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(76, 29, 149, 0.35);
+  color: rgba(248, 113, 113, 0.92);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .workspace.sidebar-collapsed .sidebar {
   padding: 28px 16px;
@@ -925,29 +885,6 @@ body[data-theme="light"] {
   flex-direction: column;
   gap: 16px;
 }
-.theme-toggle {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: var(--card-soft);
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
-}
-.theme-toggle:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.14);
-}
-.theme-toggle.loading {
-  opacity: 0.6;
-  pointer-events: none;
-}
 .profile-card {
   border-radius: 16px;
   border: 1px solid rgba(148, 163, 184, 0.22);
@@ -971,11 +908,6 @@ body[data-theme="light"] {
 }
 .profile-card--mobile {
   display: none;
-}
-body[data-theme="light"] .profile-card {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(148, 163, 184, 0.32);
-  box-shadow: 0 12px 22px rgba(148, 163, 184, 0.22);
 }
 .profile-card--alert {
   border-color: rgba(248, 113, 113, 0.45);
@@ -1006,9 +938,6 @@ body[data-theme="light"] .profile-card {
   background-position: center;
   color: transparent;
   text-indent: -9999px;
-}
-body[data-theme="light"] .profile-avatar {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.75));
 }
 .profile-text {
   display: flex;
@@ -1182,10 +1111,6 @@ body[data-theme="light"] .profile-avatar {
   position: relative;
   z-index: 1;
 }
-body[data-theme="light"] .profile-credit {
-  background: rgba(240, 249, 255, 0.9);
-  border-color: rgba(59, 130, 246, 0.35);
-}
 .profile-credit .credit-label {
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -1343,15 +1268,6 @@ body[data-theme="light"] .profile-credit {
   .sidebar-actions > * {
     width: 100%;
   }
-  .theme-toggle {
-    align-self: flex-start;
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
   .profile-card {
     display: none;
   }
@@ -1499,6 +1415,29 @@ body[data-theme="light"] .profile-credit {
   }
   .feature-tab {
     width: 100%;
+  }
+  .feature-tab.locked {
+    position: relative;
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-style: dashed;
+  }
+  .feature-tab.locked::before {
+    content: 'TERKUNCI';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 12, 24, 0.82);
+    color: rgba(248, 113, 113, 0.92);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    backdrop-filter: blur(4px);
+    z-index: 2;
+    pointer-events: none;
   }
   .select-group {
     margin-bottom: 14px;
@@ -1867,11 +1806,6 @@ body[data-theme="light"] .profile-credit {
       transition: all 0.25s ease;
       position: relative;
       overflow: hidden;
-    }
-    .feature-tab.locked {
-      opacity: 0.5;
-      cursor: not-allowed;
-      border-style: dashed;
     }
     .feature-tab.active {
       background: linear-gradient(135deg, rgba(37,99,235,0.25), rgba(14,165,233,0.2));
@@ -3083,7 +3017,7 @@ body[data-theme="light"] .profile-credit {
     }
   </style>
 </head>
-<body data-theme="light" data-initial-view="<?= htmlspecialchars($appInitialView, ENT_QUOTES, 'UTF-8') ?>" data-initial-feature="<?= htmlspecialchars($appInitialFeature, ENT_QUOTES, 'UTF-8') ?>">
+<body data-initial-view="<?= htmlspecialchars($appInitialView, ENT_QUOTES, 'UTF-8') ?>" data-initial-feature="<?= htmlspecialchars($appInitialFeature, ENT_QUOTES, 'UTF-8') ?>">
 
 <div class="workspace sidebar-open">
   <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true">
@@ -3167,7 +3101,6 @@ body[data-theme="light"] .profile-credit {
     </button>
   </nav>
   <div class="sidebar-actions">
-    <button type="button" class="theme-toggle" id="themeToggle" aria-label="Toggle theme">☀️</button>
     <div class="profile-card" id="profileCard">
       <div class="profile-main">
         <div class="profile-avatar" id="profileAvatar">FM</div>
@@ -3868,7 +3801,6 @@ body[data-theme="light"] .profile-credit {
 </div>
 
 <script>
-  const themeToggle = document.getElementById('themeToggle');
   const profileCard = document.getElementById('profileCard');
   const profileDisplayEl = document.getElementById('profileDisplay');
   const profileUsernameEl = document.getElementById('profileUsername');
@@ -3954,7 +3886,6 @@ body[data-theme="light"] .profile-credit {
   const HUB_FEATURE_KEYS = ['imageGen', 'imageEdit', 'videoGen', 'lipsync', 'textGen', 'textSpeech'];
 
   let currentAccount = null;
-  let currentTheme = 'light';
   let platformState = defaultPlatformState();
   let selectedTopupAmount = null;
 
@@ -4026,8 +3957,9 @@ body[data-theme="light"] .profile-credit {
 
   function showFeatureLockedMessage(featureKey) {
     const label = getFeatureLabel(featureKey);
-    const message = platformState.maintenance.message || 'Generator sedang maintenance. Silakan coba lagi nanti.';
-    alert(`${label} tidak tersedia sementara untuk pengguna.\n${message}`);
+    const generator = platformState.generators[featureKey];
+    const detail = (generator && generator.description) || platformState.maintenance.message || 'Generator sedang dikunci oleh admin. Silakan coba lagi nanti.';
+    alert(`${label} TERKUNCI\n${detail}`);
   }
 
   function clampPercent(value) {
@@ -4148,13 +4080,11 @@ body[data-theme="light"] .profile-credit {
         return;
       }
       const locked = !featureAvailableForCurrentUser(featureKey);
+      const label = getFeatureLabel(featureKey);
       btn.classList.toggle('locked', locked);
-      if (typeof btn.disabled === 'boolean') {
-        btn.disabled = locked;
-      }
       if (locked) {
         btn.setAttribute('aria-disabled', 'true');
-        btn.title = `${getFeatureLabel(featureKey)} sementara tidak tersedia.`;
+        btn.title = `${label} terkunci oleh admin.`;
       } else {
         btn.removeAttribute('aria-disabled');
         btn.removeAttribute('title');
@@ -4168,14 +4098,14 @@ body[data-theme="light"] .profile-credit {
       const key = btn.dataset.feature;
       if (!key) return;
       const locked = !featureAvailableForCurrentUser(key);
+      const label = getFeatureLabel(key);
       btn.classList.toggle('locked', locked);
-      if (typeof btn.disabled === 'boolean') {
-        btn.disabled = locked;
-      }
       if (locked) {
         btn.setAttribute('aria-disabled', 'true');
+        btn.title = `${label} terkunci oleh admin.`;
       } else {
         btn.removeAttribute('aria-disabled');
+        btn.removeAttribute('title');
       }
     });
   }
@@ -4836,14 +4766,6 @@ body[data-theme="light"] .profile-credit {
     }
   }
 
-  function applyTheme(theme) {
-    currentTheme = theme === 'light' ? 'light' : 'dark';
-    document.body.dataset.theme = currentTheme;
-    if (themeToggle) {
-      themeToggle.textContent = currentTheme === 'dark' ? '🌙' : '☀️';
-    }
-  }
-
   function initialsFrom(name, username) {
     const source = name && name.trim() ? name : username || '';
     const words = source.split(/\s+/).filter(Boolean);
@@ -4945,26 +4867,11 @@ body[data-theme="light"] .profile-credit {
     return payload.data || {};
   }
 
-  async function persistTheme(theme) {
-    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-theme', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ theme })
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      throw new Error((data && data.error) || 'Gagal menyimpan tema.');
-    }
-    return data.data;
-  }
-
   async function loadAccountState() {
     try {
       const account = await fetchAccountState();
       currentAccount = account;
       applyPlatformState(account.platform || null);
-      applyTheme(account.theme || currentTheme);
       updateProfileCard(account);
       setDriveAccess(true);
       if (driveLoaded) {
@@ -4974,7 +4881,6 @@ body[data-theme="light"] .profile-credit {
       }
     } catch (err) {
       console.warn('Tidak dapat memuat akun:', err);
-      applyTheme(currentTheme);
       currentAccount = null;
       applyPlatformState(null);
       driveItems = [];
@@ -5008,24 +4914,6 @@ body[data-theme="light"] .profile-credit {
     if (!currentAccount) currentAccount = {};
     currentAccount.coins = data.data && typeof data.data.coins !== 'undefined' ? data.data.coins : currentAccount.coins;
     updateProfileCard(currentAccount);
-  }
-
-  if (themeToggle) {
-    themeToggle.addEventListener('click', async () => {
-      const next = currentTheme === 'dark' ? 'light' : 'dark';
-      const previous = currentTheme;
-      applyTheme(next);
-      try {
-        const updated = await persistTheme(next);
-        if (updated) {
-          currentAccount = updated;
-          updateProfileCard(updated);
-        }
-      } catch (err) {
-        console.warn('Gagal menyimpan tema:', err);
-        applyTheme(previous);
-      }
-    });
   }
 
   if (logoutButton) {
@@ -7896,9 +7784,6 @@ body[data-theme="light"] .profile-credit {
 
   navButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      if (btn.disabled) {
-        return;
-      }
       const target = btn.dataset.target || 'viewDashboard';
       const featureKey = btn.dataset.feature || (target === 'viewHub' ? 'imageGen' : undefined);
       if (featureKey && !featureAvailableForCurrentUser(featureKey)) {
