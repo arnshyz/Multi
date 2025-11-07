@@ -2031,6 +2031,29 @@ body[data-theme="light"] .profile-credit {
       object-fit: cover;
       background: #000;
     }
+    .preview-item.preview-item--text,
+    .preview-item.preview-item--audio {
+      width: 100%;
+    }
+    .preview-text-block {
+      background: var(--card-soft);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .preview-audio-player {
+      width: 100%;
+    }
+    .preview-text-meta {
+      font-size: 10px;
+      color: var(--muted);
+    }
     .preview-meta {
       display: flex;
       flex-direction: column;
@@ -3130,6 +3153,18 @@ body[data-theme="light"] .profile-credit {
       </span>
       <span class="nav-label">Lipsync Studio</span>
     </button>
+    <button class="sidebar-link<?= $appPageKey === 'textGen' ? ' active' : '' ?>" data-target="viewHub" data-feature="textGen" data-navigate="page" data-href="Text%20Generator.php">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h10m-10 7h16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Text Generator</span>
+    </button>
+    <button class="sidebar-link<?= $appPageKey === 'textSpeech' ? ' active' : '' ?>" data-target="viewHub" data-feature="textSpeech" data-navigate="page" data-href="Text%20to%20Speech.php">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 9v6h4l5 4V5L9 9H5zm12 3a3 3 0 0 0-1.47-2.59" stroke-linecap="round" stroke-linejoin="round"></path><path d="M18 5a7 7 0 0 1 0 14" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Text-to-Speech</span>
+    </button>
   </nav>
   <div class="sidebar-actions">
     <button type="button" class="theme-toggle" id="themeToggle" aria-label="Toggle theme">☀️</button>
@@ -3375,16 +3410,23 @@ body[data-theme="light"] .profile-credit {
             <option value="wan480">Wan v2.2 – 480p</option>
             <option value="wan720">Wan v2.2 – 720p</option>
             <option value="seedancePro480">Seedance Pro – 480p</option>
-            <option value="seedancePro720">Seedance Pro – 720p</option>
-            <option value="seedancePro1080">Seedance Pro – 1080p</option>
-            <option value="klingStd21">Kling Std v2.1</option>
-            <option value="kling25Pro">Kling v2.5 Pro</option>
-            <option value="minimax1080">MiniMax Hailuo 02 – 1080p</option>
-          </optgroup>
-          <optgroup label="Lip Sync">
-            <option value="latentSync">Latent-Sync</option>
-          </optgroup>
-        </select>
+          <option value="seedancePro720">Seedance Pro – 720p</option>
+          <option value="seedancePro1080">Seedance Pro – 1080p</option>
+          <option value="klingStd21">Kling Std v2.1</option>
+          <option value="kling25Pro">Kling v2.5 Pro</option>
+          <option value="minimax1080">MiniMax Hailuo 02 – 1080p</option>
+          <option value="veo31">Veo 3.1 (Gemini)</option>
+        </optgroup>
+        <optgroup label="Lip Sync">
+          <option value="latentSync">Latent-Sync</option>
+        </optgroup>
+        <optgroup label="Text Generation">
+          <option value="geminiText">Gemini 1.5 Flash – Text</option>
+        </optgroup>
+        <optgroup label="Speech Generation">
+          <option value="geminiSpeech">Gemini 1.5 Flash – Speech</option>
+        </optgroup>
+      </select>
       </div>
       <div class="small-label">Hint input</div>
       <div id="modelHint" class="muted" style="font-size:11px">
@@ -3484,6 +3526,17 @@ body[data-theme="light"] .profile-credit {
             <div>
               <label for="videoLayout">Layout</label>
               <select id="videoLayout"></select>
+            </div>
+          </div>
+
+          <div id="rowSpeechSettings" class="field-row hidden" style="margin-top:4px">
+            <div>
+              <label for="speechVoice">Voice</label>
+              <select id="speechVoice"></select>
+            </div>
+            <div>
+              <label for="speechFormat">Format audio</label>
+              <select id="speechFormat"></select>
             </div>
           </div>
 
@@ -3893,10 +3946,12 @@ body[data-theme="light"] .profile-credit {
     imageEdit: { label: 'Image Editing' },
     videoGen: { label: 'Video Generator' },
     lipsync: { label: 'Lipsync Studio' },
+    textGen: { label: 'Text Generator' },
+    textSpeech: { label: 'Text-to-Speech' },
     filmmaker: { label: 'Filmmaker' },
     ugc: { label: 'UGC Tool' }
   };
-  const HUB_FEATURE_KEYS = ['imageGen', 'imageEdit', 'videoGen', 'lipsync'];
+  const HUB_FEATURE_KEYS = ['imageGen', 'imageEdit', 'videoGen', 'lipsync', 'textGen', 'textSpeech'];
 
   let currentAccount = null;
   let currentTheme = 'light';
@@ -4366,7 +4421,10 @@ body[data-theme="light"] .profile-credit {
     if (!job) return 'image';
     const cfg = modelConfigMap[job.modelId];
     const type = job.type || (cfg && cfg.type);
-    return type === 'video' ? 'video' : 'image';
+    if (type === 'video') return 'video';
+    if (type === 'audio') return 'audio';
+    if (type === 'text') return 'text';
+    return 'image';
   }
 
   function driveModelLabel(modelId) {
@@ -4742,6 +4800,7 @@ body[data-theme="light"] .profile-credit {
     if (job.driveSynced) return;
 
     const type = jobOutputType(job);
+    if (type !== 'image' && type !== 'video') return;
     const urls = new Set();
     const payload = [];
 
@@ -5169,6 +5228,26 @@ body[data-theme="light"] .profile-credit {
     { value: 'square',    label: 'Square 1:1',     ratio: 'square_1_1' }
   ];
 
+  const GEMINI_VIDEO_ASPECT = {
+    portrait: 'PORTRAIT_9X16',
+    landscape: 'LANDSCAPE_16X9',
+    square: 'SQUARE_1X1'
+  };
+
+  const DEFAULT_SPEECH_VOICE = 'Puck';
+  const DEFAULT_SPEECH_FORMAT = 'MP3';
+  const SPEECH_VOICE_OPTIONS = [
+    { value: 'Puck', label: 'Puck · Energetic male' },
+    { value: 'Aoede', label: 'Aoede · Warm female' },
+    { value: 'Everyman', label: 'Everyman · Conversational male' },
+    { value: 'Lola', label: 'Lola · Friendly female' }
+  ];
+  const SPEECH_FORMAT_OPTIONS = [
+    { value: 'MP3', label: 'MP3 (compressed)' },
+    { value: 'LINEAR16', label: 'WAV Linear16' },
+    { value: 'OGG_OPUS', label: 'OGG Opus' }
+  ];
+
   const VIDEO_LAYOUT_TO_RATIO = VIDEO_LAYOUT_OPTIONS.reduce((acc, opt) => {
     acc[opt.value] = opt.ratio;
     return acc;
@@ -5183,6 +5262,7 @@ body[data-theme="light"] .profile-credit {
     klingStd21: { values: [5, 8], default: 5, defaultLayout: 'portrait' },
     kling25Pro: { values: [5, 8, 12], default: 5, defaultLayout: 'landscape' },
     minimax1080: { values: [6, 12], default: 6, defaultLayout: 'landscape' },
+    veo31: { values: [6, 8, 12], default: 8, defaultLayout: 'landscape' },
     _default: { values: [5], default: 5, defaultLayout: 'portrait' }
   };
 
@@ -5207,6 +5287,36 @@ body[data-theme="light"] .profile-credit {
     return body;
   }
 
+  function mapGeminiVideoAspect(layoutKey) {
+    if (!layoutKey) return GEMINI_VIDEO_ASPECT.landscape;
+    const key = String(layoutKey).toLowerCase();
+    return GEMINI_VIDEO_ASPECT[key] || GEMINI_VIDEO_ASPECT.landscape;
+  }
+
+  function buildGeminiVideoBody(formData) {
+    const duration = Math.max(1, Number(formData.videoDuration) || 8);
+    const body = {
+      prompt: {
+        text: formData.prompt
+      },
+      videoConfig: {
+        aspectRatio: mapGeminiVideoAspect(formData.videoLayout || 'landscape'),
+        durationSeconds: duration
+      }
+    };
+    if (formData.imageUrl) {
+      body.referenceImage = { uri: formData.imageUrl };
+    }
+    return body;
+  }
+
+  function geminiOperationStatusPath(taskId) {
+    const raw = String(taskId || '').trim();
+    if (!raw) return null;
+    const normalized = raw.replace(/^\/+/, '');
+    return normalized.startsWith('v1beta/') ? `/${normalized}` : `/v1beta/${normalized}`;
+  }
+
   // ===== MODEL CONFIG =====
   const MODEL_CONFIG = {
     gemini: {
@@ -5223,6 +5333,47 @@ body[data-theme="light"] .profile-credit {
         }
         return body;
       }
+    },
+    geminiText: {
+      id: 'geminiText',
+      label: 'Gemini 1.5 Flash – Text',
+      type: 'text',
+      proxy: 'gemini',
+      path: '/v1beta/models/gemini-1.5-flash:generateContent',
+      statusPath: null,
+      buildBody: f => ({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: f.prompt }
+            ]
+          }
+        ]
+      })
+    },
+    geminiSpeech: {
+      id: 'geminiSpeech',
+      label: 'Gemini 1.5 Flash – Speech',
+      type: 'audio',
+      proxy: 'gemini',
+      path: '/v1beta/models/gemini-1.5-flash:generateContent',
+      statusPath: null,
+      buildBody: f => ({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: f.prompt }
+            ]
+          }
+        ],
+        audioConfig: {
+          voice: f.speechVoice || DEFAULT_SPEECH_VOICE,
+          format: (f.speechFormat || DEFAULT_SPEECH_FORMAT).toUpperCase()
+        },
+        responseModalities: ['AUDIO']
+      })
     },
     imagen3: {
       id: 'imagen3',
@@ -5381,6 +5532,15 @@ body[data-theme="light"] .profile-credit {
         first_frame_image: f.imageUrl || undefined
       }, f)
     },
+    veo31: {
+      id: 'veo31',
+      label: 'Veo 3.1 (Gemini)',
+      type: 'video',
+      proxy: 'gemini',
+      path: '/v1beta/models/veo-3.1:generateVideo',
+      statusPath: taskId => geminiOperationStatusPath(taskId),
+      buildBody: f => buildGeminiVideoBody(f)
+    },
 
     latentSync: {
       id: 'latentSync',
@@ -5400,8 +5560,10 @@ body[data-theme="light"] .profile-credit {
   const FEATURE_MODELS = {
     imageGen: ['gemini','imagen3','seedream4','fluxPro11'],
     imageEdit: ['seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'],
-    videoGen: ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'],
-    lipsync: ['latentSync']
+    videoGen: ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080','veo31'],
+    lipsync: ['latentSync'],
+    textGen: ['geminiText'],
+    textSpeech: ['geminiSpeech']
   };
 
   const STORAGE_KEY = 'freepik_jobs_v1';
@@ -5600,8 +5762,11 @@ body[data-theme="light"] .profile-credit {
   const videoUrlInput = document.getElementById('videoUrl');
   const audioUrlInput = document.getElementById('audioUrl');
   const rowVideoSettings = document.getElementById('rowVideoSettings');
+  const rowSpeechSettings = document.getElementById('rowSpeechSettings');
   const videoDurationSelect = document.getElementById('videoDuration');
   const videoLayoutSelect = document.getElementById('videoLayout');
+  const speechVoiceSelect = document.getElementById('speechVoice');
+  const speechFormatSelect = document.getElementById('speechFormat');
   const numImagesInput = document.getElementById('numImages');
   const aspectRatioInput = document.getElementById('aspectRatio');
   const submitBtn = document.getElementById('submitBtn');
@@ -5934,10 +6099,18 @@ body[data-theme="light"] .profile-credit {
       modelHint.textContent = 'Upscaler: wajib image URL. Prompt opsional.';
     } else if (id === 'removeBg') {
       modelHint.textContent = 'Remove Background: wajib image URL. Response langsung URL hasil (valid 5 menit).';
-    } else if (['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'].includes(id)) {
-      modelHint.textContent = 'Image-to-video: wajib image URL + prompt singkat. Pilih durasi & layout (portrait / landscape / square).';
+    } else if (['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080','veo31'].includes(id)) {
+      if (id === 'veo31') {
+        modelHint.textContent = 'Veo 3.1: prompt wajib. Image referensi opsional. Pilih durasi & layout, hasil berupa video dari Gemini.';
+      } else {
+        modelHint.textContent = 'Image-to-video: wajib image URL + prompt singkat. Pilih durasi & layout (portrait / landscape / square).';
+      }
     } else if (id === 'latentSync') {
       modelHint.textContent = 'Latent-Sync: wajib video URL dan audio URL. Prompt opsional.';
+    } else if (id === 'geminiText') {
+      modelHint.textContent = 'Gemini Text: wajib prompt. Output berupa teks generatif yang dapat disalin.';
+    } else if (id === 'geminiSpeech') {
+      modelHint.textContent = 'Gemini Speech: wajib teks. Pilih voice & format audio, hasil berupa file audio (data URL).';
     } else {
       modelHint.textContent = 'Isi prompt dan field sesuai model.';
     }
@@ -5957,6 +6130,31 @@ body[data-theme="light"] .profile-credit {
       videoLayoutSelect.appendChild(option);
     });
     videoLayoutSelect.dataset.populated = '1';
+  }
+
+  function ensureSpeechOptions() {
+    if (speechVoiceSelect && !speechVoiceSelect.dataset.populated) {
+      speechVoiceSelect.innerHTML = '';
+      SPEECH_VOICE_OPTIONS.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        speechVoiceSelect.appendChild(option);
+      });
+      speechVoiceSelect.dataset.populated = '1';
+      speechVoiceSelect.value = DEFAULT_SPEECH_VOICE;
+    }
+    if (speechFormatSelect && !speechFormatSelect.dataset.populated) {
+      speechFormatSelect.innerHTML = '';
+      SPEECH_FORMAT_OPTIONS.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        speechFormatSelect.appendChild(option);
+      });
+      speechFormatSelect.dataset.populated = '1';
+      speechFormatSelect.value = DEFAULT_SPEECH_FORMAT;
+    }
   }
 
   function configureVideoControls(modelId) {
@@ -5987,17 +6185,35 @@ body[data-theme="light"] .profile-credit {
     }
   }
 
+  function configureSpeechControls(modelId) {
+    if (!rowSpeechSettings) return;
+    const isSpeech = modelId === 'geminiSpeech';
+    rowSpeechSettings.classList.toggle('hidden', !isSpeech);
+    if (isSpeech) {
+      ensureSpeechOptions();
+      if (speechVoiceSelect && !speechVoiceSelect.value) {
+        speechVoiceSelect.value = DEFAULT_SPEECH_VOICE;
+      }
+      if (speechFormatSelect && !speechFormatSelect.value) {
+        speechFormatSelect.value = DEFAULT_SPEECH_FORMAT;
+      }
+    }
+  }
+
   function updateFields() {
     const id = modelSelect.value;
 
     const isT2I = ['gemini','imagen3','seedream4','fluxPro11'].includes(id);
     const isEdit = ['seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'].includes(id);
-    const isI2V = ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'].includes(id);
+    const isI2V = ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080','veo31'].includes(id);
     const isLip = id === 'latentSync';
+    const isSpeech = id === 'geminiSpeech';
+    const isTextOnly = id === 'geminiText';
 
     rowImageUrl.classList.add('hidden');
     rowVideoAudio.classList.add('hidden');
     rowVideoSettings.classList.add('hidden');
+    if (rowSpeechSettings) rowSpeechSettings.classList.add('hidden');
     rowTIOptions.classList.add('hidden');
     rowPrompt.classList.remove('hidden');
 
@@ -6016,8 +6232,17 @@ body[data-theme="light"] .profile-credit {
     } else if (isLip) {
       fieldsTitle.textContent = 'Lipsync Studio';
       rowVideoAudio.classList.remove('hidden');
+    } else if (isSpeech) {
+      fieldsTitle.textContent = 'Text-to-Speech';
+      configureSpeechControls(id);
+    } else if (isTextOnly) {
+      fieldsTitle.textContent = 'Text Generator';
     } else {
       fieldsTitle.textContent = 'Input';
+    }
+
+    if (!isSpeech) {
+      configureSpeechControls('');
     }
 
     syncGeminiVisibility();
@@ -6074,6 +6299,8 @@ body[data-theme="light"] .profile-credit {
     else if (featureKey === 'imageEdit') label = 'Image Editing';
     else if (featureKey === 'videoGen') label = 'Video Generator';
     else if (featureKey === 'lipsync') label = 'Lipsync Studio';
+    else if (featureKey === 'textGen') label = 'Text Generator';
+    else if (featureKey === 'textSpeech') label = 'Text-to-Speech';
     else label = 'AI Hub';
     featureLabel.textContent = label;
     if (navButtons.length && viewHubSection && viewHubSection.style.display !== 'none') {
@@ -6212,6 +6439,139 @@ body[data-theme="light"] .profile-credit {
 
     previewGrid.innerHTML = '';
 
+    const errorNoteText = job.errorMessage && String(job.errorMessage).trim();
+    if (errorNoteText) {
+      const note = document.createElement('div');
+      note.className = 'muted';
+      note.style.fontSize = '11px';
+      note.style.color = 'var(--danger)';
+      note.style.marginBottom = '6px';
+      note.textContent = errorNoteText;
+      previewGrid.appendChild(note);
+    }
+
+    const outputType = jobOutputType(job);
+
+    if (outputType === 'text') {
+      const texts = Array.isArray(job.textOutputs) && job.textOutputs.length
+        ? job.textOutputs
+        : (Array.isArray(job.generated) ? job.generated.filter(item => typeof item === 'string' && item.trim()) : []);
+      if (!texts.length) {
+        const msg = document.createElement('div');
+        msg.className = 'muted';
+        msg.style.fontSize = '11px';
+        msg.textContent = 'Belum ada teks yang dihasilkan.';
+        previewGrid.appendChild(msg);
+        return;
+      }
+
+      texts.forEach((text, idx) => {
+        const item = document.createElement('div');
+        item.className = 'preview-item preview-item--text';
+
+        const block = document.createElement('div');
+        block.className = 'preview-text-block';
+        block.textContent = text;
+
+        const metaRow = document.createElement('div');
+        metaRow.className = 'preview-meta';
+
+        const btnGroup = document.createElement('div');
+        btnGroup.className = 'preview-btn-group';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'small secondary';
+        copyBtn.textContent = 'Copy';
+        copyBtn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(text);
+            setStatus('Teks disalin.', 'ok');
+          } catch (err) {
+            console.warn('Clipboard tidak tersedia', err);
+            alert('Tidak bisa menyalin otomatis. Salin manual dari blok teks.');
+          }
+        });
+        btnGroup.appendChild(copyBtn);
+
+        const metaInfo = document.createElement('div');
+        metaInfo.className = 'preview-text-meta';
+        metaInfo.textContent = `Length: ${text.length} karakter`;
+
+        metaRow.appendChild(btnGroup);
+        metaRow.appendChild(metaInfo);
+
+        item.appendChild(block);
+        item.appendChild(metaRow);
+        previewGrid.appendChild(item);
+      });
+      return;
+    }
+
+    if (outputType === 'audio') {
+      const audios = Array.isArray(job.audioOutputs) && job.audioOutputs.length
+        ? job.audioOutputs
+        : (Array.isArray(job.generated)
+            ? job.generated
+                .filter(item => typeof item === 'string' && /^data:audio\//i.test(item))
+                .map(dataUrl => ({ dataUrl, mimeType: 'audio/mpeg' }))
+            : []);
+      if (!audios.length) {
+        const msg = document.createElement('div');
+        msg.className = 'muted';
+        msg.style.fontSize = '11px';
+        msg.textContent = 'Belum ada audio yang dihasilkan.';
+        previewGrid.appendChild(msg);
+        return;
+      }
+
+      audios.forEach((audio, idx) => {
+        const item = document.createElement('div');
+        item.className = 'preview-item preview-item--audio';
+
+        const player = document.createElement('audio');
+        player.className = 'preview-audio-player';
+        player.controls = true;
+        player.src = audio.dataUrl || audio.url || '';
+
+        const metaRow = document.createElement('div');
+        metaRow.className = 'preview-meta';
+
+        const btnGroup = document.createElement('div');
+        btnGroup.className = 'preview-btn-group';
+
+        const previewBtn = document.createElement('button');
+        previewBtn.type = 'button';
+        previewBtn.className = 'small secondary';
+        previewBtn.textContent = 'Play';
+        previewBtn.addEventListener('click', () => {
+          flashPreviewItem(item);
+          player.currentTime = 0;
+          player.play().catch(() => {});
+        });
+        btnGroup.appendChild(previewBtn);
+
+        const dlLink = document.createElement('a');
+        dlLink.href = audio.dataUrl || audio.url || '#';
+        const ext = ((audio.mimeType || 'audio/mpeg').split('/').pop() || 'mpeg').split(';')[0];
+        dlLink.download = `audio_${idx + 1}.${ext}`;
+        dlLink.className = 'download-link';
+        const dlBtn = document.createElement('button');
+        dlBtn.type = 'button';
+        dlBtn.className = 'small';
+        dlBtn.textContent = 'Download';
+        dlLink.appendChild(dlBtn);
+        btnGroup.appendChild(dlLink);
+
+        metaRow.appendChild(btnGroup);
+
+        item.appendChild(player);
+        item.appendChild(metaRow);
+        previewGrid.appendChild(item);
+      });
+      return;
+    }
+
     const urls = [];
     if (Array.isArray(job.localUrls) && job.localUrls.length) {
       urls.push(...job.localUrls);
@@ -6233,7 +6593,56 @@ body[data-theme="light"] .profile-credit {
       const item = document.createElement('div');
       item.className = 'preview-item';
 
-      const assetType = (job.type === 'video' || isVideoUrl(url)) ? 'video' : 'image';
+      let assetType = jobOutputType(job) === 'video' ? 'video' : 'image';
+      if (isVideoUrl(url)) {
+        assetType = 'video';
+      }
+      if (/^data:audio\//i.test(url)) {
+        assetType = 'audio';
+      }
+
+      if (assetType === 'audio') {
+        const playerItem = document.createElement('div');
+        playerItem.className = 'preview-item preview-item--audio';
+        const player = document.createElement('audio');
+        player.className = 'preview-audio-player';
+        player.controls = true;
+        player.src = url;
+
+        const metaRow = document.createElement('div');
+        metaRow.className = 'preview-meta';
+        const btnGroup = document.createElement('div');
+        btnGroup.className = 'preview-btn-group';
+
+        const previewBtn = document.createElement('button');
+        previewBtn.type = 'button';
+        previewBtn.className = 'small secondary';
+        previewBtn.textContent = 'Play';
+        previewBtn.addEventListener('click', () => {
+          flashPreviewItem(playerItem);
+          player.currentTime = 0;
+          player.play().catch(() => {});
+        });
+        btnGroup.appendChild(previewBtn);
+
+        const dlLink = document.createElement('a');
+        dlLink.href = url;
+        dlLink.download = `audio_${idx + 1}.mp3`;
+        dlLink.className = 'download-link';
+        const dlBtn = document.createElement('button');
+        dlBtn.type = 'button';
+        dlBtn.className = 'small';
+        dlBtn.textContent = 'Download';
+        dlLink.appendChild(dlBtn);
+        btnGroup.appendChild(dlLink);
+
+        metaRow.appendChild(btnGroup);
+
+        playerItem.appendChild(player);
+        playerItem.appendChild(metaRow);
+        previewGrid.appendChild(playerItem);
+        return;
+      }
 
       const thumb = document.createElement('div');
       thumb.className = 'preview-thumb';
@@ -6343,6 +6752,241 @@ body[data-theme="light"] .profile-credit {
       throw new Error(`HTTP ${json.status} – ${(json.data && json.data.message) || json.error || 'unknown error'}`);
     }
     return json.data;
+  }
+
+  async function callGemini(cfg, body, method = 'POST', extra = {}) {
+    const targetPath = method === 'GET'
+      ? (cfg.statusPath ? cfg.statusPath(extra.taskId) : cfg.path)
+      : cfg.path;
+    if (!targetPath) {
+      throw new Error('Konfigurasi Gemini belum memiliki path.');
+    }
+
+    const payload = {
+      path: targetPath,
+      method
+    };
+    if (method !== 'GET') {
+      payload.body = body || {};
+    }
+
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      console.error('Response /?api=gemini bukan JSON. Raw:', text);
+      throw new Error('Endpoint Gemini mengembalikan HTML / non-JSON.');
+    }
+
+    if (!json.ok) {
+      const message = (json.data && json.data.error && (json.data.error.message || json.data.error.code)) || json.error || 'unknown error';
+      throw new Error(`HTTP ${json.status} – ${message}`);
+    }
+    return json.data;
+  }
+
+  function extractGeminiTexts(source) {
+    const texts = [];
+    if (!source) return texts;
+
+    const collectParts = parts => {
+      if (!Array.isArray(parts)) return;
+      parts.forEach(part => {
+        if (part && typeof part.text === 'string') {
+          const trimmed = part.text.trim();
+          if (trimmed) texts.push(trimmed);
+        }
+      });
+    };
+
+    if (Array.isArray(source.candidates)) {
+      source.candidates.forEach(candidate => {
+        if (!candidate) return;
+        const parts = (candidate.content && candidate.content.parts) || candidate.parts;
+        collectParts(parts);
+      });
+    }
+
+    if (!texts.length && Array.isArray(source.contents)) {
+      source.contents.forEach(content => {
+        if (!content) return;
+        collectParts(content.parts);
+      });
+    }
+
+    if (!texts.length && source.output && typeof source.output === 'object') {
+      return extractGeminiTexts(source.output);
+    }
+
+    if (!texts.length && source.response && source !== source.response) {
+      return extractGeminiTexts(source.response);
+    }
+
+    if (!texts.length && typeof source.text === 'string') {
+      const trimmed = source.text.trim();
+      if (trimmed) texts.push(trimmed);
+    }
+
+    return texts;
+  }
+
+  function extractGeminiAudios(source) {
+    const outputs = [];
+    if (!source) return outputs;
+
+    const collectParts = parts => {
+      if (!Array.isArray(parts)) return;
+      parts.forEach(part => {
+        if (part && part.inlineData && part.inlineData.mimeType && part.inlineData.data) {
+          const mime = part.inlineData.mimeType;
+          const data = part.inlineData.data;
+          outputs.push({
+            mimeType: mime,
+            data,
+            dataUrl: `data:${mime};base64,${data}`
+          });
+        }
+      });
+    };
+
+    if (Array.isArray(source.candidates)) {
+      source.candidates.forEach(candidate => {
+        if (!candidate) return;
+        const parts = (candidate.content && candidate.content.parts) || candidate.parts;
+        collectParts(parts);
+      });
+    }
+
+    if (!outputs.length && Array.isArray(source.contents)) {
+      source.contents.forEach(content => {
+        if (!content) return;
+        collectParts(content.parts);
+      });
+    }
+
+    if (!outputs.length && source.output && typeof source.output === 'object') {
+      return extractGeminiAudios(source.output);
+    }
+
+    if (!outputs.length && source.response && source !== source.response) {
+      return extractGeminiAudios(source.response);
+    }
+
+    return outputs;
+  }
+
+  function extractGeminiVideoUrls(source) {
+    const urls = new Set();
+    if (!source) return [];
+    const push = url => {
+      if (typeof url === 'string' && url.trim()) {
+        urls.add(url.trim());
+      }
+    };
+
+    if (Array.isArray(source.videoUris)) source.videoUris.forEach(push);
+    if (source.videoUri) push(source.videoUri);
+    if (source.video) {
+      if (typeof source.video === 'string') push(source.video);
+      else if (Array.isArray(source.video)) source.video.forEach(item => push(item && (item.uri || item.downloadUri || item.url)));
+      else if (typeof source.video === 'object') {
+        push(source.video.uri || source.video.downloadUri || source.video.url);
+      }
+    }
+    if (Array.isArray(source.videos)) {
+      source.videos.forEach(item => {
+        if (!item) return;
+        push(item.uri || item.downloadUri || item.url);
+      });
+    }
+    if (Array.isArray(source.assets)) {
+      source.assets.forEach(asset => {
+        if (!asset) return;
+        push(asset.downloadUri || asset.uri || asset.url);
+      });
+    }
+    if (source.output && typeof source.output === 'object' && source.output !== source) {
+      extractGeminiVideoUrls(source.output).forEach(push);
+    }
+    if (source.response && source !== source.response) {
+      extractGeminiVideoUrls(source.response).forEach(push);
+    }
+    if (Array.isArray(source.media)) {
+      source.media.forEach(item => {
+        if (!item) return;
+        push(item.downloadUri || item.uri || item.url);
+      });
+    }
+    return Array.from(urls);
+  }
+
+  function normalizeGeminiResult(cfg, payload) {
+    const result = {
+      taskId: null,
+      status: null,
+      generated: [],
+      extraUrl: null,
+      textOutputs: [],
+      audioOutputs: [],
+      errorMessage: null
+    };
+
+    if (!payload) {
+      return result;
+    }
+
+    if (payload.error) {
+      const error = payload.error;
+      if (typeof error === 'string') {
+        result.errorMessage = error;
+      } else {
+        result.errorMessage = error.message || error.code || 'Gemini error';
+      }
+      result.status = 'ERROR';
+      return result;
+    }
+
+    const isOperation = typeof payload.name === 'string' && payload.name.startsWith('operations/');
+    const done = !isOperation || payload.done || !!payload.response;
+
+    if (isOperation) {
+      result.taskId = payload.name;
+    }
+
+    if (!done) {
+      result.status = 'CREATED';
+      return result;
+    }
+
+    const response = isOperation && payload.response ? payload.response : payload;
+
+    if (response && response.error) {
+      const err = response.error;
+      result.errorMessage = typeof err === 'string' ? err : (err.message || err.code || 'Gemini error');
+      result.status = 'ERROR';
+      return result;
+    }
+
+    if (cfg.type === 'video') {
+      result.generated = extractGeminiVideoUrls(response);
+      result.extraUrl = result.generated[0] || null;
+    } else if (cfg.type === 'text') {
+      result.textOutputs = extractGeminiTexts(response);
+    } else if (cfg.type === 'audio') {
+      result.audioOutputs = extractGeminiAudios(response);
+    }
+
+    if (!result.status) {
+      result.status = 'COMPLETED';
+    }
+    return result;
   }
 
   // ===== CACHE DI SERVER =====
@@ -6722,6 +7366,9 @@ body[data-theme="light"] .profile-credit {
 
     const local = [];
     for (const u of job.generated) {
+      if (typeof u !== 'string' || !/^https?:/i.test(u)) {
+        continue;
+      }
       try {
         const lu = await cacheUrl(u);
         local.push(lu);
@@ -6750,7 +7397,9 @@ body[data-theme="light"] .profile-credit {
       videoDuration: (videoDurationSelect && videoDurationSelect.value) ? Number(videoDurationSelect.value) : null,
       videoLayout: videoLayoutSelect && videoLayoutSelect.value ? videoLayoutSelect.value : null,
       numImages: numImagesInput.value ? Number(numImagesInput.value) : null,
-      aspectRatio: aspectRatioInput.value || null
+      aspectRatio: aspectRatioInput.value || null,
+      speechVoice: speechVoiceSelect && speechVoiceSelect.value ? speechVoiceSelect.value : DEFAULT_SPEECH_VOICE,
+      speechFormat: speechFormatSelect && speechFormatSelect.value ? speechFormatSelect.value : DEFAULT_SPEECH_FORMAT
     };
 
     if (formData.imageUrl) {
@@ -6780,6 +7429,12 @@ body[data-theme="light"] .profile-credit {
 
     if (!formData.prompt && ['gemini','imagen3','seedream4','fluxPro11'].includes(modelId)) {
       throw new Error('Prompt wajib diisi untuk model text-to-image.');
+    }
+    if (!formData.prompt && modelId === 'geminiText') {
+      throw new Error('Prompt wajib diisi untuk text generator.');
+    }
+    if (!formData.prompt && modelId === 'geminiSpeech') {
+      throw new Error('Teks wajib diisi untuk text-to-speech.');
     }
     if (requireImageModels.includes(modelId) && !formData.imageUrl) {
       throw new Error('Image URL wajib diisi untuk model ini.');
@@ -6821,14 +7476,34 @@ body[data-theme="light"] .profile-credit {
     }
 
     const body = cfg.buildBody(formData);
-    const data = await callFreepik(cfg, body, 'POST');
+    let data;
+    if (cfg.proxy === 'gemini') {
+      data = await callGemini(cfg, body, 'POST');
+    } else {
+      data = await callFreepik(cfg, body, 'POST');
+    }
 
     let taskId = null;
     let status = null;
     let generated = null;
     let extraUrl = null;
+    let textOutputs = null;
+    let audioOutputs = null;
+    let errorMessage = null;
 
-    if (data && data.data && typeof data.data === 'object') {
+    if (cfg.proxy === 'gemini') {
+      const normalized = normalizeGeminiResult(cfg, data);
+      taskId = normalized.taskId;
+      status = normalized.status;
+      generated = normalized.generated;
+      extraUrl = normalized.extraUrl;
+      textOutputs = normalized.textOutputs;
+      audioOutputs = normalized.audioOutputs;
+      errorMessage = normalized.errorMessage;
+      if (errorMessage && !taskId) {
+        throw new Error(errorMessage);
+      }
+    } else if (data && data.data && typeof data.data === 'object') {
       taskId   = data.data.task_id || null;
       status   = data.data.status   || null;
       generated = data.data.generated || null;
@@ -6852,13 +7527,21 @@ body[data-theme="light"] .profile-credit {
       extraUrl,
       references: usedGeminiRefs,
       geminiModeUsed: usedGeminiMode,
-      formData
+      formData,
+      textOutputs,
+      audioOutputs,
+      errorMessage
     };
   }
 
   async function fetchStatus(modelId, taskId) {
     const cfg = MODEL_CONFIG[modelId];
     if (!cfg || !cfg.statusPath) throw new Error('Model tidak punya endpoint status.');
+    if (cfg.proxy === 'gemini') {
+      const data = await callGemini(cfg, null, 'GET', { taskId });
+      return normalizeGeminiResult(cfg, data);
+    }
+
     const data = await callFreepik(cfg, { taskId }, 'GET');
 
     let status = null;
@@ -6887,10 +7570,24 @@ body[data-theme="light"] .profile-credit {
     if (!cfg || !cfg.statusPath || !job.taskId) return;
 
     try {
-      const { status, generated } = await fetchStatus(job.modelId, job.taskId);
-      job.status = status || job.status;
-      if (generated && Array.isArray(generated) && generated.length) {
-        job.generated = generated;
+      const result = await fetchStatus(job.modelId, job.taskId);
+      if (result) {
+        if (result.status) job.status = result.status;
+        if (Array.isArray(result.generated) && result.generated.length) {
+          job.generated = result.generated;
+        }
+        if (typeof result.extraUrl === 'string' && result.extraUrl) {
+          job.extraUrl = result.extraUrl;
+        }
+        if (Array.isArray(result.textOutputs)) {
+          job.textOutputs = result.textOutputs.slice();
+        }
+        if (Array.isArray(result.audioOutputs)) {
+          job.audioOutputs = result.audioOutputs.slice();
+        }
+        if (result.errorMessage) {
+          job.errorMessage = result.errorMessage;
+        }
       }
       job.updatedAt = nowIso();
       saveJobs();
@@ -6903,11 +7600,14 @@ body[data-theme="light"] .profile-credit {
           clearInterval(pollingTimers[job.id]);
           delete pollingTimers[job.id];
         }
-        if (job.generated && job.generated.length) {
+        const outputType = jobOutputType(job);
+        if ((outputType === 'image' || outputType === 'video') && job.generated && job.generated.length) {
           await ensureLocalFiles(job);
         }
-        await syncJobToDrive(job);
-        if (job.type === 'video') {
+        if (outputType === 'image' || outputType === 'video') {
+          await syncJobToDrive(job);
+        }
+        if (outputType === 'video') {
           const url = (job.localUrls && job.localUrls[0]) ||
                       (job.generated && job.generated[0]) ||
                       job.extraUrl || null;
@@ -6962,7 +7662,10 @@ body[data-theme="light"] .profile-credit {
         extraUrl,
         references,
         geminiModeUsed,
-        formData
+        formData,
+        textOutputs,
+        audioOutputs,
+        errorMessage
       } = await createTask(modelId);
       await spendCoins(COIN_COST_STANDARD);
       const jobId = uuid();
@@ -6984,6 +7687,15 @@ body[data-theme="light"] .profile-credit {
         job.references = Array.isArray(references) ? references : [];
         job.geminiMode = geminiModeUsed || geminiMode;
       }
+      if (Array.isArray(textOutputs)) {
+        job.textOutputs = textOutputs.slice();
+      }
+      if (Array.isArray(audioOutputs)) {
+        job.audioOutputs = audioOutputs.slice();
+      }
+      if (errorMessage) {
+        job.errorMessage = errorMessage;
+      }
 
       jobs.unshift(job);
       saveJobs();
@@ -6999,10 +7711,13 @@ body[data-theme="light"] .profile-credit {
       } else {
         finishJobProgress(job);
         setStatus('Task selesai (synchronous).', 'ok');
-        if (job.generated && job.generated.length) {
+        const outputType = jobOutputType(job);
+        if ((outputType === 'image' || outputType === 'video') && job.generated && job.generated.length) {
           await ensureLocalFiles(job);
         }
-        await syncJobToDrive(job);
+        if (outputType === 'image' || outputType === 'video') {
+          await syncJobToDrive(job);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -7031,6 +7746,15 @@ body[data-theme="light"] .profile-credit {
       if (videoDurationSelect && modelSelect) {
         configureVideoControls(modelSelect.value);
       }
+      if (speechVoiceSelect) {
+        ensureSpeechOptions();
+        speechVoiceSelect.value = DEFAULT_SPEECH_VOICE;
+      }
+      if (speechFormatSelect) {
+        ensureSpeechOptions();
+        speechFormatSelect.value = DEFAULT_SPEECH_FORMAT;
+      }
+      configureSpeechControls(modelSelect ? modelSelect.value : '');
       resetImageUploadArea();
       resetGeminiState(true);
       updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
@@ -8557,6 +9281,10 @@ function isVideoUrl(url = '') {
   return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
 }
 
+function isAudioUrl(url = '') {
+  return /\.(mp3|wav|m4a|ogg|aac)(\?|$)/i.test(url) || /^data:audio\//i.test(url);
+}
+
 function openAssetPreview(url, type = 'image') {
   if (!assetPreviewModal || !assetPreviewBody || !url) return;
   assetPreviewBody.innerHTML = '';
@@ -8568,6 +9296,11 @@ function openAssetPreview(url, type = 'image') {
     el.autoplay = true;
     el.loop = true;
     el.playsInline = true;
+  } else if (type === 'audio' || isAudioUrl(url)) {
+    el = document.createElement('audio');
+    el.src = url;
+    el.controls = true;
+    el.autoplay = true;
   } else {
     el = document.createElement('img');
     el.src = url;
@@ -8590,6 +9323,10 @@ function closeAssetPreview() {
   const video = assetPreviewBody.querySelector('video');
   if (video) {
     video.pause();
+  }
+  const audioEl = assetPreviewBody.querySelector('audio');
+  if (audioEl) {
+    audioEl.pause();
   }
   assetPreviewBody.innerHTML = '';
   assetPreviewModal.classList.add('hidden');

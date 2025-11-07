@@ -26,6 +26,9 @@ $FREEPIK_API_KEYS = [
 
 $FREEPIK_BASE_URL = 'https://api.freepik.com';
 
+$GEMINI_API_KEY = getenv('GEMINI_API_KEY') ?: getenv('GOOGLE_GEMINI_API_KEY') ?: '';
+$GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com';
+
 $FREEPIK_REDIS_CONFIG = [
     'host'     => getenv('FREEPIK_REDIS_HOST') ?: getenv('REDIS_HOST') ?: '127.0.0.1',
     'port'     => (int)(getenv('FREEPIK_REDIS_PORT') ?: getenv('REDIS_PORT') ?: 6379),
@@ -948,6 +951,95 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         'status' => 200,
         'path'   => $publicPath,
         'url'    => app_public_url($publicPath)
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// ====== PROXY GEMINI: ?api=gemini ======
+if (isset($_GET['api']) && $_GET['api'] === 'gemini') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    global $GEMINI_API_KEY, $GEMINI_BASE_URL;
+
+    if (!$GEMINI_API_KEY) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'GEMINI API key belum dikonfigurasi'
+        ]);
+        exit;
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+
+    if (!is_array($payload)) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Payload bukan JSON valid'
+        ]);
+        exit;
+    }
+
+    $path   = $payload['path']   ?? null;
+    $method = strtoupper($payload['method'] ?? 'POST');
+    $body   = $payload['body']   ?? null;
+
+    if (!$path) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Field "path" wajib'
+        ]);
+        exit;
+    }
+
+    $path = '/' . ltrim($path, '/');
+    $url = rtrim($GEMINI_BASE_URL, '/') . $path;
+    $url .= (strpos($url, '?') === false ? '?' : '&') . 'key=' . urlencode($GEMINI_API_KEY);
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+
+    $headers = ['Accept: application/json'];
+    if ($method !== 'GET' && $body !== null) {
+        $headers[] = 'Content-Type: application/json';
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+    }
+
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+    $responseBody = curl_exec($ch);
+    $errno        = curl_errno($ch);
+    $error        = curl_error($ch);
+    $statusCode   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if ($errno) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'cURL error: ' . $error
+        ]);
+        exit;
+    }
+
+    $data = null;
+    if ($responseBody !== '' && $responseBody !== null) {
+        $decoded = json_decode($responseBody, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $data = $decoded;
+        } else {
+            $data = $responseBody;
+        }
+    }
+
+    echo json_encode([
+        'ok'     => $statusCode >= 200 && $statusCode < 300,
+        'status' => $statusCode,
+        'data'   => $data
     ], JSON_UNESCAPED_SLASHES);
     exit;
 }

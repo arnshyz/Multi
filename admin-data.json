@@ -354,6 +354,20 @@
                 "enabled": true,
                 "updated_at": "2024-01-01T00:00:00Z"
             },
+            "textGen": {
+                "key": "textGen",
+                "label": "Text Generator",
+                "description": "Generate konten teks menggunakan Gemini 1.5 Flash.",
+                "enabled": true,
+                "updated_at": "2025-11-07T00:00:00+00:00"
+            },
+            "textSpeech": {
+                "key": "textSpeech",
+                "label": "Text-to-Speech",
+                "description": "Konversi teks menjadi audio dengan Gemini.",
+                "enabled": true,
+                "updated_at": "2025-11-07T00:00:00+00:00"
+            },
             "filmmaker": {
                 "key": "filmmaker",
                 "label": "Filmmaker",
