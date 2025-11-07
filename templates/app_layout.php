@@ -5575,6 +5575,7 @@ body[data-theme="light"] .profile-credit {
     renderJobs();
   }
 
+  const jobForm = document.getElementById('jobForm');
   const modelSelect = document.getElementById('modelSelect');
   const modelHint = document.getElementById('modelHint');
   const promptInput = document.getElementById('prompt');
@@ -6031,7 +6032,9 @@ body[data-theme="light"] .profile-credit {
       updateFeatureTabsAvailability();
       return;
     }
+
     currentFeature = featureKey;
+
     if (featureTabs.length) {
       featureTabs.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.feature === featureKey);
@@ -6040,27 +6043,29 @@ body[data-theme="light"] .profile-credit {
 
     updateFeatureTabsAvailability();
 
-    const allowed = new Set(FEATURE_MODELS[featureKey] || []);
-    const options = modelSelect.querySelectorAll('option');
-    let firstVisible = null;
+    if (modelSelect) {
+      const allowed = new Set(FEATURE_MODELS[featureKey] || []);
+      const options = modelSelect.querySelectorAll('option');
+      let firstVisible = null;
 
-    options.forEach(opt => {
-      const id = opt.value;
-      if (!id) return;
-      if (allowed.has(id)) {
-        opt.disabled = false;
-        opt.hidden = false;
-        if (!firstVisible) firstVisible = opt;
-      } else {
-        opt.disabled = true;
-        opt.hidden = true;
+      options.forEach(opt => {
+        const id = opt.value;
+        if (!id) return;
+        if (allowed.has(id)) {
+          opt.disabled = false;
+          opt.hidden = false;
+          if (!firstVisible) firstVisible = opt;
+        } else {
+          opt.disabled = true;
+          opt.hidden = true;
+        }
+      });
+
+      if (firstVisible) {
+        modelSelect.value = firstVisible.value;
+        setModelHint(firstVisible.value);
+        updateFields();
       }
-    });
-
-    if (firstVisible) {
-      modelSelect.value = firstVisible.value;
-      setModelHint(firstVisible.value);
-      updateFields();
     }
 
     if (!featureLabel) return;
@@ -6077,6 +6082,9 @@ body[data-theme="light"] .profile-credit {
   }
 
   function renderJobs() {
+    if (!queueList || !historyList || !queueEmpty || !historyEmpty) {
+      return;
+    }
     queueList.innerHTML = '';
     historyList.innerHTML = '';
 
@@ -6176,6 +6184,9 @@ body[data-theme="light"] .profile-credit {
   }
 
   function renderPreview(job) {
+    if (!previewContainer || !previewEmpty || !previewJobMeta || !previewGrid) {
+      return;
+    }
     if (!job) {
       previewContainer.style.display = 'none';
       previewEmpty.style.display = 'block';
@@ -6916,9 +6927,10 @@ body[data-theme="light"] .profile-credit {
     }
   }
 
-  document.getElementById('jobForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const modelId = modelSelect.value;
+  if (jobForm && modelSelect) {
+    jobForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const modelId = modelSelect.value;
     const cfg = MODEL_CONFIG[modelId];
     if (!cfg) {
       setStatus('Model tidak valid.', 'err');
@@ -6998,48 +7010,62 @@ body[data-theme="light"] .profile-credit {
     } finally {
       submitBtn.disabled = false;
     }
-  });
+    });
+  }
 
-  modelSelect.addEventListener('change', () => {
-    setModelHint(modelSelect.value);
-    updateFields();
-  });
+  if (modelSelect) {
+    modelSelect.addEventListener('change', () => {
+      setModelHint(modelSelect.value);
+      updateFields();
+    });
+  }
 
-  clearPromptBtn.addEventListener('click', () => {
-    promptInput.value = '';
-    imageUrlInput.value = '';
-    videoUrlInput.value = '';
-    audioUrlInput.value = '';
-    numImagesInput.value = '1';
-    aspectRatioInput.value = '';
-    if (videoDurationSelect && modelSelect) {
-      configureVideoControls(modelSelect.value);
-    }
-    resetImageUploadArea();
-    resetGeminiState(true);
-    updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
-    setStatus('Form dibersihkan.');
-  });
-  clearPreviewBtn.addEventListener('click', () => {
-    activeJobId = null;
-    renderPreview(null);
-  });
-  refreshQueueBtn.addEventListener('click', async () => {
-    const queue = jobs.filter(j => !finalStatus(j.status) && j.taskId);
-    for (const job of queue) {
-      await pollJobOnce(job.id);
-    }
-    setStatus('Queue di-refresh.', 'ok');
-  });
-  clearHistoryBtn.addEventListener('click', () => {
-    jobs = jobs.filter(j => !finalStatus(j.status));
-    saveJobs();
-    renderJobs();
-    if (activeJobId && !jobs.find(j => j.id === activeJobId)) {
+  if (clearPromptBtn && promptInput && imageUrlInput && numImagesInput && aspectRatioInput) {
+    clearPromptBtn.addEventListener('click', () => {
+      promptInput.value = '';
+      imageUrlInput.value = '';
+      if (videoUrlInput) videoUrlInput.value = '';
+      if (audioUrlInput) audioUrlInput.value = '';
+      numImagesInput.value = '1';
+      aspectRatioInput.value = '';
+      if (videoDurationSelect && modelSelect) {
+        configureVideoControls(modelSelect.value);
+      }
+      resetImageUploadArea();
+      resetGeminiState(true);
+      updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
+      setStatus('Form dibersihkan.');
+    });
+  }
+
+  if (clearPreviewBtn) {
+    clearPreviewBtn.addEventListener('click', () => {
       activeJobId = null;
       renderPreview(null);
-    }
-  });
+    });
+  }
+
+  if (refreshQueueBtn) {
+    refreshQueueBtn.addEventListener('click', async () => {
+      const queue = jobs.filter(j => !finalStatus(j.status) && j.taskId);
+      for (const job of queue) {
+        await pollJobOnce(job.id);
+      }
+      setStatus('Queue di-refresh.', 'ok');
+    });
+  }
+
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', () => {
+      jobs = jobs.filter(j => !finalStatus(j.status));
+      saveJobs();
+      renderJobs();
+      if (activeJobId && !jobs.find(j => j.id === activeJobId)) {
+        activeJobId = null;
+        renderPreview(null);
+      }
+    });
+  }
 
   if (featureTabs.length) {
     featureTabs.forEach(btn => {
@@ -7527,28 +7553,36 @@ body[data-theme="light"] .profile-credit {
     });
   }
 
-  filmCharacterDrop.addEventListener('click', () => filmCharacterInput.click());
+  if (filmCharacterDrop && filmCharacterInput) {
+    filmCharacterDrop.addEventListener('click', () => filmCharacterInput.click());
 
-  filmCharacterInput.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert('File harus gambar (PNG/JPG).');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = ev => {
-      filmCharacterDataUrl = ev.target.result;
-      filmCharacterPreview.src = filmCharacterDataUrl;
-      filmCharacterPreview.style.display = 'block';
-      filmCharacterIdle.style.display = 'none';
-    };
-    reader.readAsDataURL(file);
-  });
+    filmCharacterInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        alert('File harus gambar (PNG/JPG).');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = ev => {
+        filmCharacterDataUrl = ev.target.result;
+        if (filmCharacterPreview) {
+          filmCharacterPreview.src = filmCharacterDataUrl;
+          filmCharacterPreview.style.display = 'block';
+        }
+        if (filmCharacterIdle) {
+          filmCharacterIdle.style.display = 'none';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 
-  filmSceneCount.addEventListener('input', () => {
-    filmSceneCountLabel.textContent = filmSceneCount.value + ' scenes';
-  });
+  if (filmSceneCount && filmSceneCountLabel) {
+    filmSceneCount.addEventListener('input', () => {
+      filmSceneCountLabel.textContent = filmSceneCount.value + ' scenes';
+    });
+  }
 
   renderFilmStateMenu();
   const initialFilmState = filmStateValueInput && filmStateValueInput.value ? filmStateValueInput.value : 'auto';
@@ -7570,13 +7604,15 @@ body[data-theme="light"] .profile-credit {
     });
   }
 
-  filmAspectButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      filmAspectButtons.forEach(b => b.classList.remove('film-aspect-active'));
-      btn.classList.add('film-aspect-active');
-      filmAspect = btn.dataset.filmAspect;
+  if (filmAspectButtons.length) {
+    filmAspectButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filmAspectButtons.forEach(b => b.classList.remove('film-aspect-active'));
+        btn.classList.add('film-aspect-active');
+        filmAspect = btn.dataset.filmAspect;
+      });
     });
-  });
+  }
 
   function updateFilmProgressUI() {
     if (!filmProgressEl) return;
@@ -7591,6 +7627,7 @@ body[data-theme="light"] .profile-credit {
   }
 
   function renderFilmScenes() {
+    if (!filmScenesContainer || !filmScenesEmpty) return;
     if (!filmScenes.length) {
       filmScenesEmpty.style.display = 'flex';
       filmScenesContainer.innerHTML = '';
@@ -7720,115 +7757,118 @@ body[data-theme="light"] .profile-credit {
     filmPollTimer = setInterval(pollFilmScenesOnce, 8000);
   }
 
-  filmGenerateBtn.addEventListener('click', async () => {
-    if (!featureAvailableForCurrentUser('filmmaker')) {
-      showFeatureLockedMessage('filmmaker');
-      return;
-    }
-    const brief = filmBriefInput.value.trim();
-    const count = Number(filmSceneCount.value || '0');
-
-    if (!filmCharacterDataUrl) {
-      alert('Upload character image dulu.');
-      return;
-    }
-    if (!brief) {
-      alert('Story brief wajib diisi.');
-      return;
-    }
-    if (count < 1) {
-      alert('Minimal 1 scene.');
-      return;
-    }
-
-    const cfg = MODEL_CONFIG.gemini;
-    const base64 = filmCharacterDataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
-
-    const scenePlans = buildFilmScenePlans(brief, count);
-    const requiredCoins = Math.max(1, scenePlans.length * COIN_COST_FILM_PER_SCENE);
-    if (!currentAccount) {
-      alert('Data akun belum siap. Muat ulang halaman.');
-      return;
-    }
-    if (!ensureCoins(requiredCoins)) {
-      alert('Koin kamu tidak cukup untuk generate film.');
-      return;
-    }
-
-    filmGenerateBtn.disabled = true;
-    filmScenes = [];
-    renderFilmScenes();
-
-    let successfulScenes = 0;
-
-    for (const plan of scenePlans) {
-      const scenePrompt = plan.prompt;
-
-      const body = {
-        prompt: scenePrompt,
-        num_images: 1,
-        reference_images: [base64]
-      };
-      if (filmAspect === '9:16') {
-        body.aspect_ratio = 'social_story_9_16';
-      } else if (filmAspect === '16:9') {
-        body.aspect_ratio = 'widescreen_16_9';
+  if (filmGenerateBtn && filmBriefInput && filmSceneCount) {
+    filmGenerateBtn.addEventListener('click', async () => {
+      if (!featureAvailableForCurrentUser('filmmaker')) {
+        showFeatureLockedMessage('filmmaker');
+        return;
       }
 
-      let taskId = null;
-      let status = 'ERROR';
-      let success = false;
+      const brief = filmBriefInput.value.trim();
+      const count = Number(filmSceneCount.value || '0');
 
-      try {
-        const data = await callFreepik(cfg, body, 'POST');
-        status = 'CREATED';
-        if (data && data.data) {
-          taskId = data.data.task_id || null;
-          status  = data.data.status   || status;
-        }
-        success = true;
-      } catch (err) {
-        console.error(err);
-        status = 'ERROR';
+      if (!filmCharacterDataUrl) {
+        alert('Upload character image dulu.');
+        return;
+      }
+      if (!brief) {
+        alert('Story brief wajib diisi.');
+        return;
+      }
+      if (count < 1) {
+        alert('Minimal 1 scene.');
+        return;
       }
 
-      filmScenes.push({
-        index: plan.index,
-        prompt: scenePrompt,
-        meta: plan.meta,
-        taskId,
-        status,
-        url: null
-      });
+      const cfg = MODEL_CONFIG.gemini;
+      const base64 = filmCharacterDataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 
-      if (success) {
-        const normalized = String(status || '').toUpperCase();
-        if (normalized !== 'ERROR' && normalized !== 'FAILED') {
-          successfulScenes += 1;
-        }
+      const scenePlans = buildFilmScenePlans(brief, count);
+      const requiredCoins = Math.max(1, scenePlans.length * COIN_COST_FILM_PER_SCENE);
+      if (!currentAccount) {
+        alert('Data akun belum siap. Muat ulang halaman.');
+        return;
+      }
+      if (!ensureCoins(requiredCoins)) {
+        alert('Koin kamu tidak cukup untuk generate film.');
+        return;
       }
 
+      filmGenerateBtn.disabled = true;
+      filmScenes = [];
       renderFilmScenes();
-    }
 
-    const coinsToSpend = successfulScenes * COIN_COST_FILM_PER_SCENE;
-    if (coinsToSpend > 0) {
-      try {
-        await spendCoins(coinsToSpend);
-      } catch (err) {
-        console.error('Gagal mengurangi koin film:', err);
-        alert('Koin tidak dapat dikurangi: ' + err.message);
+      let successfulScenes = 0;
+
+      for (const plan of scenePlans) {
+        const scenePrompt = plan.prompt;
+
+        const body = {
+          prompt: scenePrompt,
+          num_images: 1,
+          reference_images: [base64]
+        };
+        if (filmAspect === '9:16') {
+          body.aspect_ratio = 'social_story_9_16';
+        } else if (filmAspect === '16:9') {
+          body.aspect_ratio = 'widescreen_16_9';
+        }
+
+        let taskId = null;
+        let status = 'ERROR';
+        let success = false;
+
         try {
-          await loadAccountState();
-        } catch (loadErr) {
-          console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+          const data = await callFreepik(cfg, body, 'POST');
+          status = 'CREATED';
+          if (data && data.data) {
+            taskId = data.data.task_id || null;
+            status = data.data.status || status;
+          }
+          success = true;
+        } catch (err) {
+          console.error(err);
+          status = 'ERROR';
+        }
+
+        filmScenes.push({
+          index: plan.index,
+          prompt: scenePrompt,
+          meta: plan.meta,
+          taskId,
+          status,
+          url: null
+        });
+
+        if (success) {
+          const normalized = String(status || '').toUpperCase();
+          if (normalized !== 'ERROR' && normalized !== 'FAILED') {
+            successfulScenes += 1;
+          }
+        }
+
+        renderFilmScenes();
+      }
+
+      const coinsToSpend = successfulScenes * COIN_COST_FILM_PER_SCENE;
+      if (coinsToSpend > 0) {
+        try {
+          await spendCoins(coinsToSpend);
+        } catch (err) {
+          console.error('Gagal mengurangi koin film:', err);
+          alert('Koin tidak dapat dikurangi: ' + err.message);
+          try {
+            await loadAccountState();
+          } catch (loadErr) {
+            console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+          }
         }
       }
-    }
 
-    startFilmPolling();
-    filmGenerateBtn.disabled = false;
-  });
+      startFilmPolling();
+      filmGenerateBtn.disabled = false;
+    });
+  }
 
   const UGC_IDEA_COUNT = 5;
 
@@ -8052,6 +8092,7 @@ body[data-theme="light"] .profile-credit {
   }
 
   function renderUgcList() {
+    if (!ugcList || !ugcEmpty) return;
     ugcList.innerHTML = '';
     if (!ugcItems.length) {
       ugcEmpty.style.display = 'flex';
@@ -8272,43 +8313,55 @@ body[data-theme="light"] .profile-credit {
     ugcPollTimer = setInterval(() => { pollUgcOnce(); }, 8000);
   }
 
-  ugcProductDrop.addEventListener('click', () => ugcProductInput.click());
-  ugcProductInput.addEventListener('change', e => {
-    const files = Array.from(e.target.files || []);
-    ugcProductImages = [];
-    const max = 3;
-    const used = files.slice(0, max);
-    ugcProductPreview.innerHTML = '';
-    used.forEach((file, idx) => {
-      if (!file.type.startsWith('image/')) return;
+  if (ugcProductDrop && ugcProductInput) {
+    ugcProductDrop.addEventListener('click', () => ugcProductInput.click());
+    ugcProductInput.addEventListener('change', e => {
+      const files = Array.from(e.target.files || []);
+      ugcProductImages = [];
+      const max = 3;
+      const used = files.slice(0, max);
+      if (ugcProductPreview) {
+        ugcProductPreview.innerHTML = '';
+      }
+      used.forEach((file, idx) => {
+        if (!file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          ugcProductImages.push({ id: idx + 1, dataUrl: ev.target.result });
+          if (ugcProductPreview) {
+            const img = document.createElement('img');
+            img.src = ev.target.result;
+            ugcProductPreview.appendChild(img);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+  }
+
+  if (ugcModelDrop && ugcModelInput) {
+    ugcModelDrop.addEventListener('click', () => ugcModelInput.click());
+    ugcModelInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        alert('Model image harus gambar');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = ev => {
-        ugcProductImages.push({ id: idx + 1, dataUrl: ev.target.result });
-        const img = document.createElement('img');
-        img.src = ev.target.result;
-        ugcProductPreview.appendChild(img);
+        ugcModelImage = { dataUrl: ev.target.result };
+        if (ugcModelPreview) {
+          ugcModelPreview.src = ev.target.result;
+          ugcModelPreview.style.display = 'block';
+        }
+        if (ugcModelIdle) {
+          ugcModelIdle.style.display = 'none';
+        }
       };
       reader.readAsDataURL(file);
     });
-  });
-
-  ugcModelDrop.addEventListener('click', () => ugcModelInput.click());
-  ugcModelInput.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert('Model image harus gambar');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = ev => {
-      ugcModelImage = { dataUrl: ev.target.result };
-      ugcModelPreview.src = ev.target.result;
-      ugcModelPreview.style.display = 'block';
-      ugcModelIdle.style.display = 'none';
-    };
-    reader.readAsDataURL(file);
-  });
+  }
 
   if (ugcStyleTrigger) {
     ugcStyleTrigger.addEventListener('click', () => {
@@ -8418,10 +8471,14 @@ body[data-theme="light"] .profile-credit {
         }
       }
     }
-    ugcGenerateBtn.disabled = false;
+    if (ugcGenerateBtn) {
+      ugcGenerateBtn.disabled = false;
+    }
   }
 
-  ugcGenerateBtn.addEventListener('click', () => { ugcGenerate(); });
+  if (ugcGenerateBtn) {
+    ugcGenerateBtn.addEventListener('click', () => { ugcGenerate(); });
+  }
 
   async function ugcGenerateVideo(item) {
     if (!featureAvailableForCurrentUser('ugc')) {
@@ -8579,7 +8636,9 @@ document.addEventListener('keydown', event => {
   }
   updateFilmProgressUI();
   updateUgcProgressUI();
-  filmSceneCountLabel.textContent = filmSceneCount.value + ' scenes';
+  if (filmSceneCount && filmSceneCountLabel) {
+    filmSceneCountLabel.textContent = filmSceneCount.value + ' scenes';
+  }
 </script>
 </body>
 </html>
