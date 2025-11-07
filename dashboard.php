@@ -3,12 +3,1055 @@ require_once __DIR__ . '/auth.php';
 
 auth_session_start();
 
-if (!auth_is_logged_in()) {
-    header('Location: index.php');
+function auth_json_response($payload, $status = 200)
+{
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES);
     exit;
 }
 
-$currentUser = (string)($_SESSION['auth_user'] ?? '');
+// ====== CONFIG FREEPIK ======
+$FREEPIK_API_KEYS = [
+    getenv('FREEPIK_API_KEY_1') ?: 'FPSXbcc5610f664682840d2dfd832d74fc03',
+    getenv('FREEPIK_API_KEY_2') ?: 'FPSX06967c376cb6d87d9c551ccb33ed4d56',
+    getenv('FREEPIK_API_KEY_3') ?: 'REPLACE_WITH_API_KEY_3',
+    getenv('FREEPIK_API_KEY_4') ?: 'REPLACE_WITH_API_KEY_4',
+    getenv('FREEPIK_API_KEY_5') ?: 'REPLACE_WITH_API_KEY_5',
+];
+
+$FREEPIK_BASE_URL = 'https://api.freepik.com';
+
+$FREEPIK_REDIS_CONFIG = [
+    'host'     => getenv('FREEPIK_REDIS_HOST') ?: getenv('REDIS_HOST') ?: '127.0.0.1',
+    'port'     => (int)(getenv('FREEPIK_REDIS_PORT') ?: getenv('REDIS_PORT') ?: 6379),
+    'timeout'  => (float)(getenv('FREEPIK_REDIS_TIMEOUT') ?: getenv('REDIS_TIMEOUT') ?: 1.5),
+    'password' => getenv('FREEPIK_REDIS_PASSWORD') ?: getenv('REDIS_PASSWORD') ?: null,
+    'database' => (int)(getenv('FREEPIK_REDIS_DATABASE') ?: getenv('REDIS_DATABASE') ?: 0),
+    'key'      => getenv('FREEPIK_REDIS_KEY') ?: 'freepik:api-keys',
+];
+
+function app_base_url(): string
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $scheme = 'http';
+    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+        $forwarded = explode(',', (string)$_SERVER['HTTP_X_FORWARDED_PROTO']);
+        $candidate = strtolower(trim($forwarded[0] ?? ''));
+        if ($candidate !== '') {
+            $scheme = $candidate;
+        }
+    } elseif (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        $scheme = 'https';
+    }
+
+    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
+    $host = $host ? trim((string)$host) : 'localhost';
+
+    if (strpos($host, ':') === false) {
+        $port = $_SERVER['HTTP_X_FORWARDED_PORT'] ?? $_SERVER['SERVER_PORT'] ?? '';
+        $port = trim((string)$port);
+        if ($port !== '' && !in_array($port, ['80', '443'], true)) {
+            $host .= ':' . $port;
+        }
+    }
+
+    $script = $_SERVER['SCRIPT_NAME'] ?? '';
+    $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
+    if ($dir === '/' || $dir === '.') {
+        $dir = '';
+    }
+
+    $cached = rtrim($scheme . '://' . $host . ($dir ? '/' . ltrim($dir, '/') : ''), '/');
+
+    return $cached;
+}
+
+function app_public_url(string $path): string
+{
+    $base = app_base_url();
+    return $base . '/' . ltrim($path, '/');
+}
+
+function freepik_normalize_api_keys($keys)
+{
+    $normalized = [];
+    foreach ((array)$keys as $key) {
+        if (!is_string($key)) {
+            continue;
+        }
+        $trimmed = trim($key);
+        if ($trimmed === '' || stripos($trimmed, 'REPLACE_WITH') !== false) {
+            continue;
+        }
+        $normalized[$trimmed] = true;
+    }
+
+    return array_keys($normalized);
+}
+
+function freepik_available_api_keys()
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    global $FREEPIK_API_KEYS;
+
+    $keys = [];
+
+    $single = getenv('FREEPIK_API_KEY');
+    if (is_string($single) && trim($single) !== '') {
+        $keys[] = $single;
+    }
+
+    for ($i = 1; $i <= 10; $i++) {
+        $envKey = getenv('FREEPIK_API_KEY_' . $i);
+        if (is_string($envKey) && trim($envKey) !== '') {
+            $keys[] = $envKey;
+        }
+    }
+
+    $keys = array_merge($keys, (array)$FREEPIK_API_KEYS);
+
+    $cached = freepik_normalize_api_keys($keys);
+
+    return $cached;
+}
+
+function freepik_redis_client()
+{
+    static $client = null;
+    static $initialized = false;
+
+    if ($initialized) {
+        return $client;
+    }
+
+    $initialized = true;
+
+    if (!class_exists('Redis')) {
+        return null;
+    }
+
+    global $FREEPIK_REDIS_CONFIG;
+
+    try {
+        $redis = new Redis();
+        $redis->connect(
+            $FREEPIK_REDIS_CONFIG['host'],
+            $FREEPIK_REDIS_CONFIG['port'],
+            $FREEPIK_REDIS_CONFIG['timeout']
+        );
+
+        if (!empty($FREEPIK_REDIS_CONFIG['password'])) {
+            $redis->auth($FREEPIK_REDIS_CONFIG['password']);
+        }
+
+        if (isset($FREEPIK_REDIS_CONFIG['database'])) {
+            $redis->select((int)$FREEPIK_REDIS_CONFIG['database']);
+        }
+
+        $client = $redis;
+    } catch (Throwable $e) {
+        $client = null;
+    }
+
+    return $client;
+}
+
+function freepik_ensure_redis_key_list($redis, $keys)
+{
+    if (!$redis || !$keys) {
+        return;
+    }
+
+    global $FREEPIK_REDIS_CONFIG;
+
+    $listKey = (string)$FREEPIK_REDIS_CONFIG['key'];
+    if ($listKey === '') {
+        $listKey = 'freepik:api-keys';
+    }
+
+    $hashKey = $listKey . ':hash';
+    $expectedHash = sha1(implode('|', $keys));
+
+    try {
+        $currentHash = $redis->get($hashKey);
+        if ($currentHash === $expectedHash) {
+            return;
+        }
+
+        $redis->multi();
+        $redis->del($listKey);
+        foreach ($keys as $key) {
+            $redis->rPush($listKey, $key);
+        }
+        $redis->set($hashKey, $expectedHash);
+        $redis->exec();
+    } catch (Throwable $e) {
+        // Ignore and allow fallback rotation.
+    }
+}
+
+function freepik_next_api_key()
+{
+    $keys = freepik_available_api_keys();
+    if (!$keys) {
+        return null;
+    }
+
+    $redis = freepik_redis_client();
+    $listKey = null;
+    if ($redis) {
+        global $FREEPIK_REDIS_CONFIG;
+        $listKey = (string)$FREEPIK_REDIS_CONFIG['key'];
+        if ($listKey === '') {
+            $listKey = 'freepik:api-keys';
+        }
+
+        freepik_ensure_redis_key_list($redis, $keys);
+
+        try {
+            $value = $redis->rPopLPush($listKey, $listKey);
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        } catch (Throwable $e) {
+            // fall through to PHP fallback rotation
+        }
+    }
+
+    static $index = 0;
+    $key = $keys[$index % count($keys)];
+    $index++;
+    return $key;
+}
+
+$requestedApi = isset($_GET['api']) ? (string)$_GET['api'] : null;
+
+if ($requestedApi === 'login') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk login.'
+        ], 405);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = null;
+    if (is_string($raw) && $raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $payload = $decoded;
+        }
+    }
+
+    $username = '';
+    $password = '';
+
+    if (is_array($payload)) {
+        $username = isset($payload['username']) ? trim((string)$payload['username']) : '';
+        $password = isset($payload['password']) ? (string)$payload['password'] : '';
+    }
+
+    if ($username === '' && isset($_POST['username'])) {
+        $username = trim((string)$_POST['username']);
+    }
+    if ($password === '' && isset($_POST['password'])) {
+        $password = (string)$_POST['password'];
+    }
+
+    if ($username === '' || $password === '') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'Username dan password wajib diisi.'
+        ], 422);
+    }
+
+    $account = null;
+    if (!auth_verify($username, $password, $account)) {
+        auth_record_security_event('login-failed', [
+            'username' => $username,
+        ]);
+
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Kredensial tidak valid.'
+        ], 401);
+    }
+
+    auth_login($account ?? ['username' => $username, 'role' => 'user']);
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => [
+            'username' => $account['username'] ?? $username,
+            'role' => $account['role'] ?? 'user',
+        ]
+    ]);
+}
+
+if ($requestedApi === 'logout') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk logout.'
+        ], 405);
+    }
+
+    auth_logout();
+    auth_session_start();
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200
+    ]);
+}
+
+if ($requestedApi === 'register') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk registrasi.'
+        ], 405);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = null;
+    if (is_string($raw) && $raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $payload = $decoded;
+        }
+    }
+
+    $apiKey = '';
+    $username = '';
+    $email = '';
+    $password = '';
+
+    if (is_array($payload)) {
+        $apiKey = isset($payload['freepik_api_key']) ? (string)$payload['freepik_api_key'] : '';
+        $username = isset($payload['username']) ? (string)$payload['username'] : '';
+        $email = isset($payload['email']) ? (string)$payload['email'] : '';
+        $password = isset($payload['password']) ? (string)$payload['password'] : '';
+    }
+
+    if ($apiKey === '' && isset($_POST['freepik_api_key'])) {
+        $apiKey = (string)$_POST['freepik_api_key'];
+    }
+    if ($username === '' && isset($_POST['username'])) {
+        $username = (string)$_POST['username'];
+    }
+    if ($email === '' && isset($_POST['email'])) {
+        $email = (string)$_POST['email'];
+    }
+    if ($password === '' && isset($_POST['password'])) {
+        $password = (string)$_POST['password'];
+    }
+
+    $result = auth_register_account($apiKey, $username, $email, $password);
+    if (empty($result['ok'])) {
+        $status = isset($result['status']) ? (int)$result['status'] : 422;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $result['errors'] ?? ['general' => 'Registrasi gagal.'],
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => $result['status'] ?? 201,
+        'message' => 'Registrasi berhasil. Silakan login menggunakan kredensial baru.',
+        'account' => [
+            'username' => $result['account']['username'] ?? $username,
+            'email' => $result['account']['email'] ?? $email,
+            'role' => $result['account']['role'] ?? 'user',
+        ],
+    ], $result['status'] ?? 201);
+}
+
+if ($requestedApi === 'security-check') {
+    $entry = auth_record_security_check();
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'ip' => $entry['ip'] ?? '',
+        'timestamp' => $entry['timestamp'] ?? gmdate('c'),
+    ]);
+}
+
+if ($requestedApi !== null && !in_array($requestedApi, ['login', 'register', 'security-check'], true) && !auth_is_logged_in()) {
+    auth_json_response([
+        'ok' => false,
+        'status' => 401,
+        'error' => 'Silakan masuk untuk mengakses API.'
+    ], 401);
+}
+
+if ($requestedApi === 'account') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode GET untuk mengambil data akun.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 404,
+            'error' => 'Akun tidak ditemukan.'
+        ], 404);
+    }
+
+    $payload = auth_account_public_payload($account);
+    $payload['platform'] = auth_platform_public_view();
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => $payload,
+    ]);
+}
+
+if ($requestedApi === 'account-theme') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk memperbarui tema.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $theme = isset($payload['theme']) ? (string)$payload['theme'] : '';
+    $errors = [];
+    $updated = auth_set_account_theme($account['id'], $theme, $errors);
+    if (!$updated) {
+        $status = isset($errors['theme']) ? 422 : 500;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Gagal memperbarui tema.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => auth_account_public_payload($updated),
+    ]);
+}
+
+if ($requestedApi === 'account-coins') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk memperbarui koin.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $amount = isset($payload['amount']) ? (int)$payload['amount'] : 0;
+    if ($amount <= 0) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'Jumlah koin harus lebih besar dari 0.'
+        ], 422);
+    }
+
+    $errors = [];
+    $updated = auth_adjust_account_coins($account['id'], -$amount, $errors);
+    if (!$updated) {
+        $status = isset($errors['coins']) ? 409 : (isset($errors['general']) ? 500 : 422);
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Gagal memperbarui koin.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => [
+            'coins' => (int)$updated['coins'],
+        ],
+    ]);
+}
+
+if ($requestedApi === 'account-avatar') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk memperbarui avatar.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $avatar = '';
+    if (isset($payload['avatar'])) {
+        $avatar = (string)$payload['avatar'];
+    } elseif (isset($payload['avatarUrl'])) {
+        $avatar = (string)$payload['avatarUrl'];
+    }
+    $avatar = trim($avatar);
+
+    if ($avatar !== '' && !preg_match('/^https?:\/\//i', $avatar)) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => ['avatar' => 'Gunakan URL gambar yang valid (diawali http/https).']
+        ], 422);
+    }
+
+    $errors = [];
+    $updated = auth_update_account_entry($account['id'], ['avatar_url' => $avatar !== '' ? $avatar : null], $errors);
+    if (!$updated) {
+        $status = isset($errors['general']) ? 500 : 422;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Gagal memperbarui avatar.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => auth_account_public_payload($updated),
+    ]);
+}
+
+if ($requestedApi === 'account-password') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk mengganti password.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $current = trim((string)($payload['current'] ?? ($payload['currentPassword'] ?? '')));
+    $new     = (string)($payload['password'] ?? ($payload['newPassword'] ?? ''));
+    $confirm = (string)($payload['confirm'] ?? ($payload['confirmPassword'] ?? ''));
+
+    if ($new === '' || strlen($new) < 6) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => ['password' => 'Password baru minimal 6 karakter.']
+        ], 422);
+    }
+
+    if ($new !== $confirm) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => ['confirm' => 'Konfirmasi password tidak cocok.']
+        ], 422);
+    }
+
+    if (!auth_verify($account['username'] ?? '', $current, $verifiedAccount)) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 403,
+            'error' => ['current' => 'Password lama tidak sesuai.']
+        ], 403);
+    }
+
+    $errors = [];
+    $updated = auth_update_account_entry($account['id'], ['password' => $new], $errors);
+    if (!$updated) {
+        $status = isset($errors['general']) ? 500 : 422;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Gagal mengubah password.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'message' => 'Password berhasil diperbarui.'
+    ]);
+}
+
+if ($requestedApi === 'drive') {
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $items = auth_drive_get_items($account['id']);
+        auth_json_response([
+            'ok' => true,
+            'status' => 200,
+            'data' => [
+                'items' => $items,
+            ],
+        ]);
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $raw = file_get_contents('php://input');
+        $payload = json_decode($raw, true);
+        if (!is_array($payload)) {
+            $payload = $_POST;
+        }
+
+        $items = isset($payload['items']) && is_array($payload['items']) ? $payload['items'] : [];
+        if (!$items) {
+            auth_json_response([
+                'ok' => false,
+                'status' => 422,
+                'error' => 'Tidak ada item drive yang dikirimkan.'
+            ], 422);
+        }
+
+        $errors = [];
+        $stored = auth_drive_append_items($account['id'], $items, $errors);
+        if ($stored === null) {
+            $status = isset($errors['items']) ? 422 : (isset($errors['account']) ? 404 : 500);
+            auth_json_response([
+                'ok' => false,
+                'status' => $status,
+                'error' => $errors ?: 'Gagal menyimpan drive.'
+            ], $status);
+        }
+
+        auth_json_response([
+            'ok' => true,
+            'status' => 200,
+            'data' => [
+                'items' => $stored,
+            ],
+        ]);
+    }
+
+    auth_json_response([
+        'ok' => false,
+        'status' => 405,
+        'error' => 'Metode tidak diizinkan untuk drive.'
+    ], 405);
+}
+
+if ($requestedApi === 'drive-delete') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'DELETE') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST atau DELETE untuk menghapus drive.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
+    $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
+
+    if ($itemId === '' && $itemUrl === '') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'ID atau URL item wajib diisi.'
+        ], 422);
+    }
+
+    $errors = [];
+    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $errors);
+    if ($items === null) {
+        $status = isset($errors['general']) ? 500 : 404;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Item drive tidak ditemukan.'
+        ], $status);
+    }
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => [
+            'items' => $items,
+        ],
+    ]);
+}
+
+// ====== UPLOAD FILE: ?api=upload ======
+if (isset($_GET['api']) && $_GET['api'] === 'upload') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 405,
+            'error'  => 'Gunakan metode POST untuk upload'
+        ]);
+        exit;
+    }
+
+    if (!isset($_FILES['file']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Tidak ada file yang diunggah'
+        ]);
+        exit;
+    }
+
+    $file = $_FILES['file'];
+    if (!empty($file['error'])) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Upload gagal dengan kode error ' . $file['error']
+        ]);
+        exit;
+    }
+
+    $maxSize = 15 * 1024 * 1024; // 15 MB
+    if ($file['size'] > $maxSize) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 413,
+            'error'  => 'Ukuran file maksimal 15MB'
+        ]);
+        exit;
+    }
+
+    $dir = __DIR__ . '/generated';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp'
+    ];
+
+    $mime = null;
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $mime = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+        }
+    }
+
+    if ($mime && isset($allowed[$mime])) {
+        $ext = $allowed[$mime];
+    }
+
+    if (!$ext) {
+        $ext = 'bin';
+    }
+
+    try {
+        $rand = bin2hex(random_bytes(4));
+    } catch (Exception $e) {
+        $rand = substr(md5(mt_rand()), 0, 8);
+    }
+
+    $filename = 'upload_' . date('Ymd_His') . '_' . $rand . '.' . $ext;
+    $dest = $dir . '/' . $filename;
+
+    if (!move_uploaded_file($file['tmp_name'], $dest)) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Gagal menyimpan file upload'
+        ]);
+        exit;
+    }
+
+    $publicPath = 'generated/' . $filename;
+
+    echo json_encode([
+        'ok'     => true,
+        'status' => 200,
+        'path'   => $publicPath,
+        'url'    => app_public_url($publicPath),
+        'name'   => $file['name']
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// ====== CACHE FILE: ?api=cache (download dari URL lalu simpan ke server) ======
+if (isset($_GET['api']) && $_GET['api'] === 'cache') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    $url = $payload['url'] ?? '';
+
+    if (!$url) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Field \"url\" wajib'
+        ]);
+        exit;
+    }
+
+    $dir = __DIR__ . '/generated';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    $pathPart = parse_url($url, PHP_URL_PATH);
+    $ext = pathinfo($pathPart ?? '', PATHINFO_EXTENSION);
+    if (!$ext) $ext = 'bin';
+
+    try {
+        $rand = bin2hex(random_bytes(4));
+    } catch (Exception $e) {
+        $rand = substr(md5(mt_rand()), 0, 8);
+    }
+
+    $filename = 'fp_' . date('Ymd_His') . '_' . $rand . '.' . $ext;
+    $dest = $dir . '/' . $filename;
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    $data = curl_exec($ch);
+    $errno = curl_errno($ch);
+    $error = curl_error($ch);
+    $status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if ($errno || $data === false || $status >= 400) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Gagal download file: ' . ($error ?: ('HTTP ' . $status))
+        ]);
+        exit;
+    }
+
+    if (file_put_contents($dest, $data) === false) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Gagal menyimpan file ke server'
+        ]);
+        exit;
+    }
+
+    $publicPath = 'generated/' . $filename;
+
+    echo json_encode([
+        'ok'     => true,
+        'status' => 200,
+        'path'   => $publicPath,
+        'url'    => app_public_url($publicPath)
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// ====== PROXY AJAX: ?api=freepik ======
+if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $selectedApiKey = freepik_next_api_key();
+    if (!$selectedApiKey) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'FREEPIK API key belum dikonfigurasi'
+        ]);
+        exit;
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+
+    if (!is_array($payload)) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Payload bukan JSON valid'
+        ]);
+        exit;
+    }
+
+    $path        = $payload['path']        ?? null;
+    $method      = strtoupper($payload['method'] ?? 'POST');
+    $body        = $payload['body']        ?? null;
+    $contentType = $payload['contentType'] ?? 'json';
+
+    if (!$path) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 400,
+            'error'  => 'Field \"path\" wajib'
+        ]);
+        exit;
+    }
+
+    $url = rtrim($FREEPIK_BASE_URL, '/') . $path;
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+
+    $headers = [
+        'x-freepik-api-key: ' . $selectedApiKey,
+        'Accept: application/json'
+    ];
+
+    if ($method !== 'GET' && $body !== null) {
+        if ($contentType === 'form') {
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        } else {
+            $headers[] = 'Content-Type: application/json';
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+        }
+    }
+
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+    $responseBody = curl_exec($ch);
+    $errno        = curl_errno($ch);
+    $error        = curl_error($ch);
+    $statusCode   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if ($errno) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'cURL error: ' . $error
+        ]);
+        exit;
+    }
+
+    $data = null;
+    if ($responseBody !== '' && $responseBody !== null) {
+        $json = json_decode($responseBody, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $data = $json;
+        } else {
+            $data = $responseBody;
+        }
+    }
+
+    echo json_encode([
+        'ok'     => $statusCode >= 200 && $statusCode < 300,
+        'status' => $statusCode,
+        'data'   => $data
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if (!auth_is_logged_in()) {
+    if ($requestedApi === null) {
+        header('Location: index.php');
+        exit;
+    }
+}
+
+$currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : '';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -17,10 +1060,3052 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
   <title>Dasboard – AI Hub + Filmmaker + UGC</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/png" href="/logo.png">
-  <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+
+:root {
+  font-family: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: light;
+  --surface: linear-gradient(135deg, #eef2ff 0%, #f9fbff 55%, #ffffff 100%);
+  --sidebar-bg: rgba(255, 255, 255, 0.95);
+  --sidebar-border: rgba(214, 226, 245, 0.75);
+  --card: #ffffff;
+  --card-soft: #f6f8ff;
+  --card-overlay: rgba(255, 255, 255, 0.96);
+  --border: rgba(208, 217, 235, 0.7);
+  --text: #0f172a;
+  --muted: rgba(71, 85, 105, 0.72);
+  --accent: #3b82f6;
+  --accent-soft: rgba(59, 130, 246, 0.18);
+  --danger: #ef4444;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --shadow: rgba(15, 23, 42, 0.08);
+  --halo-primary: rgba(79, 70, 229, 0.16);
+  --halo-secondary: rgba(14, 165, 233, 0.12);
+  --glass: rgba(255, 255, 255, 0.72);
+  --input-bg: #ffffff;
+  --input-border: rgba(203, 213, 225, 0.75);
+  --sidebar-text-muted: rgba(100, 116, 139, 0.75);
+  --stat-bg: rgba(59, 130, 246, 0.1);
+}
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  transition: background 0.35s ease, color 0.35s ease;
+}
+
+.app-view[hidden] {
+  display: none !important;
+}
+
+button,
+.drive-actions a {
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.18s ease, color 0.25s ease;
+}
+
+button:hover:not(:disabled),
+.drive-actions a:hover {
+  transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: -40vh -40vw;
+  pointer-events: none;
+  background: radial-gradient(circle at center, var(--halo-primary), transparent 60%);
+  opacity: 0.35;
+  filter: blur(160px);
+  animation: orbitGlow 32s linear infinite;
+  z-index: 0;
+}
+body::after {
+  animation-duration: 42s;
+  animation-direction: reverse;
+  background: radial-gradient(circle at center, var(--halo-secondary), transparent 65%);
+}
+@keyframes orbitGlow {
+  from { transform: rotate(0deg) scale(1.05); }
+  50% { transform: rotate(180deg) scale(1.08); }
+  to { transform: rotate(360deg) scale(1.05); }
+}
+body[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.16), transparent 55%), #050914;
+  --sidebar-bg: rgba(13, 16, 28, 0.92);
+  --sidebar-border: rgba(30, 41, 59, 0.8);
+  --card: rgba(15, 23, 42, 0.92);
+  --card-soft: rgba(17, 24, 39, 0.88);
+  --card-overlay: rgba(17, 24, 39, 0.9);
+  --border: rgba(51, 65, 85, 0.6);
+  --text: #f8fafc;
+  --muted: rgba(203, 213, 225, 0.75);
+  --accent: #6366f1;
+  --accent-soft: rgba(99, 102, 241, 0.22);
+  --danger: #f87171;
+  --success: #34d399;
+  --warning: #facc15;
+  --shadow: rgba(2, 6, 23, 0.55);
+  --halo-primary: rgba(99, 102, 241, 0.25);
+  --halo-secondary: rgba(14, 165, 233, 0.22);
+  --glass: rgba(15, 23, 42, 0.65);
+  --input-bg: rgba(15, 23, 42, 0.9);
+  --input-border: rgba(75, 85, 99, 0.6);
+  --sidebar-text-muted: rgba(148, 163, 184, 0.75);
+  --stat-bg: rgba(37, 99, 235, 0.18);
+}
+body[data-theme="light"] {
+  color-scheme: light;
+  --surface: linear-gradient(135deg, #eef2ff 0%, #f7faff 60%, #ffffff 100%);
+  --sidebar-bg: rgba(255, 255, 255, 0.97);
+  --sidebar-border: rgba(214, 226, 245, 0.85);
+  --card: #ffffff;
+  --card-soft: #f7f9ff;
+  --card-overlay: rgba(255, 255, 255, 0.97);
+  --border: rgba(209, 220, 238, 0.75);
+  --text: #0f172a;
+  --muted: rgba(71, 85, 105, 0.68);
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.18);
+  --danger: #ef4444;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --shadow: rgba(15, 23, 42, 0.08);
+  --halo-primary: rgba(79, 70, 229, 0.18);
+  --halo-secondary: rgba(16, 185, 129, 0.14);
+  --glass: rgba(255, 255, 255, 0.78);
+  --input-bg: #ffffff;
+  --input-border: rgba(205, 214, 231, 0.85);
+  --sidebar-text-muted: rgba(100, 116, 139, 0.7);
+  --stat-bg: rgba(37, 99, 235, 0.1);
+}
+* { box-sizing: border-box; }
+.workspace {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 88px;
+  --sidebar-current-width: var(--sidebar-width);
+}
+.workspace.sidebar-collapsed {
+  --sidebar-current-width: var(--sidebar-collapsed-width);
+}
+.workspace-main {
+  flex: 1;
+  margin-left: var(--sidebar-current-width);
+  padding: 36px 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  position: relative;
+  z-index: 1;
+  transition: margin-left 0.3s ease, padding 0.3s ease;
+}
+.overview-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 4px 0 8px;
+}
+.hero-text h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+}
+.hero-text p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.hero-actions {
+  display: flex;
+  gap: 12px;
+}
+.hero-actions .profile-topup {
+  justify-self: auto;
+  align-self: flex-start;
+}
+
+.mobile-coin-banner {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+  position: sticky;
+  top: 68px;
+  z-index: 5;
+}
+
+.mobile-coin-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mobile-coin-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.mobile-coin-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.mobile-coin-topup {
+  width: auto;
+  min-width: 110px;
+  padding: 10px 18px;
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 18px;
+}
+.dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.drive-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.drive-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.drive-header h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+.drive-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.drive-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.drive-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 16px;
+  align-items: flex-end;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+.drive-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+.drive-filter label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.drive-filter select,
+.drive-filter input {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--text);
+  min-height: 36px;
+}
+.drive-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.drive-empty {
+  padding: 48px 24px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--card-soft);
+}
+.drive-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+@media (min-width: 1280px) {
+  .drive-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+.drive-card {
+  background: var(--card);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.drive-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(99, 102, 241, 0.6);
+}
+.drive-thumb {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.4);
+  aspect-ratio: 4 / 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-in;
+}
+.drive-thumb img,
+.drive-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.drive-thumb video {
+  pointer-events: none;
+}
+.drive-thumb[data-type="video"]::after {
+  content: '▶';
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.75);
+  color: #fff;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.35);
+}
+.drive-type-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
+}
+.drive-card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drive-card-footer strong {
+  font-size: 12px;
+  color: var(--text);
+}
+.drive-card-footer span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.drive-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.drive-actions button,
+.drive-actions a {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.drive-actions button:hover,
+.drive-actions a:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(129, 140, 248, 0.7);
+}
+.drive-actions .danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: var(--danger);
+}
+.drive-actions .danger:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.65);
+}
+.drive-clear-date {
+  margin-left: auto;
+}
+@media (max-width: 720px) {
+  .drive-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .drive-meta {
+    width: 100%;
+  }
+  .drive-filter {
+    min-width: 100%;
+  }
+  .drive-filters {
+    align-items: stretch;
+  }
+}
+
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stat-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+.stat-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+
+.account-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.account-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26px 28px;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(14,165,233,0.06));
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  gap: 18px;
+}
+
+.account-hero h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.account-hero p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.account-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.account-settings-card {
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.account-settings-card .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.account-settings-card .title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.account-settings-card .subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.account-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: var(--card-soft);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.account-form-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.avatar-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
+  align-items: center;
+}
+
+.avatar-preview {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 20px;
+  border: 1px dashed rgba(148, 163, 184, 0.55);
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+}
+
+.avatar-preview .avatar-initials {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 20px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.avatar-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.account-form input[type="url"],
+.account-form input[type="password"],
+.account-form input[type="text"] {
+  border-radius: 12px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  padding: 10px 12px;
+  font-size: 13px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.account-form input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.account-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-form-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.account-save-btn {
+  align-self: flex-start;
+  padding: 8px 16px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.6);
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.16), rgba(14, 165, 233, 0.18));
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.account-save-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(59, 130, 246, 0.18);
+}
+
+.account-form-status {
+  display: none;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--muted);
+}
+
+.account-form-status.ok {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--success);
+}
+
+.account-form-status.err {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+}
+
+.account-form-status.progress {
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--accent);
+}
+
+.account-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.account-form-grid input {
+  width: 100%;
+}
+.sidebar-toggle {
+  position: fixed;
+  top: 20px;
+  left: calc(var(--sidebar-current-width) + 16px);
+  min-width: 44px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  z-index: 40;
+}
+.sidebar-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
+}
+.sidebar-toggle svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  transition: transform 0.3s ease;
+}
+.sidebar-toggle-label {
+  display: none;
+}
+.workspace.sidebar-collapsed .sidebar-toggle svg {
+  transform: rotate(180deg);
+}
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-current-width);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 28px 24px 32px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  backdrop-filter: blur(18px);
+  z-index: 30;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+  transition: width 0.3s ease, padding 0.3s ease, transform 0.3s ease;
+}
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.38);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 25;
+  display: none;
+}
+.workspace.sidebar-open .sidebar-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.sidebar-sub {
+  font-size: 12px;
+  color: var(--sidebar-text-muted);
+}
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sidebar-section {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sidebar-text-muted);
+  padding: 4px 14px;
+  margin: 10px 0 -2px;
+}
+
+.sidebar-link {
+  border-radius: 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sidebar-text-muted);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.2s ease, border 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+.sidebar-link .nav-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+.sidebar-link .nav-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+}
+.sidebar-link {
+  text-align: left;
+}
+.sidebar-link .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.sidebar-link .nav-label {
+  flex: 1;
+  text-align: left;
+}
+.sidebar-link:hover {
+  transform: translateX(4px);
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--text);
+}
+.sidebar-link.active {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(14, 165, 233, 0.18));
+  border-color: rgba(37, 99, 235, 0.35);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.sidebar-link.locked {
+  opacity: 0.45;
+}
+.sidebar-link.locked .nav-label::after {
+  content: '•';
+  margin-left: 6px;
+  font-size: 12px;
+  color: rgba(248, 113, 113, 0.9);
+}
+.workspace.sidebar-collapsed .sidebar {
+  padding: 28px 16px;
+}
+.workspace.sidebar-collapsed .sidebar-brand,
+.workspace.sidebar-collapsed .sidebar-sub {
+  display: none;
+}
+.workspace.sidebar-collapsed .sidebar-section {
+  display: none;
+}
+.workspace.sidebar-collapsed .sidebar-nav {
+  align-items: center;
+}
+.workspace.sidebar-collapsed .sidebar-link {
+  justify-content: center;
+  padding: 12px 10px;
+}
+.workspace.sidebar-collapsed .sidebar-link .nav-label,
+.workspace.sidebar-collapsed .sidebar-link .dot {
+  display: none;
+}
+.workspace.sidebar-collapsed .sidebar-actions {
+  align-items: center;
+}
+.workspace.sidebar-collapsed .profile-card,
+.workspace.sidebar-collapsed .sidebar-sub,
+.workspace.sidebar-collapsed .sidebar-title {
+  display: none;
+}
+.workspace.sidebar-collapsed .logout-label {
+  display: none;
+}
+.workspace.sidebar-collapsed .logout-btn {
+  padding: 10px;
+  width: 44px;
+  justify-content: center;
+}
+.workspace.sidebar-collapsed .logout-btn svg {
+  margin: 0;
+}
+.sidebar-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.theme-toggle {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card-soft);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+.theme-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.14);
+}
+.theme-toggle.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.profile-card {
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.6);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.18);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.profile-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.14), rgba(14, 165, 233, 0.08));
+  opacity: 0.6;
+  pointer-events: none;
+}
+.profile-card--mobile {
+  display: none;
+}
+body[data-theme="light"] .profile-card {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(148, 163, 184, 0.32);
+  box-shadow: 0 12px 22px rgba(148, 163, 184, 0.22);
+}
+.profile-card--alert {
+  border-color: rgba(248, 113, 113, 0.45);
+  box-shadow: 0 18px 38px rgba(248, 113, 113, 0.12);
+}
+.profile-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+}
+.profile-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(96, 165, 250, 0.65));
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+.profile-avatar.profile-avatar--image {
+  background-size: cover;
+  background-position: center;
+  color: transparent;
+  text-indent: -9999px;
+}
+body[data-theme="light"] .profile-avatar {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.75));
+}
+.profile-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.profile-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.profile-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  
+  /* --- WARNA EMAS BERKILAU --- */
+  color: #583f08; /* Teks Cokelat Tua/Emas Gelap */
+  background: linear-gradient(90deg, #ffd700, #ffec85); /* Gradasi Emas Kuning ke Emas Terang */
+  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.5); /* Bayangan Emas */
+  /* --- AKHIR WARNA EMAS BERKILAU --- */
+  
+  overflow: hidden;
+}
+
+.profile-badge::before {
+  content: "\1F451"; /* Ikon Mahkota */
+  font-size: 12px;
+}
+
+.profile-badge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 50%;
+  height: 100%;
+  
+  /* Efek Kilau/Shine */
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); 
+  animation: badgeShine 2.8s linear infinite;
+}
+
+@keyframes badgeShine {
+  0% { left: -60%; }
+  60% { left: 120%; }
+  100% { left: 120%; }
+}
+
+.topup-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  
+  /* --- WARNA PINK --- */
+  color: #fce7f3; /* Teks Pink Sangat Muda */
+  background: linear-gradient(90deg, #db2777, #f472b6); /* Gradasi Pink Tua ke Pink Muda */
+  box-shadow: 0 6px 16px rgba(236, 72, 153, 0.35); /* Bayangan Pink */
+  /* --- AKHIR WARNA PINK --- */
+  
+  overflow: hidden;
+}
+
+.topup-badge::before {
+  content: "\1F451"; /* Ikon Mahkota */
+  font-size: 12px;
+}
+
+.topup-badge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 50%;
+  height: 100%;
+  
+  /* Efek Shine (Kilau) */
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  animation: badgeShine 2.8s linear infinite;
+}
+
+@keyframes badgeShine {
+  0% { left: -60%; }
+  60% { left: 120%; }
+  100% { left: 120%; }
+}
+
+.verified-badge-star {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  
+  width: 28px; /* Ukuran badge */
+  height: 28px; /* Ukuran badge */
+  
+  /* --- Bentuk Bintang Bergerigi (Custom Clip-Path) --- */
+  /* Ini adalah perkiraan untuk bentuk bintang bergerigi seperti gambar */
+  clip-path: polygon(
+    50% 0%, 65% 15%, 100% 19%, 85% 35%, 100% 61%, 75% 65%, 70% 100%, 50% 85%, 30% 100%, 25% 65%, 0% 61%, 15% 35%, 0% 19%, 35% 15%
+  );
+  
+  /* --- WARNA BIRU BERKILAU --- */
+  color: #f0f8ff; /* Warna ikon centang: Biru sangat muda/putih */
+  background: linear-gradient(90deg, #1e3a8a, #3b82f6); /* Gradasi Biru Tua ke Biru Terang */
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5); /* Bayangan Biru */
+  /* --- AKHIR WARNA BIRU BERKILAU --- */
+  
+  overflow: hidden; /* Penting untuk efek kilau */
+}
+
+.verified-badge-star::before {
+  /* Ikon centang (simbol Unicode) */
+  content: "\2713"; /* Centang standar. Gunakan \2714 untuk centang tebal */
+  font-size: 16px; /* Ukuran ikon centang */
+  line-height: 1; 
+  z-index: 2; /* Pastikan ikon di atas kilauan */
+}
+
+.verified-badge-star::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%; 
+  width: 70%; 
+  height: 100%;
+  
+  /* Efek Kilau/Shine */
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); 
+  animation: badgeShine 2.5s linear infinite; 
+  z-index: 1; /* Di bawah ikon centang, di atas background badge */
+}
+
+/* Keyframes untuk Animasi Kilauan */
+@keyframes badgeShine {
+  0% { left: -100%; }
+  60% { left: 150%; } 
+  100% { left: 150%; }
+}
+
+.profile-username {
+  font-size: 11px;
+  color: var(--muted);
+}
+.profile-credit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  position: relative;
+  z-index: 1;
+}
+body[data-theme="light"] .profile-credit {
+  background: rgba(240, 249, 255, 0.9);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.profile-credit .credit-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.profile-credit .credit-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+.profile-credit .credit-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.profile-credit .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--success);
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.25);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+.profile-credit .status-dot.offline {
+  background: var(--danger);
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.35);
+}
+.profile-topup {
+  width: 100%;
+  border: none;
+  outline: none;
+  border-radius: 10px;
+  
+  /* --- GRADASI PINK BERKILAU --- */
+  background: linear-gradient(120deg, rgba(236, 72, 153, 0.95), rgba(244, 114, 182, 0.85)); /* Pink Tua ke Pink Muda */
+  color: #ffffff; /* Teks Putih agar kontras */
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(236, 72, 153, 0.35); /* Bayangan Pink Tua */
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.profile-topup:hover {
+  transform: translateY(-1px);
+  /* --- BOX-SHADOW HOVER (LEBIH MENYALA) --- */
+  box-shadow: 0 16px 30px rgba(236, 72, 153, 0.5); /* Bayangan Pink yang lebih kuat saat hover */
+}
+
+/* --- KONDISI ALERT (Jika Diperlukan) --- */
+.profile-card--alert .profile-topup {
+  /* Menggunakan gradasi Pink/Ungu yang berbeda untuk status alert */
+  background: linear-gradient(120deg, rgba(147, 51, 234, 0.95), rgba(192, 132, 252, 0.8));
+}
+.logout-btn {
+  border-radius: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.7);
+  background: var(--card);
+  color: var(--text);
+  font-size: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.logout-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.16);
+}
+.logout-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+}
+@media (max-width: 960px) {
+  .workspace {
+    --sidebar-current-width: 0px;
+  }
+  .sidebar-toggle {
+    top: 16px;
+    left: 16px;
+    min-width: 60px;
+    height: 52px;
+    border-radius: 18px;
+    box-shadow: 0 24px 46px rgba(15, 23, 42, 0.18);
+    font-size: 12px;
+  }
+  .sidebar-toggle svg {
+    width: 20px;
+    height: 20px;
+  }
+  .sidebar-toggle-label {
+    display: inline;
+  }
+  .sidebar {
+    width: min(320px, calc(100vw - 32px));
+    height: 100vh;
+    transform: translateX(-100%);
+    border-right: none;
+    border-bottom: none;
+    padding: 28px 22px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+    box-shadow: 0 28px 68px rgba(15, 23, 42, 0.35);
+    background: var(--sidebar-bg);
+    border-radius: 0 24px 24px 0;
+  }
+  .workspace.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+  .sidebar-overlay {
+    display: block;
+  }
+  .sidebar-brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .sidebar-title {
+    font-size: 20px;
+  }
+  .sidebar-nav {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .sidebar-link {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 14px 16px;
+    border-radius: 18px;
+  }
+  .sidebar-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .sidebar-actions > * {
+    width: 100%;
+  }
+  .theme-toggle {
+    align-self: flex-start;
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .profile-card {
+    display: none;
+  }
+  .profile-card--mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 22px;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+  }
+  .profile-card--mobile .profile-main {
+    align-items: center;
+  }
+  .profile-card--mobile .profile-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+  .mobile-coin-banner {
+    display: flex;
+  }
+  .account-view {
+    gap: 20px;
+  }
+  .account-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    padding: 22px 24px;
+  }
+  .account-settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .avatar-row {
+    grid-template-columns: 1fr;
+  }
+  .avatar-preview {
+    margin: 0 auto;
+    max-width: 140px;
+  }
+  .account-save-btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+    align-self: stretch;
+  }
+  .profile-card--mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 22px;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+  }
+  .profile-card--mobile .profile-main {
+    align-items: center;
+  }
+  .profile-card--mobile .profile-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+  .mobile-coin-banner {
+    display: flex;
+  }
+  .account-settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .avatar-row {
+    grid-template-columns: 1fr;
+  }
+  .avatar-preview {
+    margin: 0 auto;
+    max-width: 140px;
+  }
+  .account-save-btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+    align-self: stretch;
+  }
+  .logout-btn {
+    justify-content: center;
+  }
+  .workspace-main {
+    margin-left: 0;
+    padding: 88px 20px 32px;
+    gap: 24px;
+  }
+  .overview-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 20px 18px;
+    border-radius: 22px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.12);
+  }
+  .hero-text h1 {
+    font-size: 24px;
+  }
+  .hero-text p {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .hero-actions {
+    width: 100%;
+  }
+  .hero-actions .profile-topup {
+    width: 100%;
+    justify-content: center;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .stat-card {
+    padding: 18px 20px;
+    border-radius: 22px;
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.1);
+  }
+  .hub-app {
+    gap: 18px;
+    grid-template-columns: 1fr;
+  }
+  .hub-column,
+  .hub-side {
+    gap: 18px;
+  }
+  .card,
+  .card-soft {
+    padding: 18px;
+    border-radius: 20px;
+  }
+  .feature-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .feature-tab {
+    width: 100%;
+  }
+  .select-group {
+    margin-bottom: 14px;
+  }
+  .two-col {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .field-row {
+    flex-direction: column;
+  }
+  .field-row > div {
+    width: 100%;
+  }
+  .btn-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .btn-group > * {
+    width: 100%;
+  }
+  .status-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .status-text {
+    flex: initial;
+  }
+  .status-progress {
+    width: 100%;
+  }
+  .preview-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .preview-item {
+    width: 100%;
+  }
+  .jobs-col {
+    gap: 16px;
+  }
+  .jobs-list {
+    max-height: none;
+  }
+  .film-app,
+  .ugc-app {
+    padding: 0;
+    gap: 16px;
+    min-height: 0;
+  }
+  .film-scenes-board,
+  .ugc-list-card {
+    padding: 16px;
+  }
+  .film-scenes-container {
+    grid-template-columns: 1fr;
+  }
+  .ugc-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace-main {
+    padding: 84px 16px 28px;
+    gap: 22px;
+  }
+  .sidebar-toggle {
+    top: 14px;
+    left: 14px;
+  }
+  .sidebar {
+    width: min(300px, calc(100vw - 28px));
+    padding: 24px 18px 54px;
+  }
+  .hero-text h1 {
+    font-size: 22px;
+  }
+  .hero-actions .profile-topup {
+    font-size: 13px;
+    padding: 10px 16px;
+  }
+  .stat-value {
+    font-size: 24px;
+  }
+  .feature-tabs {
+    grid-template-columns: 1fr;
+  }
+  .hub-app {
+    gap: 16px;
+  }
+  .hub-column,
+  .hub-side {
+    gap: 16px;
+  }
+  .status-pill {
+    width: 100%;
+    text-align: center;
+  }
+  .preview-btn-group,
+  .ugc-video-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .preview-btn-group > *,
+  .ugc-video-actions > * {
+    width: 100%;
+  }
+  .film-slider-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .film-aspect-toggle {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .film-aspect-btn {
+    flex: 1 1 calc(50% - 8px);
+  }
+  .ugc-product-preview img,
+  .ugc-product-preview div {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+    .hub-app {
+      display: grid;
+      grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+      gap: 24px;
+      align-items: flex-start;
+    }
+    .hub-column {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .hub-side {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .hub-model-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .hub-model-card .select-group {
+      margin: 0;
+    }
+    .hub-form-card form {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    @media (max-width: 1200px) {
+      .hub-app {
+        grid-template-columns: 1fr;
+      }
+      .hub-side {
+        order: 3;
+      }
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 20px 24px;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .card::before { display: none; }
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 28px 56px rgba(15, 23, 42, 0.15);
+    }
+    .card > * { position: relative; z-index: 1; }
+
+    .card-soft {
+      background: var(--card-soft);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+    .card-soft::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(37,99,235,0.12), rgba(14,165,233,0.08));
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 0;
+    }
+    .card-soft:hover::before {
+      opacity: 1;
+    }
+    .card-soft > * { position: relative; z-index: 1; }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: linear-gradient(135deg, rgba(37,99,235,0.16), rgba(14,165,233,0.1));
+      color: var(--muted);
+    }
+    .dot-large {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--success);
+      box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.25);
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 4px;
+      color: var(--muted);
+    }
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 13px;
+      padding: 7px 9px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    }
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.45);
+      background: var(--card);
+    }
+    .field-row {
+      display: flex;
+      gap: 8px;
+    }
+    .field-row > div { flex: 1; }
+
+    button {
+      border-radius: 999px;
+      border: none;
+      background: linear-gradient(135deg, #6366f1, #22d3ee, #a855f7);
+      background-size: 200% 200%;
+      color: white;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 16px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, filter 0.12s ease-out;
+      box-shadow: 0 12px 30px rgba(79, 70, 229, 0.65);
+      white-space: nowrap;
+      animation: gradientShift 6s ease infinite;
+    }
+    button.secondary {
+      background: transparent;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      box-shadow: none;
+      padding-inline: 12px;
+      animation: none;
+    }
+    button.small {
+      padding: 4px 10px;
+      font-size: 11px;
+      box-shadow: none;
+    }
+    button:active {
+      transform: translateY(1px);
+      box-shadow: 0 8px 20px rgba(79, 70, 229, 0.55);
+      filter: brightness(0.96);
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+      animation: none;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .select-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    select { height: 34px; }
+    .model-group-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      margin-bottom: 4px;
+    }
+
+    .feature-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .feature-tab {
+      flex: 1 1 0;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card-soft);
+      color: var(--muted);
+      font-size: 11px;
+      padding: 6px 10px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-tab.locked {
+      opacity: 0.5;
+      cursor: not-allowed;
+      border-style: dashed;
+    }
+    .feature-tab.active {
+      background: linear-gradient(135deg, rgba(37,99,235,0.25), rgba(14,165,233,0.2));
+      border-color: rgba(37,99,235,0.4);
+      color: var(--text);
+      box-shadow: 0 16px 32px rgba(37,99,235,0.18);
+    }
+    .feature-tab::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.2), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .feature-tab:hover::after {
+      opacity: 1;
+    }
+
+    .status-bar {
+      margin-top: 10px;
+      font-size: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .status-text {
+      color: var(--muted);
+      flex: 1 1 180px;
+      transition: opacity 0.3s ease, color 0.3s ease;
+    }
+    .status-text.flash { animation: pulseStatus 0.6s ease; }
+    @keyframes pulseStatus {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
+    .status-pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      border: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.65);
+      box-shadow: inset 0 0 0 1px rgba(148,163,184,0.06);
+    }
+    .status-pill.ok {
+      border-color: rgba(74, 222, 128, 0.5);
+      color: var(--success);
+    }
+    .status-pill.err {
+      border-color: rgba(248, 113, 113, 0.7);
+      color: var(--danger);
+    }
+    .status-progress {
+      flex: 1 1 220px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-progress.active { display: flex; }
+    .status-progress-label {
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status-progress-label span {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .progress-track {
+      flex: 1;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-fill {
+      position: absolute;
+      inset: 0;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(120deg, rgba(99,102,241,0.9), rgba(45,212,191,0.9));
+      box-shadow: 0 0 14px rgba(79,70,229,0.45);
+    }
+    .progress-fill::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+      animation: progressShine 1.8s linear infinite;
+    }
+    @keyframes progressShine {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .main-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .preview-card { margin-top: 0; }
+    .preview-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .preview-progress {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .preview-progress.active { display: flex; }
+    .preview-progress .progress-track {
+      height: 4px;
+    }
+    .preview-item {
+      background: var(--card);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 6px;
+      width: 210px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: box-shadow 0.2s ease, transform 0.2s ease;
+    }
+    .preview-item.preview-item--active {
+      box-shadow: 0 0 0 2px rgba(79,70,229,0.55);
+      transform: translateY(-2px);
+    }
+    .preview-thumb {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+    }
+    .preview-thumb.is-image { cursor: pointer; }
+    .preview-thumb img,
+    .preview-thumb video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+    .preview-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+    .preview-btn-group {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .preview-url {
+      font-size: 10px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .jobs-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .jobs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .job-item {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 8px 9px;
+      background: var(--card);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+    }
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      align-items: center;
+    }
+    .job-title {
+      font-weight: 500;
+      font-size: 11px;
+    }
+    .job-status {
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+    .job-status.in-progress {
+      border-color: rgba(245, 158, 11, 0.7);
+      color: #fbbf24;
+    }
+    .job-status.completed {
+      border-color: rgba(74, 222, 128, 0.7);
+      color: var(--success);
+    }
+    .job-status.error {
+      border-color: rgba(248, 113, 113, 0.7);
+      color: var(--danger);
+    }
+    .job-meta { color: var(--muted); }
+    .job-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .small-label {
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .muted { color: var(--muted); }
+    a.download-link { text-decoration: none; }
+
+    .two-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    @media (min-width: 900px) {
+      .two-col { flex-direction: row; }
+      .two-col > div { flex: 1; }
+    }
+
+    .hidden{display:none!important}
+    .form-section-title{
+      font-size:11px;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.08em;
+      margin:6px 0 6px
+    }
+
+    .upload-area {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .upload-dropzone {
+      border-radius: 12px;
+      border: 1px dashed rgba(99,102,241,0.35);
+      padding: 14px;
+      background: rgba(2, 6, 23, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-dropzone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .upload-dropzone:hover {
+      border-color: rgba(99,102,241,0.6);
+      background: rgba(15,23,42,0.85);
+      transform: translateY(-1px);
+    }
+    .upload-dropzone:hover::after,
+    .upload-dropzone.dragover::after,
+    .upload-dropzone.has-file::after {
+      opacity: 1;
+    }
+    .upload-dropzone.dragover {
+      border-color: rgba(34,197,94,0.6);
+    }
+    .upload-dropzone.has-file {
+      border-color: rgba(34,197,94,0.55);
+      background: rgba(15,23,42,0.9);
+    }
+    .upload-dropzone-content {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .upload-dropzone strong { color: var(--text); font-size: 12px; }
+    .upload-dropzone-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .upload-preview {
+      width: 64px;
+      height: 64px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      background: var(--card);
+    }
+    .upload-status {
+      font-size: 11px;
+      color: var(--muted);
+      display: none;
+    }
+    .upload-status.ok { color: var(--success); display: block; }
+    .upload-status.err { color: var(--danger); display: block; }
+    .upload-status.progress { color: #fbbf24; display: block; }
+
+    .gemini-mode-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .gemini-mode-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .gemini-mode-btn {
+      flex: 1 1 160px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.85);
+      color: var(--muted);
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .gemini-mode-btn strong {
+      display: block;
+      color: var(--text);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .gemini-mode-btn span {
+      display: block;
+      opacity: 0.78;
+      line-height: 1.4;
+    }
+    .gemini-mode-btn::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(99,102,241,0.16), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .gemini-mode-btn:hover::after { opacity: 1; }
+    .gemini-mode-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--text);
+      box-shadow: 0 14px 34px rgba(99,102,241,0.28);
+    }
+    .gemini-mode-desc {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .gemini-reference-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .gemini-dropzone {
+      border-radius: 12px;
+      border: 1px dashed rgba(99,102,241,0.35);
+      padding: 12px;
+      background: rgba(2, 6, 23, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .gemini-dropzone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(99,102,241,0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .gemini-dropzone:hover,
+    .gemini-dropzone.dragover {
+      border-color: rgba(99,102,241,0.6);
+      background: rgba(15,23,42,0.85);
+      transform: translateY(-1px);
+    }
+    .gemini-dropzone:hover::after,
+    .gemini-dropzone.dragover::after,
+    .gemini-dropzone.has-file::after {
+      opacity: 1;
+    }
+    .gemini-dropzone.has-file {
+      border-color: rgba(34,197,94,0.55);
+    }
+    .gemini-dropzone-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .gemini-dropzone-info strong {
+      color: var(--text);
+      font-size: 12px;
+    }
+    .gemini-dropzone-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .gemini-ref-helper {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .gemini-ref-add input {
+      height: 32px;
+    }
+    .gemini-ref-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .gemini-ref-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      padding: 6px 8px;
+    }
+    .gemini-ref-thumb {
+      width: 52px;
+      height: 52px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .gemini-ref-meta {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 0;
+    }
+    .gemini-ref-meta strong {
+      color: var(--text);
+      font-size: 11px;
+    }
+    .gemini-ref-meta span {
+      word-break: break-all;
+    }
+
+    .job-progress {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .job-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .job-progress .progress-track {
+      height: 4px;
+    }
+
+    .film-app {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) 320px;
+      gap: 18px;
+      min-height: calc(100vh - 50px);
+      padding: 12px 16px 16px;
+      position: relative;
+      z-index: 1;
+    }
+    @media (max-width: 1100px) {
+      .film-app { grid-template-columns: 1fr; }
+    }
+    .film-scenes-board {
+      background: linear-gradient(135deg, rgba(37,99,235,0.14), rgba(14,165,233,0.1));
+      border-radius: 12px;
+      border: 1px dashed rgba(75,85,99,0.8);
+      padding: 16px;
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .film-empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px 10px;
+    }
+    .film-empty-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 8px;
+      font-size: 24px;
+      background: var(--card);
+    }
+    .film-scenes-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 10px;
+    }
+    .film-scene-card {
+      background: var(--card);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11px;
+    }
+    .film-scene-thumb {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      border-radius: 12px;
+      object-fit: cover;
+      background: #0f172a;
+    }
+    .film-scene-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .film-scene-title {
+      font-weight: 500;
+    }
+    .film-scene-status {
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+    .film-scene-status.progress { color: #fbbf24; border-color: rgba(245,158,11,0.8); }
+    .film-scene-status.done { color: var(--success); border-color: rgba(74,222,128,0.8); }
+    .film-scene-status.error { color: var(--danger); border-color: rgba(248,113,113,0.8); }
+    .film-scene-prompt {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .film-settings-section {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .film-dropzone {
+      border-radius: 12px;
+      border: 1px dashed #4b5563;
+      padding: 10px;
+      text-align: center;
+      background: var(--card);
+      cursor: pointer;
+      min-height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .film-drop-inner {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .film-drop-inner span {
+      font-size: 10px;
+      opacity: 0.8;
+    }
+    .film-character-preview {
+      max-width: 100%;
+      max-height: 180px;
+      border-radius: 8px;
+    }
+
+    .film-aspect-toggle {
+      display: flex;
+      gap: 8px;
+    }
+    .film-aspect-btn {
+      flex: 1;
+      font-size: 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--muted);
+      padding: 6px 10px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .film-aspect-btn.film-aspect-active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .film-slider-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .film-slider-row input[type="range"] {
+      flex: 1;
+    }
+
+    /* ===== UGC TOOL ===== */
+    .ugc-app {
+      display: grid;
+      grid-template-columns: minmax(0, 2.2fr) 320px;
+      gap: 18px;
+      min-height: calc(100vh - 50px);
+      padding: 12px 16px 16px;
+      position: relative;
+      z-index: 1;
+    }
+    @media (max-width: 1100px) {
+      .ugc-app { grid-template-columns: 1fr; }
+    }
+    .ugc-list-card {
+      background: linear-gradient(135deg, rgba(37,99,235,0.14), rgba(14,165,233,0.1));
+      border-radius: 12px;
+      border: 1px dashed rgba(75,85,99,0.8);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .ugc-empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 32px 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .ugc-row {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      gap: 12px;
+      padding: 10px;
+    }
+    @media (max-width: 900px) {
+      .ugc-row { grid-template-columns: 1fr; }
+    }
+    .ugc-media-block {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ugc-media-card {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg,#7c3aed,#0f172a);
+      padding: 10px 8px;
+      color: #e5e7eb;
+      font-size: 11px;
+      text-align: center;
+      min-height: 160px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ugc-media-card img {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      border-radius: 12px;
+      object-fit: cover;
+      background:#000;
+    }
+    .ugc-media-title {
+      font-size: 11px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    .ugc-media-status {
+      font-size: 10px;
+      opacity: .8;
+    }
+    .ugc-video-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.12));
+      padding: 10px;
+      font-size: 11px;
+      text-align: center;
+      min-height: 80px;
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items:center;
+      justify-content:center;
+    }
+    .ugc-video-card video {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      border-radius: 12px;
+      background: #000;
+      object-fit: cover;
+    }
+    .ugc-video-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .ugc-right {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .ugc-prompt-label {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .ugc-product-preview {
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+      margin-top:4px;
+    }
+    .ugc-product-preview img,
+    .ugc-product-preview div {
+      width:48px;
+      height:48px;
+      border-radius:8px;
+      border:1px solid var(--border);
+      object-fit:cover;
+      background: var(--card);
+      font-size:10px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--muted);
+    }
+    .ugc-style-picker {
+      position: relative;
+    }
+    .ugc-style-trigger {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+    .ugc-style-trigger.open {
+      border-color: rgba(129,140,248,0.8);
+      background: rgba(76,29,149,0.25);
+    }
+    .ugc-style-trigger-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-align: left;
+    }
+    .ugc-style-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(79,70,229,0.18);
+      font-size: 16px;
+    }
+    .ugc-style-trigger-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ugc-style-label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .ugc-style-description {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .ugc-style-caret {
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .ugc-style-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid rgba(71,85,105,0.8);
+      box-shadow: 0 18px 35px rgba(15,23,42,0.5);
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 10px 0;
+      z-index: 1200;
+    }
+    .ugc-style-group {
+      padding: 6px 12px 10px;
+    }
+    .ugc-style-group + .ugc-style-group {
+      border-top: 1px solid rgba(30,41,59,0.8);
+      margin-top: 4px;
+      padding-top: 10px;
+    }
+    .ugc-style-group-title {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.85);
+      margin-bottom: 8px;
+    }
+    .ugc-style-option {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .ugc-style-option:hover,
+    .ugc-style-option.active {
+      background: rgba(99,102,241,0.18);
+      color: #e0e7ff;
+    }
+    .ugc-style-option-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(129,140,248,0.18);
+      font-size: 15px;
+    }
+    .ugc-style-option-meta {
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+      gap: 2px;
+    }
+    .ugc-style-option-label {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .ugc-style-option-desc {
+      font-size: 10px;
+      color: rgba(148,163,184,0.85);
+    }
+    @media (max-width: 600px) {
+      .ugc-style-menu {
+        max-height: 300px;
+      }
+    }
+    .asset-preview {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.86);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 2000;
+    }
+    .asset-preview.hidden { display: none; }
+    .asset-preview-inner {
+      background: var(--card);
+      border-radius: 14px;
+      border: 1px solid rgba(99,102,241,0.35);
+      max-width: min(90vw, 960px);
+      max-height: min(90vh, 620px);
+      width: 100%;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 18px 55px rgba(15,23,42,0.8);
+      position: relative;
+    }
+    .asset-preview-close {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      border: none;
+      background: rgba(148,163,184,0.12);
+      color: #e5e7eb;
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s ease;
+    }
+    .asset-preview-close:hover {
+      background: rgba(148,163,184,0.28);
+    }
+    .asset-preview-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .asset-preview-body img,
+    .asset-preview-body video {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 12px;
+      background: var(--card);
+    }
+    .asset-preview-download {
+      align-self: flex-end;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(99,102,241,0.5);
+      color: #e0e7ff;
+      font-size: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+    .asset-preview-download:hover {
+      background: rgba(99,102,241,0.2);
+      border-color: rgba(129,140,248,0.75);
+    }
+    body.modal-open {
+      overflow: hidden;
+    }
+    .clickable-media {
+      cursor: zoom-in;
+    }
+    .progress-inline {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .progress-inline.active {
+      display: flex;
+    }
+    .progress-inline .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .progress-inline .progress-bar {
+      width: 100%;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(148,163,184,0.25);
+      overflow: hidden;
+    }
+    .progress-inline .progress-fill {
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: linear-gradient(120deg, rgba(37,99,235,0.85), rgba(14,165,233,0.85));
+      transition: width 0.3s ease;
+    }
+    .maintenance-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      background: radial-gradient(circle at center, rgba(15,23,42,0.85), rgba(2,6,23,0.95));
+      z-index: 4000;
+    }
+    .maintenance-overlay::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(59,130,246,0.28), rgba(14,165,233,0.2), rgba(99,102,241,0.28));
+      opacity: 0.5;
+      animation: maintenanceGlow 12s ease-in-out infinite;
+    }
+    .maintenance-overlay.active {
+      display: flex;
+    }
+    .maintenance-overlay__content {
+      position: relative;
+      z-index: 1;
+      max-width: 420px;
+      width: 100%;
+      background: rgba(15,23,42,0.92);
+      border: 1px solid rgba(99,102,241,0.25);
+      border-radius: 20px;
+      padding: 32px 28px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(2,6,23,0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .maintenance-overlay__icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: rgba(96,165,250,0.2);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin: 0 auto 6px;
+    }
+    .maintenance-overlay__content h2 {
+      margin: 0;
+      font-size: 22px;
+      color: #e2e8f0;
+    }
+    .maintenance-overlay__content p {
+      margin: 0;
+      font-size: 13px;
+      color: rgba(226,232,240,0.75);
+      line-height: 1.5;
+    }
+    body.maintenance-active {
+      overflow: hidden;
+    }
+    .topup-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2,6,23,0.65);
+      backdrop-filter: blur(6px);
+      z-index: 5000;
+      padding: 20px;
+    }
+    .topup-modal.show {
+      display: flex;
+    }
+    .topup-modal__dialog {
+      background: var(--card);
+      border-radius: 18px;
+      border: 1px solid rgba(148,163,184,0.25);
+      width: min(360px, 100%);
+      padding: 20px 22px;
+      box-shadow: 0 24px 60px rgba(15,23,42,0.45);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .topup-modal__close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: none;
+      background: rgba(148,163,184,0.18);
+      color: var(--text);
+      font-size: 18px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .topup-modal__close:hover {
+      background: rgba(148,163,184,0.3);
+    }
+    .topup-modal__title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .topup-modal__options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .topup-option {
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.28);
+      background: var(--card-soft);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .topup-option:hover {
+      border-color: rgba(59,130,246,0.45);
+    }
+    .topup-option.active {
+      border-color: rgba(59,130,246,0.6);
+      background: linear-gradient(135deg, rgba(59,130,246,0.22), rgba(14,165,233,0.16));
+      color: var(--text);
+      box-shadow: 0 14px 28px rgba(59,130,246,0.18);
+    }
+    .topup-modal__confirm {
+      margin-top: 4px;
+    }
+    .topup-modal__hint {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+    }
+    @keyframes maintenanceGlow {
+      0% { transform: rotate(0deg) scale(1); opacity: 0.45; }
+      50% { transform: rotate(180deg) scale(1.04); opacity: 0.6; }
+      100% { transform: rotate(360deg) scale(1); opacity: 0.45; }
+    }
+  </style>
 </head>
-<body class="dashboard-page" data-theme="light">
+<body data-theme="light">
 
 <div class="workspace sidebar-open">
   <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true">
@@ -827,19 +4912,6 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
   const ugcProgressEl = document.getElementById('ugcProgress');
   const ugcProgressFill = document.getElementById('ugcProgressFill');
   const ugcProgressValue = document.getElementById('ugcProgressValue');
-
-  const API_BASE = 'index.php';
-  const ACCOUNT_ENDPOINT = `${API_BASE}?api=account`;
-  const ACCOUNT_THEME_ENDPOINT = `${API_BASE}?api=account-theme`;
-  const ACCOUNT_COINS_ENDPOINT = `${API_BASE}?api=account-coins`;
-  const LOGOUT_ENDPOINT = `${API_BASE}?api=logout`;
-  const DRIVE_ENDPOINT = `${API_BASE}?api=drive`;
-  const DRIVE_DELETE_ENDPOINT = `${API_BASE}?api=drive-delete`;
-  const ACCOUNT_AVATAR_ENDPOINT = `${API_BASE}?api=account-avatar`;
-  const ACCOUNT_PASSWORD_ENDPOINT = `${API_BASE}?api=account-password`;
-  const FREEPIK_ENDPOINT = `${API_BASE}?api=freepik`;
-  const CACHE_ENDPOINT = `${API_BASE}?api=cache`;
-  const UPLOAD_ENDPOINT = `${API_BASE}?api=upload`;
 
   const TOPUP_AMOUNTS = [10, 20, 30, 40, 50, 100, 150, 200];
   const TOPUP_WHATSAPP = 'https://wa.me/62818404222';
@@ -1828,7 +5900,7 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
   }
 
   async function fetchAccountState() {
-    const res = await fetch(ACCOUNT_ENDPOINT, {
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account', {
       credentials: 'same-origin'
     });
     if (!res.ok) {
@@ -1842,7 +5914,7 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
   }
 
   async function persistTheme(theme) {
-    const res = await fetch(ACCOUNT_THEME_ENDPOINT, {
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-theme', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -1890,7 +5962,7 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
 
   async function spendCoins(amount) {
     if (!amount || amount <= 0) return;
-    const res = await fetch(ACCOUNT_COINS_ENDPOINT, {
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-coins', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -1932,7 +6004,7 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
 
       logoutButton.classList.add('loading');
       try {
-        const res = await fetch(LOGOUT_ENDPOINT, {
+        const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
@@ -2360,6 +6432,10 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
   };
 
   const STORAGE_KEY = 'freepik_jobs_v1';
+  const DRIVE_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive';
+  const DRIVE_DELETE_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive-delete';
+  const ACCOUNT_AVATAR_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-avatar';
+  const ACCOUNT_PASSWORD_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-password';
   jobs = loadJobs();
   updateDashboardStats();
   let activeJobId = null;
@@ -3264,7 +7340,7 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
       contentType: cfg.contentType || 'json'
     };
 
-    const res = await fetch(FREEPIK_ENDPOINT, {
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=freepik', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -3287,7 +7363,7 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
 
   // ===== CACHE DI SERVER =====
   async function cacheUrl(remoteUrl) {
-    const res = await fetch(CACHE_ENDPOINT, {
+    const res = await fetch('<?= htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES) ?>?api=cache', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: remoteUrl })
@@ -3336,7 +7412,7 @@ $currentUser = (string)($_SESSION['auth_user'] ?? '');
     const formData = new FormData();
     formData.append('file', file);
 
-    const res = await fetch(UPLOAD_ENDPOINT, {
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=upload', {
       method: 'POST',
       body: formData
     });
