@@ -43,6 +43,20 @@ function auth_platform_default_generators(?string $now = null): array
             'enabled' => true,
             'updated_at' => $now,
         ],
+        'textGen' => [
+            'key' => 'textGen',
+            'label' => 'Text Generator',
+            'description' => 'Bangun konten teks instan dengan Gemini.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
+        'textSpeech' => [
+            'key' => 'textSpeech',
+            'label' => 'Text-to-Speech',
+            'description' => 'Konversi teks menjadi suara natural.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
         'filmmaker' => [
             'key' => 'filmmaker',
             'label' => 'Filmmaker',
