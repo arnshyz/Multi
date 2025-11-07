@@ -31,6 +31,9 @@ $FREEPIK_REDIS_CONFIG = [
     'key'      => getenv('FREEPIK_REDIS_KEY') ?: 'freepik:api-keys',
 ];
 
+$GEMINI_API_KEY = getenv('GEMINI_API_KEY') ?: '';
+$GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com';
+
 function app_base_url(): string
 {
     static $cached = null;
@@ -231,6 +234,222 @@ function freepik_next_api_key()
     $key = $keys[$index % count($keys)];
     $index++;
     return $key;
+}
+
+function gemini_api_key()
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $key = getenv('GEMINI_API_KEY');
+    if (!is_string($key)) {
+        $key = '';
+    }
+
+    $cached = trim($key);
+
+    return $cached;
+}
+
+function gemini_api_request($endpoint, $method = 'POST', $body = null, $query = [])
+{
+    global $GEMINI_BASE_URL;
+
+    $apiKey = gemini_api_key();
+    if ($apiKey === '') {
+        return [
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'GEMINI_API_KEY belum dikonfigurasi.'
+        ];
+    }
+
+    if (!is_array($query)) {
+        $query = [];
+    }
+    $query['key'] = $apiKey;
+
+    $url = rtrim($GEMINI_BASE_URL, '/') . $endpoint;
+    $separator = strpos($url, '?') === false ? '?' : '&';
+    $url .= $separator . http_build_query($query);
+
+    $method = strtoupper($method ?: 'POST');
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+
+    $headers = ['Accept: application/json'];
+
+    if ($method !== 'GET' && $body !== null) {
+        if (is_array($body) || is_object($body)) {
+            $payload = json_encode($body);
+        } else {
+            $payload = (string)$body;
+        }
+
+        $headers[] = 'Content-Type: application/json';
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+    }
+
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+    $responseBody = curl_exec($ch);
+    $errno = curl_errno($ch);
+    $error = curl_error($ch);
+    $statusCode = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if ($errno) {
+        return [
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'cURL error: ' . $error
+        ];
+    }
+
+    $data = null;
+    if ($responseBody !== '' && $responseBody !== null) {
+        $decoded = json_decode($responseBody, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $data = $decoded;
+        } else {
+            $data = $responseBody;
+        }
+    }
+
+    $ok = $statusCode >= 200 && $statusCode < 300;
+
+    $result = [
+        'ok'     => $ok,
+        'status' => $statusCode,
+        'data'   => $data,
+    ];
+
+    if (!$ok) {
+        if (is_array($data) && isset($data['error'])) {
+            if (is_string($data['error'])) {
+                $result['error'] = $data['error'];
+            } elseif (is_array($data['error']) && isset($data['error']['message'])) {
+                $result['error'] = $data['error']['message'];
+            }
+        }
+        if (empty($result['error'])) {
+            $result['error'] = 'Permintaan API Gemini gagal.';
+        }
+    }
+
+    return $result;
+}
+
+function gemini_extract_text($response)
+{
+    if (!is_array($response)) {
+        return null;
+    }
+
+    if (isset($response['candidates']) && is_array($response['candidates'])) {
+        foreach ($response['candidates'] as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+            if (isset($candidate['content']['parts']) && is_array($candidate['content']['parts'])) {
+                foreach ($candidate['content']['parts'] as $part) {
+                    if (is_array($part) && isset($part['text'])) {
+                        return (string)$part['text'];
+                    }
+                }
+            }
+        }
+    }
+
+    if (isset($response['text'])) {
+        return (string)$response['text'];
+    }
+
+    return null;
+}
+
+function gemini_extract_audio($response)
+{
+    if (!is_array($response)) {
+        return null;
+    }
+
+    if (isset($response['candidates']) && is_array($response['candidates'])) {
+        foreach ($response['candidates'] as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+            if (isset($candidate['content']['parts']) && is_array($candidate['content']['parts'])) {
+                foreach ($candidate['content']['parts'] as $part) {
+                    if (!is_array($part)) {
+                        continue;
+                    }
+                    if (isset($part['inline_data']['data'])) {
+                        $mime = isset($part['inline_data']['mime_type'])
+                            ? (string)$part['inline_data']['mime_type']
+                            : 'audio/mp3';
+
+                        return [
+                            'data' => (string)$part['inline_data']['data'],
+                            'mime' => $mime,
+                        ];
+                    }
+                }
+            }
+        }
+    }
+
+    if (isset($response['audio'])) {
+        $audio = $response['audio'];
+        if (is_array($audio) && isset($audio['data'])) {
+            return [
+                'data' => (string)$audio['data'],
+                'mime' => isset($audio['mime']) ? (string)$audio['mime'] : 'audio/mp3',
+            ];
+        }
+        if (is_string($audio)) {
+            return [
+                'data' => $audio,
+                'mime' => 'audio/mp3',
+            ];
+        }
+    }
+
+    return null;
+}
+
+function gemini_collect_media_urls($value, &$urls)
+{
+    if (is_array($value)) {
+        foreach ($value as $item) {
+            gemini_collect_media_urls($item, $urls);
+        }
+        return;
+    }
+
+    if (!is_string($value)) {
+        return;
+    }
+
+    if (preg_match('#^https?://#i', $value)) {
+        $urls[$value] = true;
+    }
+}
+
+function gemini_extract_video_urls($response)
+{
+    if (!is_array($response)) {
+        return [];
+    }
+
+    $urls = [];
+    gemini_collect_media_urls($response, $urls);
+
+    return array_keys($urls);
 }
 
 $requestedApi = isset($_GET['api']) ? (string)$_GET['api'] : null;
@@ -771,6 +990,311 @@ if ($requestedApi === 'drive-delete') {
             'items' => $items,
         ],
     ]);
+}
+
+if ($requestedApi === 'gemini') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk mengakses Gemini API.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = [];
+    }
+
+    $action = isset($payload['action']) ? strtolower(trim((string)$payload['action'])) : '';
+    if ($action === '') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'Field "action" wajib diisi.'
+        ], 422);
+    }
+
+    if ($action === 'text') {
+        $prompt = isset($payload['prompt']) ? trim((string)$payload['prompt']) : '';
+        if ($prompt === '') {
+            auth_json_response([
+                'ok' => false,
+                'status' => 422,
+                'error' => ['prompt' => 'Prompt wajib diisi.']
+            ], 422);
+        }
+
+        $model = isset($payload['model']) ? trim((string)$payload['model']) : '';
+        if ($model === '') {
+            $model = 'gemini-1.5-flash-latest';
+        }
+
+        $system = isset($payload['system']) ? trim((string)$payload['system']) : '';
+        $temperature = isset($payload['temperature']) && is_numeric($payload['temperature'])
+            ? (float)$payload['temperature']
+            : null;
+        $maxTokens = isset($payload['maxOutputTokens']) && is_numeric($payload['maxOutputTokens'])
+            ? (int)$payload['maxOutputTokens']
+            : null;
+
+        $body = [
+            'contents' => [
+                [
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => $prompt]
+                    ],
+                ],
+            ],
+        ];
+
+        if ($system !== '') {
+            $body['system_instruction'] = [
+                'role' => 'system',
+                'parts' => [
+                    ['text' => $system],
+                ],
+            ];
+        }
+
+        $genConfig = [];
+        if ($temperature !== null) {
+            if ($temperature < 0) {
+                $temperature = 0.0;
+            }
+            if ($temperature > 2) {
+                $temperature = 2.0;
+            }
+            $genConfig['temperature'] = $temperature;
+        }
+        if ($maxTokens !== null && $maxTokens > 0) {
+            $genConfig['maxOutputTokens'] = $maxTokens;
+        }
+        if ($genConfig) {
+            $body['generationConfig'] = $genConfig;
+        }
+
+        $result = gemini_api_request('/v1beta/models/' . rawurlencode($model) . ':generateContent', 'POST', $body);
+        if (!$result['ok']) {
+            $status = $result['status'] ?: 500;
+            auth_json_response([
+                'ok' => false,
+                'status' => $status,
+                'error' => $result['error'] ?? 'Permintaan Gemini gagal.'
+            ], $status);
+        }
+
+        $responseData = is_array($result['data']) ? $result['data'] : [];
+        $text = gemini_extract_text($responseData);
+
+        auth_json_response([
+            'ok' => true,
+            'status' => 200,
+            'data' => [
+                'model' => $model,
+                'text' => $text,
+                'raw' => $responseData,
+            ],
+        ]);
+    }
+
+    if ($action === 'speech') {
+        $prompt = isset($payload['prompt']) ? trim((string)$payload['prompt']) : '';
+        if ($prompt === '') {
+            auth_json_response([
+                'ok' => false,
+                'status' => 422,
+                'error' => ['prompt' => 'Teks untuk dibacakan wajib diisi.']
+            ], 422);
+        }
+
+        $model = isset($payload['model']) ? trim((string)$payload['model']) : '';
+        if ($model === '') {
+            $model = 'gemini-1.5-flash-latest';
+        }
+
+        $voice = isset($payload['voice']) ? trim((string)$payload['voice']) : 'Puck';
+        $language = isset($payload['language']) ? trim((string)$payload['language']) : 'en-US';
+        $mimeType = isset($payload['mimeType']) ? trim((string)$payload['mimeType']) : 'audio/mp3';
+        if ($mimeType === '') {
+            $mimeType = 'audio/mp3';
+        }
+
+        $temperature = isset($payload['temperature']) && is_numeric($payload['temperature'])
+            ? (float)$payload['temperature']
+            : null;
+
+        $generationConfig = [
+            'responseMimeType' => $mimeType,
+        ];
+        if ($voice !== '') {
+            $generationConfig['responseVoice'] = $voice;
+        }
+        if ($temperature !== null) {
+            if ($temperature < 0) {
+                $temperature = 0.0;
+            }
+            if ($temperature > 2) {
+                $temperature = 2.0;
+            }
+            $generationConfig['temperature'] = $temperature;
+        }
+
+        $body = [
+            'contents' => [
+                [
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => $prompt]
+                    ],
+                ],
+            ],
+            'generationConfig' => $generationConfig,
+        ];
+
+        if ($voice !== '' || $language !== '') {
+            $voiceConfig = ['prebuiltVoiceConfig' => []];
+            if ($voice !== '') {
+                $voiceConfig['prebuiltVoiceConfig']['voiceName'] = $voice;
+            }
+            if ($language !== '') {
+                $voiceConfig['prebuiltVoiceConfig']['languageCode'] = $language;
+            }
+            $body['voiceConfig'] = $voiceConfig;
+        }
+
+        $result = gemini_api_request('/v1beta/models/' . rawurlencode($model) . ':generateContent', 'POST', $body);
+        if (!$result['ok']) {
+            $status = $result['status'] ?: 500;
+            auth_json_response([
+                'ok' => false,
+                'status' => $status,
+                'error' => $result['error'] ?? 'Permintaan Gemini gagal.'
+            ], $status);
+        }
+
+        $responseData = is_array($result['data']) ? $result['data'] : [];
+        $audio = gemini_extract_audio($responseData);
+        if (!$audio) {
+            auth_json_response([
+                'ok' => false,
+                'status' => 502,
+                'error' => 'Gemini tidak mengembalikan audio.'
+            ], 502);
+        }
+
+        auth_json_response([
+            'ok' => true,
+            'status' => 200,
+            'data' => [
+                'model' => $model,
+                'audio' => $audio['data'],
+                'mimeType' => $audio['mime'] ?? $mimeType,
+                'raw' => $responseData,
+            ],
+        ]);
+    }
+
+    if ($action === 'veo' || $action === 'video') {
+        $prompt = isset($payload['prompt']) ? trim((string)$payload['prompt']) : '';
+        if ($prompt === '') {
+            auth_json_response([
+                'ok' => false,
+                'status' => 422,
+                'error' => ['prompt' => 'Deskripsi video wajib diisi.']
+            ], 422);
+        }
+
+        $dialogue = isset($payload['dialogue']) ? trim((string)$payload['dialogue']) : '';
+        $model = isset($payload['model']) ? trim((string)$payload['model']) : 'veo-3.1';
+        if ($model === '') {
+            $model = 'veo-3.1';
+        }
+
+        $duration = isset($payload['duration']) ? (int)$payload['duration'] : 0;
+        $aspect = isset($payload['aspectRatio']) ? trim((string)$payload['aspectRatio']) : '';
+        $style = isset($payload['style']) ? trim((string)$payload['style']) : '';
+
+        $body = [
+            'prompt' => [
+                'text' => $prompt,
+            ],
+        ];
+
+        if ($dialogue !== '') {
+            $body['narration'] = [
+                [
+                    'speaker' => 'Narrator',
+                    'text' => $dialogue,
+                ],
+            ];
+        }
+
+        $config = [];
+        if ($duration > 0) {
+            $config['duration'] = 'PT' . $duration . 'S';
+        }
+        if ($aspect !== '') {
+            $config['aspectRatio'] = $aspect;
+        }
+        if ($style !== '') {
+            $config['style'] = $style;
+        }
+        if ($config) {
+            $body['config'] = $config;
+        }
+
+        if (!empty($payload['referenceImage']) && is_string($payload['referenceImage'])) {
+            $body['referenceImage'] = $payload['referenceImage'];
+        }
+
+        $result = gemini_api_request('/v1beta/models/' . rawurlencode($model) . ':generateVideo', 'POST', $body);
+        if (!$result['ok']) {
+            $status = $result['status'] ?: 500;
+            auth_json_response([
+                'ok' => false,
+                'status' => $status,
+                'error' => $result['error'] ?? 'Permintaan Gemini gagal.'
+            ], $status);
+        }
+
+        $responseData = is_array($result['data']) ? $result['data'] : [];
+        $videoUrls = gemini_extract_video_urls($responseData);
+        $operation = null;
+        if (isset($responseData['name'])) {
+            $operation = (string)$responseData['name'];
+        } elseif (isset($responseData['operation'])) {
+            $operation = (string)$responseData['operation'];
+        }
+
+        auth_json_response([
+            'ok' => true,
+            'status' => 200,
+            'data' => [
+                'model' => $model,
+                'operation' => $operation,
+                'videoUrls' => $videoUrls,
+                'raw' => $responseData,
+            ],
+        ]);
+    }
+
+    auth_json_response([
+        'ok' => false,
+        'status' => 404,
+        'error' => 'Aksi Gemini tidak dikenal.'
+    ], 404);
 }
 
 // ====== UPLOAD FILE: ?api=upload ======
@@ -2110,28 +2634,29 @@ body::after {
 }
 body[data-theme="dark"] {
   color-scheme: dark;
-  --surface: radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.16), transparent 55%), #050914;
-  --sidebar-bg: rgba(13, 16, 28, 0.92);
-  --sidebar-border: rgba(30, 41, 59, 0.8);
-  --card: rgba(15, 23, 42, 0.92);
-  --card-soft: rgba(17, 24, 39, 0.88);
-  --card-overlay: rgba(17, 24, 39, 0.9);
-  --border: rgba(51, 65, 85, 0.6);
+  --surface: radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.16), transparent 55%),
+    radial-gradient(circle at 85% 20%, rgba(14, 165, 233, 0.18), transparent 60%), #030712;
+  --sidebar-bg: rgba(10, 14, 24, 0.62);
+  --sidebar-border: rgba(99, 102, 241, 0.32);
+  --card: rgba(13, 20, 34, 0.64);
+  --card-soft: rgba(17, 25, 41, 0.54);
+  --card-overlay: rgba(8, 14, 26, 0.72);
+  --border: rgba(99, 102, 241, 0.35);
   --text: #f8fafc;
   --muted: rgba(203, 213, 225, 0.75);
   --accent: #6366f1;
-  --accent-soft: rgba(99, 102, 241, 0.22);
+  --accent-soft: rgba(99, 102, 241, 0.3);
   --danger: #f87171;
   --success: #34d399;
   --warning: #facc15;
-  --shadow: rgba(2, 6, 23, 0.55);
-  --halo-primary: rgba(99, 102, 241, 0.25);
-  --halo-secondary: rgba(14, 165, 233, 0.22);
-  --glass: rgba(15, 23, 42, 0.65);
-  --input-bg: rgba(15, 23, 42, 0.9);
-  --input-border: rgba(75, 85, 99, 0.6);
-  --sidebar-text-muted: rgba(148, 163, 184, 0.75);
-  --stat-bg: rgba(37, 99, 235, 0.18);
+  --shadow: rgba(2, 6, 23, 0.45);
+  --halo-primary: rgba(99, 102, 241, 0.28);
+  --halo-secondary: rgba(14, 165, 233, 0.24);
+  --glass: rgba(13, 20, 34, 0.58);
+  --input-bg: rgba(9, 16, 28, 0.7);
+  --input-border: rgba(138, 152, 181, 0.35);
+  --sidebar-text-muted: rgba(191, 202, 222, 0.78);
+  --stat-bg: rgba(99, 102, 241, 0.25);
 }
 body[data-theme="light"] {
   color-scheme: light;
@@ -2480,10 +3005,12 @@ body[data-theme="light"] {
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px 18px;
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 36px rgba(5, 10, 22, 0.35);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 .stat-label {
   font-size: 12px;
@@ -2515,8 +3042,10 @@ body[data-theme="light"] {
   padding: 26px 28px;
   border-radius: 22px;
   border: 1px solid var(--border);
-  background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(14,165,233,0.06));
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  background: var(--card);
+  box-shadow: 0 22px 46px rgba(4, 9, 20, 0.38);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   gap: 18px;
 }
 
@@ -2884,11 +3413,12 @@ body[data-theme="light"] {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 .sidebar-link.locked {
-  opacity: 0.45;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .sidebar-link.locked .nav-label::after {
-  content: '•';
-  margin-left: 6px;
+  content: '🔒';
+  margin-left: 8px;
   font-size: 12px;
   color: rgba(248, 113, 113, 0.9);
 }
@@ -2963,15 +3493,17 @@ body[data-theme="light"] {
 }
 .profile-card {
   border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border);
+  background: var(--card);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.18);
+  box-shadow: 0 18px 34px rgba(3, 7, 18, 0.35);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .profile-card::before {
@@ -3376,7 +3908,9 @@ body[data-theme="light"] .profile-credit {
     border-radius: 24px;
     border: 1px solid var(--border);
     background: var(--card);
-    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+    box-shadow: 0 20px 40px rgba(4, 9, 20, 0.32);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   }
   .profile-card--mobile .profile-main {
     align-items: center;
@@ -3422,7 +3956,9 @@ body[data-theme="light"] .profile-credit {
     border-radius: 24px;
     border: 1px solid var(--border);
     background: var(--card);
-    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+    box-shadow: 0 20px 40px rgba(4, 9, 20, 0.32);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   }
   .profile-card--mobile .profile-main {
     align-items: center;
@@ -3494,6 +4030,9 @@ body[data-theme="light"] .profile-credit {
   }
   .hub-app {
     gap: 18px;
+    grid-template-columns: 1fr;
+  }
+  .gemini-grid {
     grid-template-columns: 1fr;
   }
   .hub-column,
@@ -3682,6 +4221,9 @@ body[data-theme="light"] .profile-credit {
       .hub-side {
         order: 3;
       }
+      .gemini-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
 
     .card {
@@ -3689,10 +4231,12 @@ body[data-theme="light"] .profile-credit {
       border-radius: 18px;
       border: 1px solid var(--border);
       padding: 20px 24px;
-      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
+      box-shadow: 0 22px 46px rgba(6, 11, 25, 0.4);
       position: relative;
       overflow: hidden;
-      transition: transform 0.25s ease, box-shadow 0.25s ease;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
     }
     .card::before { display: none; }
     .card:hover {
@@ -3708,7 +4252,9 @@ body[data-theme="light"] .profile-credit {
       padding: 18px 20px;
       position: relative;
       overflow: hidden;
-      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      box-shadow: 0 18px 38px rgba(4, 8, 20, 0.35);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
     .card-soft::before {
       content: "";
@@ -3723,6 +4269,189 @@ body[data-theme="light"] .profile-credit {
       opacity: 1;
     }
     .card-soft > * { position: relative; z-index: 1; }
+    .gemini-view {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .gemini-hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .gemini-hero h1 {
+      margin: 0 0 6px;
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .gemini-hero p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .gemini-hero-badges {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .gemini-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(99,102,241,0.38);
+      background: rgba(99,102,241,0.16);
+      color: #dbeafe;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .gemini-badge--accent {
+      border-color: rgba(14,165,233,0.45);
+      background: rgba(14,165,233,0.18);
+      color: #cffafe;
+    }
+    .gemini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 20px;
+      align-items: stretch;
+    }
+    .gemini-card__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .gemini-card__header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .gemini-card__header p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .gemini-form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .gemini-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .gemini-field label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .gemini-field-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .gemini-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+    .gemini-output-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .gemini-output {
+      width: 100%;
+      min-height: 150px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--card-overlay);
+      color: var(--text);
+      padding: 12px 14px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: vertical;
+    }
+    .gemini-output-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .gemini-audio-output {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .gemini-audio-output audio {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--card-overlay);
+      padding: 10px;
+    }
+    .gemini-video-results {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .gemini-video-item {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 4px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.55), rgba(15, 23, 42, 0.35));
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .gemini-video-results video {
+      width: 100%;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: var(--card-overlay);
+      box-shadow: 0 16px 34px rgba(4, 9, 20, 0.35);
+    }
+    .gemini-video-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+    .gemini-video-actions .download-link {
+      margin-left: auto;
+    }
+    .gemini-placeholder {
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(148, 163, 184, 0.1);
+      border: 1px dashed rgba(148, 163, 184, 0.35);
+      border-radius: 18px;
+      padding: 16px;
+      text-align: center;
+    }
     .header {
       display: flex;
       align-items: center;
@@ -5073,7 +5802,7 @@ body[data-theme="light"] .profile-credit {
     }
   </style>
 </head>
-<body data-theme="light">
+<body data-theme="dark">
 
 <div class="workspace sidebar-open">
   <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true">
@@ -5143,9 +5872,14 @@ body[data-theme="light"] .profile-credit {
       </span>
       <span class="nav-label">Lipsync Studio</span>
     </button>
+    <button class="sidebar-link" data-target="viewGemini" data-feature="geminiStudio">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3.5 14.09 9h5.91l-4.78 3.47L17.3 18.5 12 15.27 6.7 18.5l1.08-6.03L3 9h5.91z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Gemini Studio</span>
+    </button>
   </nav>
   <div class="sidebar-actions">
-    <button type="button" class="theme-toggle" id="themeToggle" aria-label="Toggle theme">☀️</button>
     <div class="profile-card" id="profileCard">
       <div class="profile-main">
         <div class="profile-avatar" id="profileAvatar">FM</div>
@@ -5582,6 +6316,171 @@ body[data-theme="light"] .profile-credit {
 </div>
 
 <!-- ======================= FILMMAKER ======================= -->
+<div id="viewGemini" class="gemini-view app-view" hidden>
+  <section class="card gemini-hero">
+    <div>
+      <h1>Gemini Studio</h1>
+      <p>Eksperimen langsung dengan Gemini API untuk membuat teks, suara, dan video VEO 3.1.</p>
+    </div>
+    <div class="gemini-hero-badges">
+      <span class="gemini-badge">Google Gemini</span>
+      <span class="gemini-badge gemini-badge--accent">Realtime API Proxy</span>
+    </div>
+  </section>
+
+  <div class="gemini-grid">
+    <article class="card-soft gemini-card">
+      <header class="gemini-card__header">
+        <div>
+          <h2>Text Generation</h2>
+          <p>Gunakan Gemini 1.5 untuk membuat skrip, caption, atau ide konten.</p>
+        </div>
+      </header>
+      <form id="geminiTextForm" class="gemini-form" novalidate>
+        <div class="gemini-field-row">
+          <div class="gemini-field">
+            <label for="geminiTextModel">Model</label>
+            <select id="geminiTextModel">
+              <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash</option>
+              <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro</option>
+            </select>
+          </div>
+          <div class="gemini-field">
+            <label for="geminiTextTemperature">Temperature</label>
+            <input type="number" id="geminiTextTemperature" step="0.1" min="0" max="2" value="0.7">
+          </div>
+        </div>
+        <div class="gemini-field">
+          <label for="geminiTextPrompt">Prompt</label>
+          <textarea id="geminiTextPrompt" rows="4" placeholder="Jelaskan konten yang ingin dihasilkan"></textarea>
+        </div>
+        <div class="gemini-field">
+          <label for="geminiTextSystem">System Instruction (opsional)</label>
+          <textarea id="geminiTextSystem" rows="3" placeholder="Contoh: Tulis dengan nada profesional."></textarea>
+        </div>
+        <div class="gemini-actions">
+          <button type="submit" id="geminiTextSubmit">Generate Text</button>
+          <button type="button" class="secondary" id="geminiTextReset">Reset</button>
+        </div>
+        <div class="account-form-status" id="geminiTextStatus" role="status"></div>
+      </form>
+      <div class="gemini-output-wrapper">
+        <textarea id="geminiTextOutput" class="gemini-output" rows="8" readonly placeholder="Hasil teks akan tampil di sini"></textarea>
+        <div class="gemini-output-actions">
+          <button type="button" class="small secondary" id="geminiTextCopy">Copy</button>
+        </div>
+      </div>
+    </article>
+
+    <article class="card-soft gemini-card">
+      <header class="gemini-card__header">
+        <div>
+          <h2>Text-to-Speech</h2>
+          <p>Buat narasi audio natural langsung dari teks menggunakan suara Gemini.</p>
+        </div>
+      </header>
+      <form id="geminiSpeechForm" class="gemini-form" novalidate>
+        <div class="gemini-field">
+          <label for="geminiSpeechPrompt">Teks Narasi</label>
+          <textarea id="geminiSpeechPrompt" rows="4" placeholder="Masukkan skrip narasi yang ingin dibacakan"></textarea>
+        </div>
+        <div class="gemini-field-row">
+          <div class="gemini-field">
+            <label for="geminiSpeechVoice">Voice</label>
+            <select id="geminiSpeechVoice">
+              <option value="Puck">Puck</option>
+              <option value="Soleil">Soleil</option>
+              <option value="Orion">Orion</option>
+              <option value="Luna">Luna</option>
+            </select>
+          </div>
+          <div class="gemini-field">
+            <label for="geminiSpeechLanguage">Bahasa</label>
+            <select id="geminiSpeechLanguage">
+              <option value="id-ID">Indonesia</option>
+              <option value="en-US">English (US)</option>
+              <option value="en-GB">English (UK)</option>
+              <option value="ja-JP">日本語</option>
+            </select>
+          </div>
+        </div>
+        <div class="gemini-field-row">
+          <div class="gemini-field">
+            <label for="geminiSpeechFormat">Format Audio</label>
+            <select id="geminiSpeechFormat">
+              <option value="audio/mp3">MP3</option>
+              <option value="audio/wav">WAV</option>
+              <option value="audio/ogg">OGG</option>
+            </select>
+          </div>
+          <div class="gemini-field">
+            <label for="geminiSpeechTemperature">Temperature</label>
+            <input type="number" id="geminiSpeechTemperature" step="0.1" min="0" max="2" value="0.3">
+          </div>
+        </div>
+        <div class="gemini-actions">
+          <button type="submit" id="geminiSpeechSubmit">Generate Audio</button>
+          <button type="button" class="secondary" id="geminiSpeechReset">Reset</button>
+        </div>
+        <div class="account-form-status" id="geminiSpeechStatus" role="status"></div>
+      </form>
+      <div class="gemini-audio-output">
+        <audio id="geminiSpeechAudio" controls style="display:none"></audio>
+        <a id="geminiSpeechDownload" class="download-link" href="#" download hidden>Download Audio</a>
+      </div>
+    </article>
+
+    <article class="card-soft gemini-card">
+      <header class="gemini-card__header">
+        <div>
+          <h2>VEO 3.1 Dialogue</h2>
+          <p>Rancang storyboard singkat dan dialog untuk menghasilkan video sinematik.</p>
+        </div>
+      </header>
+      <form id="geminiVeoForm" class="gemini-form" novalidate>
+        <div class="gemini-field">
+          <label for="geminiVeoPrompt">Prompt Video</label>
+          <textarea id="geminiVeoPrompt" rows="4" placeholder="Ceritakan adegan video yang ingin dibuat"></textarea>
+        </div>
+        <div class="gemini-field">
+          <label for="geminiVeoDialogue">Dialog / Narasi (opsional)</label>
+          <textarea id="geminiVeoDialogue" rows="3" placeholder="Contoh: Karakter menyapa penonton dengan nada semangat."></textarea>
+        </div>
+        <div class="gemini-field-row">
+          <div class="gemini-field">
+            <label for="geminiVeoDuration">Durasi</label>
+            <select id="geminiVeoDuration">
+              <option value="6">6 detik</option>
+              <option value="8">8 detik</option>
+              <option value="12">12 detik</option>
+            </select>
+          </div>
+          <div class="gemini-field">
+            <label for="geminiVeoAspect">Aspect Ratio</label>
+            <select id="geminiVeoAspect">
+              <option value="16:9">16:9 Landscape</option>
+              <option value="9:16">9:16 Portrait</option>
+              <option value="1:1">1:1 Square</option>
+            </select>
+          </div>
+        </div>
+        <div class="gemini-field">
+          <label for="geminiVeoStyle">Gaya Visual (opsional)</label>
+          <input type="text" id="geminiVeoStyle" placeholder="Contoh: cinematic lighting, product focus">
+        </div>
+        <div class="gemini-actions">
+          <button type="submit" id="geminiVeoSubmit">Generate Video</button>
+          <button type="button" class="secondary" id="geminiVeoClear">Reset</button>
+        </div>
+        <div class="account-form-status" id="geminiVeoStatus" role="status"></div>
+      </form>
+      <div class="gemini-video-results" id="geminiVeoResults">
+        <div class="gemini-placeholder">Belum ada hasil video. Isi prompt lalu generate untuk melihat preview.</div>
+      </div>
+    </article>
+  </div>
+</div>
+
 <div id="viewFilm" class="film-app app-view" hidden>
   <div class="card">
     <div class="header">
@@ -5889,12 +6788,13 @@ body[data-theme="light"] .profile-credit {
     videoGen: { label: 'Video Generator' },
     lipsync: { label: 'Lipsync Studio' },
     filmmaker: { label: 'Filmmaker' },
-    ugc: { label: 'UGC Tool' }
+    ugc: { label: 'UGC Tool' },
+    geminiStudio: { label: 'Gemini Studio' }
   };
   const HUB_FEATURE_KEYS = ['imageGen', 'imageEdit', 'videoGen', 'lipsync'];
 
   let currentAccount = null;
-  let currentTheme = 'light';
+  let currentTheme = 'dark';
   let platformState = defaultPlatformState();
   let selectedTopupAmount = null;
 
@@ -5967,7 +6867,7 @@ body[data-theme="light"] .profile-credit {
   function showFeatureLockedMessage(featureKey) {
     const label = getFeatureLabel(featureKey);
     const message = platformState.maintenance.message || 'Generator sedang maintenance. Silakan coba lagi nanti.';
-    alert(`${label} tidak tersedia sementara untuk pengguna.\n${message}`);
+    alert(`🔒 ${label} sedang dikunci oleh admin.\n${message}`);
   }
 
   function clampPercent(value) {
@@ -6094,7 +6994,7 @@ body[data-theme="light"] .profile-credit {
       }
       if (locked) {
         btn.setAttribute('aria-disabled', 'true');
-        btn.title = `${getFeatureLabel(featureKey)} sementara tidak tersedia.`;
+        btn.title = `🔒 ${getFeatureLabel(featureKey)} dikunci oleh admin.`;
       } else {
         btn.removeAttribute('aria-disabled');
         btn.removeAttribute('title');
@@ -6158,6 +7058,10 @@ body[data-theme="light"] .profile-credit {
 
     if (viewUGCSection && viewUGCSection.style.display !== 'none' && !featureAvailableForCurrentUser('ugc')) {
       showFeatureLockedMessage('ugc');
+      showView('viewDashboard');
+    }
+    if (viewGeminiSection && viewGeminiSection.style.display !== 'none' && !featureAvailableForCurrentUser('geminiStudio')) {
+      showFeatureLockedMessage('geminiStudio');
       showView('viewDashboard');
     }
   }
@@ -6773,10 +7677,10 @@ body[data-theme="light"] .profile-credit {
   }
 
   function applyTheme(theme) {
-    currentTheme = theme === 'light' ? 'light' : 'dark';
-    document.body.dataset.theme = currentTheme;
+    currentTheme = 'dark';
+    document.body.dataset.theme = 'dark';
     if (themeToggle) {
-      themeToggle.textContent = currentTheme === 'dark' ? '🌙' : '☀️';
+      themeToggle.textContent = '🌙';
     }
   }
 
@@ -7404,6 +8308,7 @@ body[data-theme="light"] .profile-credit {
   const DRIVE_DELETE_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive-delete';
   const ACCOUNT_AVATAR_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-avatar';
   const ACCOUNT_PASSWORD_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-password';
+  const GEMINI_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=gemini';
   jobs = loadJobs();
   updateDashboardStats();
   let activeJobId = null;
@@ -7591,6 +8496,41 @@ body[data-theme="light"] .profile-credit {
   const geminiRefUrl = document.getElementById('geminiRefUrl');
   const geminiRefAddBtn = document.getElementById('geminiRefAddBtn');
   const geminiRefList = document.getElementById('geminiRefList');
+  const geminiTextForm = document.getElementById('geminiTextForm');
+  const geminiTextModel = document.getElementById('geminiTextModel');
+  const geminiTextPrompt = document.getElementById('geminiTextPrompt');
+  const geminiTextSystem = document.getElementById('geminiTextSystem');
+  const geminiTextTemperature = document.getElementById('geminiTextTemperature');
+  const geminiTextStatus = document.getElementById('geminiTextStatus');
+  const geminiTextOutput = document.getElementById('geminiTextOutput');
+  const geminiTextCopyBtn = document.getElementById('geminiTextCopy');
+  const geminiTextResetBtn = document.getElementById('geminiTextReset');
+  const geminiTextSubmitBtn = document.getElementById('geminiTextSubmit');
+  const geminiSpeechForm = document.getElementById('geminiSpeechForm');
+  const geminiSpeechPrompt = document.getElementById('geminiSpeechPrompt');
+  const geminiSpeechVoice = document.getElementById('geminiSpeechVoice');
+  const geminiSpeechLanguage = document.getElementById('geminiSpeechLanguage');
+  const geminiSpeechFormat = document.getElementById('geminiSpeechFormat');
+  const geminiSpeechTemperature = document.getElementById('geminiSpeechTemperature');
+  const geminiSpeechStatus = document.getElementById('geminiSpeechStatus');
+  const geminiSpeechSubmitBtn = document.getElementById('geminiSpeechSubmit');
+  const geminiSpeechResetBtn = document.getElementById('geminiSpeechReset');
+  const geminiSpeechAudio = document.getElementById('geminiSpeechAudio');
+  const geminiSpeechDownload = document.getElementById('geminiSpeechDownload');
+  const geminiVeoForm = document.getElementById('geminiVeoForm');
+  const geminiVeoPrompt = document.getElementById('geminiVeoPrompt');
+  const geminiVeoDialogue = document.getElementById('geminiVeoDialogue');
+  const geminiVeoDuration = document.getElementById('geminiVeoDuration');
+  const geminiVeoAspect = document.getElementById('geminiVeoAspect');
+  const geminiVeoStyle = document.getElementById('geminiVeoStyle');
+  const geminiVeoStatus = document.getElementById('geminiVeoStatus');
+  const geminiVeoSubmitBtn = document.getElementById('geminiVeoSubmit');
+  const geminiVeoClearBtn = document.getElementById('geminiVeoClear');
+  const geminiVeoResults = document.getElementById('geminiVeoResults');
+  const defaultGeminiTextTemperature = geminiTextTemperature ? geminiTextTemperature.value : '0.7';
+  const defaultGeminiSpeechTemperature = geminiSpeechTemperature ? geminiSpeechTemperature.value : '0.3';
+  const defaultGeminiVeoDuration = geminiVeoDuration ? geminiVeoDuration.value : '6';
+  const defaultGeminiVeoAspect = geminiVeoAspect ? geminiVeoAspect.value : '16:9';
   const videoUrlInput = document.getElementById('videoUrl');
   const audioUrlInput = document.getElementById('audioUrl');
   const rowVideoSettings = document.getElementById('rowVideoSettings');
@@ -7627,6 +8567,7 @@ body[data-theme="light"] .profile-credit {
   let viewHubSection = null;
   let viewFilmSection = null;
   let viewUGCSection = null;
+  let viewGeminiSection = null;
   let viewAccountSection = null;
   let viewSections = {};
 
@@ -7763,6 +8704,151 @@ body[data-theme="light"] .profile-credit {
       }
     }
     return results;
+  }
+
+  function toggleButtonLoading(button, loading, loadingLabel) {
+    if (!button) return;
+    if (!button.dataset.originalLabel) {
+      button.dataset.originalLabel = button.textContent || button.value || '';
+    }
+    if (loading) {
+      button.disabled = true;
+      if (loadingLabel) {
+        button.textContent = loadingLabel;
+      }
+      button.classList.add('is-loading');
+    } else {
+      button.disabled = false;
+      const original = button.dataset.originalLabel || '';
+      if (original && button.textContent !== original) {
+        button.textContent = original;
+      }
+      button.classList.remove('is-loading');
+    }
+  }
+
+  function clampTemperature(value) {
+    if (!Number.isFinite(value)) return null;
+    if (value < 0) return 0;
+    if (value > 2) return 2;
+    return parseFloat(value.toFixed(2));
+  }
+
+  function parseNumberInput(input) {
+    if (!input) return null;
+    const raw = typeof input.value === 'string' ? input.value.trim() : '';
+    if (raw === '') return null;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function mimeToExtension(mime) {
+    if (!mime || typeof mime !== 'string') return 'bin';
+    const normalized = mime.toLowerCase();
+    if (normalized.includes('mp3')) return 'mp3';
+    if (normalized.includes('wav')) return 'wav';
+    if (normalized.includes('ogg')) return 'ogg';
+    if (normalized.includes('mpeg')) return 'mp3';
+    if (normalized.includes('aac')) return 'aac';
+    if (normalized.includes('flac')) return 'flac';
+    return normalized.split('/').pop() || 'bin';
+  }
+
+  async function callGemini(action, payload = {}, { signal } = {}) {
+    if (!action) {
+      throw new Error('Aksi Gemini tidak valid.');
+    }
+
+    let response;
+    try {
+      response = await fetch(GEMINI_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ ...payload, action }),
+        signal,
+      });
+    } catch (err) {
+      throw new Error('Gagal terhubung ke server Gemini.');
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      throw new Error('Respons Gemini tidak dapat dibaca.');
+    }
+
+    if (!response.ok || !data || !data.ok) {
+      if (data && data.status === 401) {
+        window.location.reload();
+        return Promise.reject(new Error('Sesi berakhir. Memuat ulang…'));
+      }
+      const message = pickErrorMessage(data && data.error) || `Permintaan gagal (HTTP ${response.status || 500}).`;
+      throw new Error(message);
+    }
+
+    return data.data || {};
+  }
+
+  function renderGeminiVeoResults(result) {
+    if (!geminiVeoResults) return;
+    geminiVeoResults.innerHTML = '';
+
+    if (!result) {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'gemini-placeholder';
+      placeholder.textContent = 'Belum ada hasil video. Isi prompt lalu generate untuk melihat preview.';
+      geminiVeoResults.appendChild(placeholder);
+      return;
+    }
+
+    const urls = Array.isArray(result.videoUrls) ? result.videoUrls.filter(Boolean) : [];
+    if (urls.length) {
+      urls.forEach((url, idx) => {
+        const item = document.createElement('div');
+        item.className = 'gemini-video-item';
+
+        const video = document.createElement('video');
+        video.controls = true;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.src = url;
+        item.appendChild(video);
+
+        const actions = document.createElement('div');
+        actions.className = 'gemini-video-actions';
+
+        const label = document.createElement('span');
+        label.className = 'muted';
+        label.textContent = `Video ${idx + 1}`;
+        actions.appendChild(label);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = 'Download';
+        link.className = 'download-link';
+        actions.appendChild(link);
+
+        item.appendChild(actions);
+        geminiVeoResults.appendChild(item);
+      });
+    }
+
+    const op = result.operation || '';
+    if (!urls.length || op) {
+      const info = document.createElement('div');
+      info.className = 'muted';
+      info.style.fontSize = '12px';
+      info.style.marginTop = urls.length ? '12px' : '0';
+      info.textContent = op
+        ? `ID operasi: ${op}. Jika URL belum muncul, periksa status di dashboard Gemini.`
+        : 'Gemini tidak mengembalikan URL video. Coba ulangi dengan prompt berbeda.';
+      geminiVeoResults.appendChild(info);
+    }
   }
 
   function getGeminiMeta(mode = geminiMode) {
@@ -7915,6 +9001,287 @@ body[data-theme="light"] .profile-credit {
       });
     });
   }
+
+  function ensureGeminiAccess() {
+    if (!featureAvailableForCurrentUser('geminiStudio')) {
+      showFeatureLockedMessage('geminiStudio');
+      return false;
+    }
+    return true;
+  }
+
+  function resetGeminiTextForm() {
+    if (geminiTextPrompt) geminiTextPrompt.value = '';
+    if (geminiTextSystem) geminiTextSystem.value = '';
+    if (geminiTextTemperature && typeof defaultGeminiTextTemperature !== 'undefined') {
+      geminiTextTemperature.value = defaultGeminiTextTemperature;
+    }
+    if (geminiTextOutput) geminiTextOutput.value = '';
+    showInlineStatus(geminiTextStatus, '', null);
+  }
+
+  function clearGeminiSpeechOutput() {
+    if (geminiSpeechAudio) {
+      try {
+        geminiSpeechAudio.pause();
+      } catch (err) {
+        // abaikan
+      }
+      geminiSpeechAudio.removeAttribute('src');
+      geminiSpeechAudio.load();
+      geminiSpeechAudio.style.display = 'none';
+    }
+    if (geminiSpeechDownload) {
+      geminiSpeechDownload.hidden = true;
+      geminiSpeechDownload.removeAttribute('href');
+      geminiSpeechDownload.removeAttribute('download');
+    }
+  }
+
+  function resetGeminiSpeechForm() {
+    if (geminiSpeechPrompt) geminiSpeechPrompt.value = '';
+    if (geminiSpeechTemperature && typeof defaultGeminiSpeechTemperature !== 'undefined') {
+      geminiSpeechTemperature.value = defaultGeminiSpeechTemperature;
+    }
+    clearGeminiSpeechOutput();
+    showInlineStatus(geminiSpeechStatus, '', null);
+  }
+
+  function resetGeminiVeoForm() {
+    if (geminiVeoPrompt) geminiVeoPrompt.value = '';
+    if (geminiVeoDialogue) geminiVeoDialogue.value = '';
+    if (geminiVeoStyle) geminiVeoStyle.value = '';
+    if (geminiVeoDuration && typeof defaultGeminiVeoDuration !== 'undefined') {
+      geminiVeoDuration.value = defaultGeminiVeoDuration;
+    }
+    if (geminiVeoAspect && typeof defaultGeminiVeoAspect !== 'undefined') {
+      geminiVeoAspect.value = defaultGeminiVeoAspect;
+    }
+    showInlineStatus(geminiVeoStatus, '', null);
+    renderGeminiVeoResults(null);
+  }
+
+  if (geminiTextForm) {
+    geminiTextForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!ensureGeminiAccess()) {
+        return;
+      }
+
+      const prompt = geminiTextPrompt ? geminiTextPrompt.value.trim() : '';
+      if (!prompt) {
+        showInlineStatus(geminiTextStatus, 'Prompt wajib diisi.', 'err');
+        if (geminiTextPrompt) geminiTextPrompt.focus();
+        return;
+      }
+
+      const payload = {
+        prompt,
+        model: geminiTextModel && geminiTextModel.value ? geminiTextModel.value : 'gemini-1.5-flash-latest',
+      };
+
+      const system = geminiTextSystem ? geminiTextSystem.value.trim() : '';
+      if (system) {
+        payload.system = system;
+      }
+
+      const temp = clampTemperature(parseNumberInput(geminiTextTemperature));
+      if (temp !== null) {
+        payload.temperature = temp;
+      }
+
+      toggleButtonLoading(geminiTextSubmitBtn, true, 'Menghasilkan…');
+      showInlineStatus(geminiTextStatus, 'Menghubungkan ke Gemini…', 'progress');
+
+      try {
+        const result = await callGemini('text', payload);
+        const text = result && typeof result.text === 'string' ? result.text.trim() : '';
+        if (geminiTextOutput) {
+          geminiTextOutput.value = text;
+        }
+        if (text) {
+          showInlineStatus(geminiTextStatus, 'Teks berhasil dibuat.', 'ok');
+        } else {
+          showInlineStatus(geminiTextStatus, 'Gemini tidak mengembalikan teks.', 'err');
+        }
+      } catch (err) {
+        showInlineStatus(geminiTextStatus, err.message || 'Gagal membuat teks.', 'err');
+      } finally {
+        toggleButtonLoading(geminiTextSubmitBtn, false);
+      }
+    });
+  }
+
+  if (geminiTextResetBtn) {
+    geminiTextResetBtn.addEventListener('click', () => {
+      resetGeminiTextForm();
+    });
+  }
+
+  if (geminiTextCopyBtn) {
+    geminiTextCopyBtn.addEventListener('click', async () => {
+      const value = geminiTextOutput ? geminiTextOutput.value.trim() : '';
+      if (!value) {
+        showInlineStatus(geminiTextStatus, 'Tidak ada teks untuk disalin.', 'err');
+        return;
+      }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(value);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = value;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'absolute';
+          textarea.style.left = '-9999px';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+        }
+        showInlineStatus(geminiTextStatus, 'Teks disalin ke clipboard.', 'ok');
+        setTimeout(() => showInlineStatus(geminiTextStatus, '', null), 1800);
+      } catch (err) {
+        showInlineStatus(geminiTextStatus, 'Gagal menyalin teks.', 'err');
+      }
+    });
+  }
+
+  if (geminiSpeechForm) {
+    geminiSpeechForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!ensureGeminiAccess()) {
+        return;
+      }
+
+      const prompt = geminiSpeechPrompt ? geminiSpeechPrompt.value.trim() : '';
+      if (!prompt) {
+        showInlineStatus(geminiSpeechStatus, 'Teks narasi wajib diisi.', 'err');
+        if (geminiSpeechPrompt) geminiSpeechPrompt.focus();
+        return;
+      }
+
+      const format = geminiSpeechFormat && geminiSpeechFormat.value ? geminiSpeechFormat.value : 'audio/mp3';
+      const payload = {
+        prompt,
+        model: geminiTextModel && geminiTextModel.value ? geminiTextModel.value : 'gemini-1.5-flash-latest',
+        voice: geminiSpeechVoice && geminiSpeechVoice.value ? geminiSpeechVoice.value : 'Puck',
+        language: geminiSpeechLanguage && geminiSpeechLanguage.value ? geminiSpeechLanguage.value : 'en-US',
+        mimeType: format,
+      };
+
+      const temp = clampTemperature(parseNumberInput(geminiSpeechTemperature));
+      if (temp !== null) {
+        payload.temperature = temp;
+      }
+
+      clearGeminiSpeechOutput();
+      toggleButtonLoading(geminiSpeechSubmitBtn, true, 'Menghasilkan…');
+      showInlineStatus(geminiSpeechStatus, 'Menghubungkan ke Gemini…', 'progress');
+
+      try {
+        const result = await callGemini('speech', payload);
+        const audioData = result && typeof result.audio === 'string' ? result.audio : '';
+        const mimeType = result && result.mimeType ? result.mimeType : format;
+        if (!audioData) {
+          throw new Error('Gemini tidak mengembalikan audio.');
+        }
+        const source = `data:${mimeType};base64,${audioData}`;
+        if (geminiSpeechAudio) {
+          geminiSpeechAudio.src = source;
+          geminiSpeechAudio.style.display = 'block';
+          geminiSpeechAudio.load();
+          geminiSpeechAudio.play().catch(() => {});
+        }
+        if (geminiSpeechDownload) {
+          geminiSpeechDownload.href = source;
+          geminiSpeechDownload.hidden = false;
+          geminiSpeechDownload.download = `gemini-speech-${Date.now()}.${mimeToExtension(mimeType)}`;
+        }
+        showInlineStatus(geminiSpeechStatus, 'Audio berhasil dibuat.', 'ok');
+      } catch (err) {
+        clearGeminiSpeechOutput();
+        showInlineStatus(geminiSpeechStatus, err.message || 'Gagal membuat audio.', 'err');
+      } finally {
+        toggleButtonLoading(geminiSpeechSubmitBtn, false);
+      }
+    });
+  }
+
+  if (geminiSpeechResetBtn) {
+    geminiSpeechResetBtn.addEventListener('click', () => {
+      resetGeminiSpeechForm();
+    });
+  }
+
+  if (geminiVeoForm) {
+    geminiVeoForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!ensureGeminiAccess()) {
+        return;
+      }
+
+      const prompt = geminiVeoPrompt ? geminiVeoPrompt.value.trim() : '';
+      if (!prompt) {
+        showInlineStatus(geminiVeoStatus, 'Prompt video wajib diisi.', 'err');
+        if (geminiVeoPrompt) geminiVeoPrompt.focus();
+        return;
+      }
+
+      const payload = {
+        prompt,
+        model: 'veo-3.1',
+      };
+
+      const dialogue = geminiVeoDialogue ? geminiVeoDialogue.value.trim() : '';
+      if (dialogue) {
+        payload.dialogue = dialogue;
+      }
+
+      const style = geminiVeoStyle ? geminiVeoStyle.value.trim() : '';
+      if (style) {
+        payload.style = style;
+      }
+
+      const durationValue = geminiVeoDuration ? parseInt(geminiVeoDuration.value, 10) : NaN;
+      if (!Number.isNaN(durationValue) && durationValue > 0) {
+        payload.duration = durationValue;
+      }
+
+      const aspectValue = geminiVeoAspect && geminiVeoAspect.value ? geminiVeoAspect.value : '';
+      if (aspectValue) {
+        payload.aspectRatio = aspectValue;
+      }
+
+      toggleButtonLoading(geminiVeoSubmitBtn, true, 'Mengirim…');
+      showInlineStatus(geminiVeoStatus, 'Menghubungkan ke Gemini…', 'progress');
+
+      try {
+        const result = await callGemini('veo', payload);
+        const urls = result && Array.isArray(result.videoUrls) ? result.videoUrls.filter(Boolean) : [];
+        renderGeminiVeoResults(result);
+        if (urls.length) {
+          showInlineStatus(geminiVeoStatus, 'Video berhasil dibuat.', 'ok');
+        } else if (result && result.operation) {
+          showInlineStatus(geminiVeoStatus, 'Permintaan diterima. Menunggu rendering video.', 'progress');
+        } else {
+          showInlineStatus(geminiVeoStatus, 'Tidak ada URL video yang diterima.', 'err');
+        }
+      } catch (err) {
+        showInlineStatus(geminiVeoStatus, err.message || 'Gagal membuat video.', 'err');
+      } finally {
+        toggleButtonLoading(geminiVeoSubmitBtn, false);
+      }
+    });
+  }
+
+  if (geminiVeoClearBtn) {
+    geminiVeoClearBtn.addEventListener('click', () => {
+      resetGeminiVeoForm();
+    });
+  }
+
+  renderGeminiVeoResults(null);
 
 
   function setModelHint(id) {
@@ -9071,6 +10438,7 @@ body[data-theme="light"] .profile-credit {
   viewHubSection = document.getElementById('viewHub');
   viewFilmSection = document.getElementById('viewFilm');
   viewUGCSection = document.getElementById('viewUGC');
+  viewGeminiSection = document.getElementById('viewGemini');
   viewAccountSection = document.getElementById('viewAccount');
   viewSections = {
     viewDashboard: viewDashboardSection,
@@ -9078,7 +10446,8 @@ body[data-theme="light"] .profile-credit {
     viewDrive: viewDriveSection,
     viewHub: viewHubSection,
     viewFilm: viewFilmSection,
-    viewUGC: viewUGCSection
+    viewUGC: viewUGCSection,
+    viewGemini: viewGeminiSection
   };
 
   updateNavAvailability();
@@ -9114,6 +10483,10 @@ body[data-theme="light"] .profile-credit {
     }
     if (target === 'viewUGC' && !featureAvailableForCurrentUser('ugc')) {
       showFeatureLockedMessage('ugc');
+      return;
+    }
+    if (target === 'viewGemini' && !featureAvailableForCurrentUser('geminiStudio')) {
+      showFeatureLockedMessage('geminiStudio');
       return;
     }
 
