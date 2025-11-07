@@ -1509,3 +1509,395 @@ header {
         margin-right: 20px;
     }
 }
+.auth-background {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .auth-background .orb {
+      position: absolute;
+      width: 420px;
+      height: 420px;
+      border-radius: 50%;
+      filter: blur(140px);
+      opacity: 0.6;
+      animation: floatOrb 16s ease-in-out infinite;
+      background: radial-gradient(circle, rgba(165,180,252,0.75), transparent 70%);
+    }
+    .auth-background .orb-one { top: -120px; left: -120px; }
+    .auth-background .orb-two {
+      bottom: -160px;
+      right: -80px;
+      background: radial-gradient(circle, rgba(94,234,212,0.6), transparent 70%);
+      animation-delay: -6s;
+    }
+    .auth-background .orb-three {
+      top: 40%;
+      right: 35%;
+      background: radial-gradient(circle, rgba(56,189,248,0.5), transparent 70%);
+      animation-delay: -3s;
+    }
+    @keyframes floatOrb {
+      0%, 100% { transform: translate3d(0,0,0) scale(1); }
+      50% { transform: translate3d(40px, -30px, 0) scale(1.08); }
+    }
+    @keyframes auroraDrift {
+      0% { transform: rotate(0deg) scale(1); opacity: 0.55; }
+      50% { transform: rotate(160deg) scale(1.12); opacity: 0.82; }
+      100% { transform: rotate(320deg) scale(1); opacity: 0.55; }
+    }
+    .auth-shell {
+      position: relative;
+      z-index: 1;
+      width: min(1000px, 100%);
+      display: grid;
+      gap: 28px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      align-items: stretch;
+    }
+    .auth-card {
+      position: relative;
+      border-radius: 28px;
+      padding: 36px 34px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.85), rgba(232,249,255,0.72));
+      color: #0f172a;
+      border: 1px solid rgba(148,163,184,0.25);
+      box-shadow: 0 40px 90px rgba(15,23,42,0.28);
+      overflow: hidden;
+      backdrop-filter: blur(22px);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .auth-card.security {
+      background: linear-gradient(168deg, rgba(30,41,59,0.95), rgba(124,45,18,0.86));
+      color: #fef3c7;
+      border: 1px solid rgba(251,191,36,0.48);
+      box-shadow: 0 46px 110px rgba(124,45,18,0.35);
+    }
+    .auth-card::before,
+    .auth-card::after {
+      content: "";
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(56,189,248,0.25), transparent 72%);
+      filter: blur(10px);
+      opacity: 0.65;
+      z-index: 0;
+      animation: cardGlow 18s linear infinite;
+    }
+    .auth-card::before { top: -80px; right: -90px; }
+    .auth-card::after { bottom: -90px; left: -70px; animation-delay: -8s; }
+    .auth-card.security::before {
+      background: radial-gradient(circle, rgba(251,191,36,0.38), transparent 78%);
+    }
+    .auth-card > * { position: relative; z-index: 1; }
+    .auth-card:hover { transform: translateY(-6px); box-shadow: 0 48px 120px rgba(15,23,42,0.32); }
+    @keyframes cardGlow {
+      0% { transform: rotate(0deg) scale(1); }
+      50% { transform: rotate(180deg) scale(1.05); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+    .security-card {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+    .security-alert {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      border-radius: 20px;
+      background: rgba(248,113,113,0.16);
+      border: 1px solid rgba(251,191,36,0.45);
+      box-shadow: inset 0 0 0 1px rgba(248,250,252,0.06);
+    }
+    .security-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(250,204,21,0.28), rgba(248,113,113,0.34));
+      color: #fef3c7;
+      font-size: 26px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 18px 34px rgba(248,113,113,0.32);
+    }
+    .security-copy h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .security-copy p {
+      margin: 0;
+      color: rgba(248, 250, 252, 0.78);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .ip-panel {
+      border-radius: 20px;
+      border: 1px solid rgba(250, 204, 21, 0.45);
+      background: linear-gradient(140deg, rgba(30,41,59,0.65), rgba(124,45,18,0.52));
+      padding: 22px 24px;
+      text-align: center;
+      box-shadow: inset 0 0 0 1px rgba(15,23,42,0.45);
+    }
+    .ip-label {
+      display: block;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(248, 250, 252, 0.66);
+      margin-bottom: 8px;
+    }
+    .ip-value {
+      font-size: 30px;
+      font-weight: 700;
+      color: #FF0000;
+      letter-spacing: 0.05em;
+    }
+    .ip-note {
+      display: block;
+      margin-top: 10px;
+      font-size: 12px;
+      color: rgba(248, 250, 252, 0.68);
+    }
+    .auth-header h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .auth-header p {
+      margin: 0 0 22px;
+      color: rgba(15,23,42,0.65);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .login-ip-stamp {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      background: rgba(59,130,246,0.12);
+      color: rgba(15,23,42,0.68);
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 22px;
+      box-shadow: 0 18px 34px rgba(59,130,246,0.14);
+    }
+    .login-ip-stamp .stamp-icon {
+      font-size: 16px;
+      color: #2563eb;
+    }
+    .login-ip-stamp .stamp-value {
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #1d4ed8;
+    }
+    .auth-tabs {
+      display: inline-flex;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.65);
+      border: 1px solid rgba(148,163,184,0.35);
+      padding: 4px;
+      gap: 4px;
+      margin-bottom: 24px;
+      position: relative;
+    }
+    /* --- Styling untuk Security Gate Pop-up --- */
+
+.security-gate-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7); /* Overlay gelap */
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999; /* Pastikan di atas segalanya */
+    transition: opacity 0.5s ease;
+}
+
+.security-gate-overlay.hidden {
+    display: none;
+    opacity: 0;
+}
+
+.security-card {
+    padding: 30px;
+    border-radius: 15px;
+    width: 90%;
+    margin: auto;
+    max-width: 400px;
+    text-align: center;
+}
+
+.security-alert {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 25px;
+    padding: 15px;
+    border-radius: 10px;
+    background-color: rgba(255, 255, 0, 0.1); /* Latar belakang peringatan */
+    border: 1px solid #FFC107; /* Kuning */
+    text-align: left;
+}
+
+.dark-mode .security-alert {
+    background-color: rgba(255, 255, 0, 0.05);
+}
+
+.security-icon {
+    font-size: 2rem;
+}
+
+.security-copy h1 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.security-copy p {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.ip-panel {
+    background: var(--glass-bg);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 25px;
+    border: 1px solid var(--glass-border);
+}
+
+.ip-label {
+    display: block;
+    font-size: 0.8rem;
+    opacity: 0.6;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.ip-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    margin-bottom: 10px;
+}
+
+.ip-note {
+    display: block;
+    font-size: 0.8rem;
+    opacity: 0.7;
+}
+
+.small-note {
+    margin-top: 15px;
+    font-size: 0.7rem;
+    opacity: 0.5;
+}
+
+#securityContinue {
+    /* Menggunakan styling btn-primary yang sudah ada */
+    width: 100%;
+    padding: 12px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    border-radius: 25px;
+    background-color: var(--color-primary);
+    color: white;
+    transition: background-color 0.2s;
+}
+
+#securityContinue:hover {
+    background-color: var(--color-secondary);
+}
+/* --- Styling untuk Security Gate Pop-up --- */
+
+.security-gate-overlay {
+    position: fixed; /* Kunci agar menutupi seluruh viewport */
+    top: 0;
+    left: 0;
+    width: 100%; /* Pastikan lebar 100% */
+    height: 100%; /* Pastikan tinggi 100% */
+    
+    /* Gunakan warna solid untuk background utama */
+    background-color: rgba(0, 0, 0, 0.9); /* Ubah ke 0.9 agar lebih solid */
+    
+    /* Hapus backdrop-filter di sini jika ingin menerapkan blur hanya pada CARD */
+    /* Jika Anda ingin seluruh background blur, terapkan backdrop-filter di sini: */
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    
+    display: flex;
+    justify-content: center; /* Memposisikan horizontal di tengah */
+    align-items: center;   /* Memposisikan vertikal di tengah */
+    z-index: 9999; /* Pastikan di atas segalanya, ini sangat penting! */
+    transition: opacity 0.5s ease;
+}
+
+/* Pastikan styling untuk CARD tetap ada */
+.security-card {
+    padding: 30px;
+    border-radius: 15px;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    
+    /* Penting: Pastikan z-index card lebih tinggi dari konten lain jika Anda menggunakan teknik Glassmorphism berlapis */
+    z-index: 10000; 
+}
+
+.security-gate-overlay {
+    position: fixed; /* Kunci agar menutupi seluruh viewport */
+    top: 0;
+    left: 0;
+    width: 100%; /* Pastikan lebar 100% */
+    height: 100%; /* Pastikan tinggi 100% */
+    
+    /* Overlay gelap yang kuat */
+    background-color: rgba(0, 0, 0, 0.9); 
+    
+    /* Efek Blur Glassmorphism pada overlay */
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    
+    /* Kunci untuk menengahkan card di viewport */
+    display: flex;
+    justify-content: center; /* Posisi horizontal di tengah */
+    align-items: center;   /* Posisi vertikal di tengah */
+    
+    z-index: 9999; /* Pastikan di atas semua elemen landing page */
+    transition: opacity 0.5s ease;
+}
+
+.security-gate-overlay.hidden {
+    opacity: 0;
+    /* Gunakan visibility: hidden agar pop-up hilang total setelah transisi */
+    visibility: hidden; 
+}
+
+.security-card {
+    /* Menerapkan Glassmorphism (menggunakan .glass-card) */
+    padding: 30px;
+    border-radius: 15px;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    z-index: 10000; /* Sedikit lebih tinggi dari overlay */
+    /* Pastikan Anda menambahkan class 'glass-card' pada HTML elemen ini */
+}
