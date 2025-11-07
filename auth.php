@@ -1,4 +1,7 @@
 <?php
+require_once __DIR__ . '/env.php';
+
+app_load_env(__DIR__ . '/.env');
 const AUTH_DEFAULT_USERNAME = 'admin';
 const AUTH_DEFAULT_PASSWORD_HASH = '$2y$12$8d6CiI0X1xIzaIPxtm6gWujpCv.nUoI6RxiX8MDqq9jia83DeQqGm';
 
