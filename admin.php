@@ -362,120 +362,56 @@ if (isset($_GET['api'])) {
 }
   ?>
   <!DOCTYPE html>
-  <html lang="id" data-theme="light">
+  <html lang="id">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Control Center</title>
-    <script>
-      (function () {
-        var theme = 'light';
-        try {
-          var stored = localStorage.getItem('akay-theme');
-          if (stored === 'dark') {
-            theme = 'dark';
-          }
-        } catch (error) {
-          theme = 'light';
-        }
-        var root = document.documentElement;
-        root.setAttribute('data-theme', theme);
-        root.classList.remove('light-mode', 'dark-mode');
-        root.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
-      })();
-    </script>
     <style>
     :root {
-      color-scheme: light;
-      --bg: #f8fafc;
-      --panel: rgba(255,255,255,0.86);
-      --panel-border: rgba(148,163,184,0.28);
-      --panel-shadow: rgba(15,23,42,0.08);
-      --page-background: radial-gradient(circle at top, rgba(165,180,252,0.35), transparent 55%),
-                        radial-gradient(circle at bottom, rgba(59,130,246,0.18), transparent 50%),
-                        #f8fafc;
-      --text: #0f172a;
-      --muted: rgba(71,85,105,0.85);
-      --accent: #4f46e5;
-      --danger: #dc2626;
-      --success: #15803d;
-      --warning: #ca8a04;
-      --panel-meta: rgba(71,85,105,0.85);
-      --toast-bg: rgba(255,255,255,0.95);
-      --toast-border: rgba(79,70,229,0.35);
-      --toast-shadow: rgba(15,23,42,0.08);
-      --back-link-bg: rgba(148,163,184,0.18);
-      --back-link-border: rgba(148,163,184,0.35);
-      --btn-bg: rgba(148,163,184,0.18);
-      --btn-border: rgba(148,163,184,0.35);
-      --btn-ghost-border: rgba(148,163,184,0.35);
-      --btn-hover-shadow: rgba(15,23,42,0.12);
-      --input-bg: rgba(248,250,252,0.95);
-      --input-border: rgba(148,163,184,0.35);
-      --input-focus-border: rgba(79,70,229,0.45);
-      --input-focus-ring: rgba(79,70,229,0.2);
-      --empty-border: rgba(148,163,184,0.35);
-      --chip-bg: rgba(99,102,241,0.14);
-      --chip-border: rgba(99,102,241,0.25);
-      --chip-text: #3730a3;
-      --chip-accent-text: #312e81;
-      --info-text: rgba(37,99,235,0.9);
-      --chip-coins: rgba(37,99,235,0.9);
-      --rotation-bg: rgba(148,163,184,0.16);
-      --maintenance-bg: rgba(148,163,184,0.12);
-      --generator-bg: rgba(148,163,184,0.16);
-      --card-bg: rgba(255,255,255,0.9);
-      --card-border: rgba(79,70,229,0.18);
-      --card-shadow: rgba(15,23,42,0.05);
-      --accent-soft: rgba(99,102,241,0.16);
-      --accent-strong: rgba(99,102,241,0.38);
-      --highlight-text: #312e81;
-    }
-
-    :root[data-theme='dark'] {
       color-scheme: dark;
       --bg: #020617;
-      --panel: rgba(15,23,42,0.82);
-      --panel-border: rgba(96,165,250,0.18);
-      --panel-shadow: rgba(15,23,42,0.25);
-      --page-background: radial-gradient(circle at top, rgba(30,64,175,0.35), transparent 55%),
-                        radial-gradient(circle at bottom, rgba(59,130,246,0.2), transparent 50%),
-                        #030712;
+      --panel: rgba(12,18,35,0.78);
+      --panel-border: rgba(129,140,248,0.24);
+      --panel-shadow: rgba(2,6,23,0.45);
+      --page-background: radial-gradient(circle at top, rgba(79,70,229,0.32), transparent 55%),
+                        radial-gradient(circle at bottom, rgba(14,165,233,0.18), transparent 52%),
+                        #020617;
       --text: #e2e8f0;
-      --muted: rgba(148,163,184,0.8);
-      --accent: rgba(99,102,241,0.92);
+      --muted: rgba(148,163,184,0.78);
+      --accent: #818cf8;
       --danger: #f87171;
       --success: #34d399;
-      --warning: #facc15;
-      --panel-meta: rgba(226,232,240,0.75);
-      --toast-bg: rgba(15,23,42,0.9);
-      --toast-border: rgba(99,102,241,0.35);
-      --toast-shadow: rgba(2,6,23,0.35);
-      --back-link-bg: rgba(15,23,42,0.6);
-      --back-link-border: rgba(148,163,184,0.3);
-      --btn-bg: rgba(15,23,42,0.6);
-      --btn-border: rgba(148,163,184,0.3);
-      --btn-ghost-border: rgba(148,163,184,0.3);
-      --btn-hover-shadow: rgba(15,23,42,0.35);
-      --input-bg: rgba(10,15,30,0.7);
-      --input-border: rgba(148,163,184,0.2);
-      --input-focus-border: rgba(99,102,241,0.45);
-      --input-focus-ring: rgba(99,102,241,0.18);
-      --empty-border: rgba(148,163,184,0.3);
-      --chip-bg: rgba(99,102,241,0.18);
-      --chip-border: rgba(99,102,241,0.35);
+      --warning: #fbbf24;
+      --panel-meta: rgba(203,213,225,0.75);
+      --toast-bg: rgba(10,14,30,0.88);
+      --toast-border: rgba(129,140,248,0.32);
+      --toast-shadow: rgba(2,6,23,0.45);
+      --back-link-bg: rgba(17,24,39,0.6);
+      --back-link-border: rgba(129,140,248,0.28);
+      --btn-bg: rgba(17,24,39,0.55);
+      --btn-border: rgba(129,140,248,0.28);
+      --btn-ghost-border: rgba(148,163,184,0.32);
+      --btn-hover-shadow: rgba(2,6,23,0.45);
+      --input-bg: rgba(8,12,24,0.7);
+      --input-border: rgba(129,140,248,0.28);
+      --input-focus-border: rgba(129,140,248,0.45);
+      --input-focus-ring: rgba(129,140,248,0.2);
+      --empty-border: rgba(129,140,248,0.3);
+      --chip-bg: rgba(129,140,248,0.22);
+      --chip-border: rgba(129,140,248,0.35);
       --chip-text: #c7d2fe;
-      --chip-accent-text: #c7d2fe;
-      --info-text: rgba(96,165,250,0.9);
-      --chip-coins: rgba(96,165,250,0.95);
+      --chip-accent-text: #e0e7ff;
+      --info-text: rgba(125,211,252,0.92);
+      --chip-coins: rgba(125,211,252,0.95);
       --rotation-bg: rgba(15,23,42,0.55);
-      --maintenance-bg: rgba(10,15,30,0.55);
-      --generator-bg: rgba(12,16,32,0.7);
-      --card-bg: rgba(12,16,32,0.82);
-      --card-border: rgba(99,102,241,0.18);
-      --card-shadow: rgba(15,23,42,0.35);
-      --accent-soft: rgba(99,102,241,0.22);
-      --accent-strong: rgba(99,102,241,0.5);
+      --maintenance-bg: rgba(15,23,42,0.6);
+      --generator-bg: rgba(13,20,38,0.7);
+      --card-bg: rgba(13,19,36,0.82);
+      --card-border: rgba(129,140,248,0.22);
+      --card-shadow: rgba(2,6,23,0.55);
+      --accent-soft: rgba(129,140,248,0.28);
+      --accent-strong: rgba(129,140,248,0.5);
       --highlight-text: #c7d2fe;
     }
     * {
@@ -917,53 +853,7 @@ if (isset($_GET['api'])) {
     }
   </style>
 </head>
-<body class="light-mode">
-  <script>
-    (function () {
-      var root = document.documentElement;
-      var body = document.body;
-
-      function applyTheme(mode) {
-        var theme = mode === 'dark' ? 'dark' : 'light';
-        root.setAttribute('data-theme', theme);
-        root.classList.remove('light-mode', 'dark-mode');
-        root.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
-        if (body) {
-          body.classList.remove('light-mode', 'dark-mode');
-          body.classList.add(theme === 'dark' ? 'dark-mode' : 'light-mode');
-        }
-      }
-
-      var initial = root.getAttribute('data-theme');
-      if (initial !== 'dark' && initial !== 'light') {
-        initial = 'light';
-      }
-      applyTheme(initial);
-
-      try {
-        var stored = localStorage.getItem('akay-theme');
-        if (stored === 'dark' || stored === 'light') {
-          applyTheme(stored);
-        }
-      } catch (error) {
-        /* ignore access errors */
-      }
-
-      window.addEventListener('storage', function (event) {
-        if (event.key === 'akay-theme') {
-          applyTheme(event.newValue);
-        }
-      });
-
-      window.addEventListener('akay-theme-change', function (event) {
-        if (event && Object.prototype.hasOwnProperty.call(event, 'detail')) {
-          applyTheme(event.detail);
-        }
-      });
-
-      window.__akayApplyTheme = applyTheme;
-    })();
-  </script>
+  <body>
   <div class="wrapper">
     <header class="top">
       <div>
