@@ -1729,7 +1729,10 @@ function auth_register_account(string $apiKey, string $username, string $email, 
 {
     $errors = [];
 
-    if (!auth_validate_freepik_api_key($apiKey, $errorMessage)) {
+    $apiKey = trim($apiKey);
+    $hasApiKey = $apiKey !== '';
+
+    if ($hasApiKey && !auth_validate_freepik_api_key($apiKey, $errorMessage)) {
         $errors['apiKey'] = $errorMessage;
     }
 
@@ -1774,7 +1777,7 @@ function auth_register_account(string $apiKey, string $username, string $email, 
         if (isset($account['email']) && $email !== '' && strcasecmp((string)$account['email'], $email) === 0) {
             $errors['email'] = 'Email sudah terdaftar.';
         }
-        if (isset($account['freepik_api_key']) && $account['freepik_api_key'] && hash_equals((string)$account['freepik_api_key'], $apiKey)) {
+        if ($hasApiKey && isset($account['freepik_api_key']) && $account['freepik_api_key'] && hash_equals((string)$account['freepik_api_key'], $apiKey)) {
             $errors['apiKey'] = 'API key ini sudah terhubung ke akun lain.';
         }
     }
@@ -1795,8 +1798,8 @@ function auth_register_account(string $apiKey, string $username, string $email, 
         'role' => 'user',
         'display_name' => ucwords(str_replace(['.', '_', '-'], ' ', $username)),
         'password_hash' => password_hash($password, PASSWORD_DEFAULT),
-        'freepik_api_key' => $apiKey,
-        'subscription' => 'pro',
+        'freepik_api_key' => $hasApiKey ? $apiKey : null,
+        'subscription' => 'free',
         'coins' => 25,
         'is_banned' => false,
         'is_blocked' => false,
