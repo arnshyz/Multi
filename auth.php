@@ -60,10 +60,10 @@ function auth_platform_default_generators(?string $now = null): array
             'enabled' => true,
             'updated_at' => $now,
         ],
-        'geminiStudio' => [
-            'key' => 'geminiStudio',
-            'label' => 'Gemini Studio',
-            'description' => 'Akses Gemini Text, Speech, dan Veo.',
+        'audioGen' => [
+            'key' => 'audioGen',
+            'label' => 'Audio Generator',
+            'description' => 'Konversi teks menjadi audio natural (TTS).',
             'enabled' => true,
             'updated_at' => $now,
         ],
