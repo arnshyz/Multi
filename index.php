@@ -83,6 +83,84 @@ function app_public_url(string $path): string
     return $base . '/' . ltrim($path, '/');
 }
 
+function drive_item_type_from_extension(string $extension): string
+{
+    $extension = strtolower($extension);
+    $videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi'];
+    return in_array($extension, $videoExtensions, true) ? 'video' : 'image';
+}
+
+function drive_merge_items_with_filesystem(array $account, array $items): array
+{
+    $info = auth_drive_storage_info($account);
+    $dir = $info['absolute'];
+
+    if (!is_dir($dir)) {
+        return $items;
+    }
+
+    $existingByUrl = [];
+    $existingByStorage = [];
+    foreach ($items as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $url = isset($entry['url']) ? (string)$entry['url'] : '';
+        if ($url !== '') {
+            $existingByUrl[$url] = true;
+        }
+        $storage = isset($entry['storage_path']) ? auth_drive_normalize_storage_path($entry['storage_path']) : null;
+        if ($storage) {
+            $existingByStorage[$storage] = true;
+        }
+    }
+
+    $files = glob($dir . '/*');
+    if ($files === false) {
+        $files = [];
+    }
+
+    foreach ($files as $file) {
+        if (!is_file($file)) {
+            continue;
+        }
+        $basename = basename($file);
+        $relative = $info['relative'] . '/' . $basename;
+        $url = app_public_url($relative);
+
+        if (isset($existingByUrl[$url]) || isset($existingByStorage[$relative])) {
+            continue;
+        }
+
+        $type = drive_item_type_from_extension(pathinfo($basename, PATHINFO_EXTENSION));
+        $createdAt = @filemtime($file);
+        if (!$createdAt) {
+            $createdAt = time();
+        }
+
+        $items[] = [
+            'id' => 'fs_' . sha1($relative),
+            'type' => $type,
+            'url' => $url,
+            'thumbnail_url' => $type === 'image' ? $url : null,
+            'model' => 'upload',
+            'prompt' => null,
+            'created_at' => gmdate('c', $createdAt),
+            'storage_path' => $relative,
+        ];
+    }
+
+    usort($items, static function ($a, $b) {
+        $aTime = isset($a['created_at']) ? strtotime((string)$a['created_at']) : false;
+        $bTime = isset($b['created_at']) ? strtotime((string)$b['created_at']) : false;
+        $aTime = $aTime !== false ? $aTime : 0;
+        $bTime = $bTime !== false ? $bTime : 0;
+        return $bTime <=> $aTime;
+    });
+
+    return array_values($items);
+}
+
 function freepik_normalize_api_keys($keys)
 {
     $normalized = [];
@@ -767,6 +845,8 @@ if ($requestedApi === 'account-coins') {
         ], 401);
     }
 
+    $account = auth_normalize_account($account);
+
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
     if (!is_array($payload)) {
@@ -819,6 +899,8 @@ if ($requestedApi === 'account-avatar') {
             'error' => 'Sesi berakhir, silakan login ulang.'
         ], 401);
     }
+
+    $account = auth_normalize_account($account);
 
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
@@ -877,6 +959,8 @@ if ($requestedApi === 'account-password') {
             'error' => 'Sesi berakhir, silakan login ulang.'
         ], 401);
     }
+
+    $account = auth_normalize_account($account);
 
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
@@ -940,8 +1024,11 @@ if ($requestedApi === 'drive') {
         ], 401);
     }
 
+    $account = auth_normalize_account($account);
+
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $items = auth_drive_get_items($account['id']);
+        $items = drive_merge_items_with_filesystem($account, $items);
         auth_json_response([
             'ok' => true,
             'status' => 200,
@@ -978,11 +1065,14 @@ if ($requestedApi === 'drive') {
             ], $status);
         }
 
+        $storedItems = is_array($stored) ? $stored : [];
+        $storedItems = drive_merge_items_with_filesystem($account, $storedItems);
+
         auth_json_response([
             'ok' => true,
             'status' => 200,
             'data' => [
-                'items' => $stored,
+                'items' => $storedItems,
             ],
         ]);
     }
@@ -1012,6 +1102,8 @@ if ($requestedApi === 'drive-delete') {
         ], 401);
     }
 
+    $account = auth_normalize_account($account);
+
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
     if (!is_array($payload)) {
@@ -1020,8 +1112,9 @@ if ($requestedApi === 'drive-delete') {
 
     $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
     $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
+    $storagePath = isset($payload['storage_path']) ? trim((string)$payload['storage_path']) : '';
 
-    if ($itemId === '' && $itemUrl === '') {
+    if ($itemId === '' && $itemUrl === '' && $storagePath === '') {
         auth_json_response([
             'ok' => false,
             'status' => 422,
@@ -1030,7 +1123,7 @@ if ($requestedApi === 'drive-delete') {
     }
 
     $errors = [];
-    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $errors);
+    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $storagePath !== '' ? $storagePath : null, $errors);
     if ($items === null) {
         $status = isset($errors['general']) ? 500 : 404;
         auth_json_response([
@@ -1039,6 +1132,8 @@ if ($requestedApi === 'drive-delete') {
             'error' => $errors ?: 'Item drive tidak ditemukan.'
         ], $status);
     }
+
+    $items = drive_merge_items_with_filesystem($account, $items);
 
     auth_json_response([
         'ok' => true,
@@ -1395,7 +1490,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     }
 
     $account = auth_current_account();
-    if ($account && auth_is_account_restricted($account)) {
+    if (!$account) {
+        echo json_encode([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ]);
+        exit;
+    }
+
+    $account = auth_normalize_account($account);
+
+    if (auth_is_account_restricted($account)) {
         echo json_encode([
             'ok' => false,
             'status' => 403,
@@ -1433,10 +1539,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         exit;
     }
 
-    $dir = __DIR__ . '/generated';
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
+    $storageInfo = auth_drive_ensure_storage_directory($account);
+    $dir = $storageInfo['absolute'];
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $allowed = [
@@ -1481,7 +1585,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         exit;
     }
 
-    $publicPath = 'generated/' . $filename;
+    $publicPath = $storageInfo['relative'] . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -1498,7 +1602,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     header('Content-Type: application/json; charset=utf-8');
 
     $account = auth_current_account();
-    if ($account && auth_is_account_restricted($account)) {
+    if (!$account) {
+        echo json_encode([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ]);
+        exit;
+    }
+
+    $account = auth_normalize_account($account);
+
+    if (auth_is_account_restricted($account)) {
         echo json_encode([
             'ok' => false,
             'status' => 403,
@@ -1520,10 +1635,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         exit;
     }
 
-    $dir = __DIR__ . '/generated';
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
+    $storageInfo = auth_drive_ensure_storage_directory($account);
+    $dir = $storageInfo['absolute'];
 
     $pathPart = parse_url($url, PHP_URL_PATH);
     $ext = pathinfo($pathPart ?? '', PATHINFO_EXTENSION);
@@ -1565,7 +1678,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         exit;
     }
 
-    $publicPath = 'generated/' . $filename;
+    $publicPath = $storageInfo['relative'] . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -3347,12 +3460,14 @@ body[data-theme="light"] {
 }
 .drive-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
 }
 .drive-actions button,
 .drive-actions a {
-  flex: 1;
+  flex: 1 1 calc(50% - 8px);
+  min-width: 120px;
   border-radius: 10px;
   border: 1px solid rgba(99, 102, 241, 0.4);
   background: rgba(99, 102, 241, 0.12);
@@ -6196,6 +6311,68 @@ body[data-theme="light"] .profile-credit {
       50% { transform: rotate(180deg) scale(1.04); opacity: 0.6; }
       100% { transform: rotate(360deg) scale(1); opacity: 0.45; }
     }
+  .webhook-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .webhook-form .field-row {
+    align-items: flex-end;
+  }
+  .webhook-form select[multiple] {
+    min-height: 96px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--text);
+  }
+  .webhook-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-end;
+    min-height: 100%;
+  }
+  .webhook-actions button {
+    align-self: flex-end;
+  }
+  .webhook-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .webhook-item {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: rgba(148, 163, 184, 0.06);
+  }
+  .webhook-item__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .webhook-item__url {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    word-break: break-word;
+  }
+  .webhook-item__actions {
+    display: flex;
+    gap: 8px;
+  }
+  .webhook-item__meta {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   </style>
 </head>
 <body data-theme="dark">
@@ -6248,31 +6425,19 @@ body[data-theme="light"] .profile-credit {
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M8.757 15.243l-2.121 2.121m12.728 0-2.121-2.121M8.757 8.757 6.636 6.636" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
-      <span class="nav-label">Image Generator</span>
-    </button>
-    <button class="sidebar-link" data-target="viewHub" data-feature="imageEdit">
-      <span class="nav-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="m15.232 5.232 3.536 3.536M4 20h4.5L19.768 8.732a2.5 2.5 0 0 0 0-3.536l-1.964-1.964a2.5 2.5 0 0 0-3.536 0L4 16.5V20z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-      </span>
-      <span class="nav-label">Image Editing</span>
+      <span class="nav-label">Image Gen</span>
     </button>
     <button class="sidebar-link" data-target="viewHub" data-feature="videoGen">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4.5 6h9a2.5 2.5 0 0 1 2.5 2.5v7a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 2 15.5v-7A2.5 2.5 0 0 1 4.5 6zm11 2.5 6-3v11l-6-3z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
-      <span class="nav-label">Video Generator</span>
+      <span class="nav-label">Video Gen</span>
     </button>
-    <button class="sidebar-link" data-target="viewHub" data-feature="lipsync">
+    <button class="sidebar-link" data-target="viewAudio" data-feature="audioGen">
       <span class="nav-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M12 5a4 4 0 0 1 4 4v2a4 4 0 1 1-8 0V9a4 4 0 0 1 4-4zm0 14v-3m-5 3h10" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <svg viewBox="0 0 24 24"><path d="M12 3v10a3 3 0 0 0 6 0V9m-6 6a3 3 0 0 1-6 0V9m6 11v-2m-6 2v-2m12 2v-2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
-      <span class="nav-label">Lipsync Studio</span>
-    </button>
-    <button class="sidebar-link" data-target="viewGemini" data-feature="geminiStudio">
-      <span class="nav-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M12 3.5 14.09 9h5.91l-4.78 3.47L17.3 18.5 12 15.27 6.7 18.5l1.08-6.03L3 9h5.91z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-      </span>
-      <span class="nav-label">Gemini Studio</span>
+      <span class="nav-label">Audio Gen</span>
     </button>
   </nav>
   <div class="sidebar-actions">
@@ -6498,7 +6663,7 @@ body[data-theme="light"] .profile-credit {
         <div>
           <div class="title">AKAY-AI Studio</div>
           <div class="subtitle">
-            <span id="featureLabel">Image Generator</span> · Single PHP • Multi model Freepik
+            <span id="featureLabel">Image Gen</span> · Single PHP • Multi model Freepik
           </div>
         </div>
         <div class="badge">
@@ -6518,6 +6683,8 @@ body[data-theme="light"] .profile-credit {
             <option value="seedream4">Seedream 4</option>
             <option value="seedream4edit">Seedream 4 Edit</option>
             <option value="fluxPro11">Flux Pro v1.1</option>
+            <option value="mystic">Image Mystic</option>
+            <option value="getHyperflux">Get Hyperflux</option>
           </optgroup>
           <optgroup label="Upscale / Edit">
             <option value="upscalerCreative">Upscaler Creative</option>
@@ -6532,7 +6699,9 @@ body[data-theme="light"] .profile-credit {
             <option value="seedancePro720">Seedance Pro – 720p</option>
             <option value="seedancePro1080">Seedance Pro – 1080p</option>
             <option value="klingStd21">Kling Std v2.1</option>
+            <option value="kling21Master">Kling v2.1 Master</option>
             <option value="kling25Pro">Kling v2.5 Pro</option>
+            <option value="pixverse">PixVerse</option>
             <option value="minimax1080">MiniMax Hailuo 02 – 1080p</option>
           </optgroup>
           <optgroup label="Lip Sync">
@@ -6542,9 +6711,9 @@ body[data-theme="light"] .profile-credit {
       </div>
       <div class="small-label">Hint input</div>
       <div id="modelHint" class="muted" style="font-size:11px">
-        Text→Image: cukup prompt.
-        Upscale/remove BG: wajib image URL.
-        Image→Video: image URL + prompt.
+        Image Gen (Gemini, Imagen, Seedream, Flux, Mystic, Hyperflux): cukup prompt + opsi aspect ratio.
+        Image Editing / Upscale: wajib image URL.
+        Image→Video & PixVerse/Kling: image URL + prompt.
         Latent-Sync: video URL + audio URL.
       </div>
     </div>
@@ -6558,7 +6727,7 @@ body[data-theme="light"] .profile-credit {
           </div>
 
           <div>
-            <div id="fieldsTitle" class="form-section-title">Image Generator</div>
+          <div id="fieldsTitle" class="form-section-title">Image Gen</div>
 
           <div id="geminiModeSection" class="gemini-mode-section hidden">
             <div class="form-section-title">PILIH MODE</div>
@@ -6729,19 +6898,59 @@ body[data-theme="light"] .profile-credit {
       <div id="historyList" class="jobs-list"></div>
       <div id="historyEmpty" class="muted" style="font-size:11px">Belum ada history.</div>
     </div>
+
+    <div class="card-soft">
+      <div class="header" style="margin-bottom:6px">
+        <div>
+          <div class="title" style="font-size:14px">Freepik Webhooks</div>
+          <div class="subtitle">Atur callback untuk menerima status task secara otomatis</div>
+        </div>
+        <button type="button" class="small secondary" id="webhookRefreshBtn">Refresh</button>
+      </div>
+      <form id="webhookForm" class="webhook-form" novalidate>
+        <div class="field-row">
+          <div>
+            <label for="webhookUrl">Callback URL</label>
+            <input type="url" id="webhookUrl" placeholder="https://contoh.com/webhook" required>
+          </div>
+          <div>
+            <label for="webhookEvents">Events</label>
+            <select id="webhookEvents" multiple size="3">
+              <option value="task.completed" selected>task.completed</option>
+              <option value="task.failed">task.failed</option>
+              <option value="task.progress">task.progress</option>
+            </select>
+            <p class="muted" style="font-size:10px;margin-top:4px;">Tahan Ctrl / Cmd untuk memilih lebih dari satu event.</p>
+          </div>
+        </div>
+        <div class="field-row">
+          <div>
+            <label for="webhookSecret">Secret (opsional)</label>
+            <input type="text" id="webhookSecret" placeholder="Token rahasia untuk verifikasi">
+          </div>
+          <div class="webhook-actions">
+            <button type="submit" id="webhookSubmit">Register Webhook</button>
+          </div>
+        </div>
+        <div class="account-form-status" id="webhookStatus" role="status"></div>
+      </form>
+      <div id="webhookList" class="webhook-list">
+        <div class="muted" style="font-size:11px">Belum ada webhook terdaftar.</div>
+      </div>
+    </div>
   </div>
 </div>
 
 <!-- ======================= FILMMAKER ======================= -->
-<div id="viewGemini" class="gemini-view app-view" hidden>
+<div id="viewAudio" class="gemini-view app-view" hidden>
   <section class="card gemini-hero">
     <div>
-      <h1>Gemini Studio</h1>
-      <p>Eksperimen langsung dengan Gemini API untuk membuat teks, suara, dan video VEO 3.1.</p>
+      <h1>Audio Generator (TTS)</h1>
+      <p>Ubah skrip teks menjadi audio natural menggunakan Google Gemini Text-to-Speech.</p>
     </div>
     <div class="gemini-hero-badges">
       <span class="gemini-badge">Google Gemini</span>
-      <span class="gemini-badge gemini-badge--accent">Realtime API Proxy</span>
+      <span class="gemini-badge gemini-badge--accent">Speech Generation</span>
     </div>
   </section>
 
@@ -6749,57 +6958,27 @@ body[data-theme="light"] .profile-credit {
     <article class="card-soft gemini-card">
       <header class="gemini-card__header">
         <div>
-          <h2>Text Generation</h2>
-          <p>Gunakan Gemini 1.5 untuk membuat skrip, caption, atau ide konten.</p>
+          <h2>Text-to-Speech</h2>
+          <p>Tentukan model, suara, dan bahasa lalu unduh audio narasi yang dihasilkan.</p>
         </div>
       </header>
-      <form id="geminiTextForm" class="gemini-form" novalidate>
+      <form id="geminiSpeechForm" class="gemini-form" novalidate>
         <div class="gemini-field-row">
           <div class="gemini-field">
-            <label for="geminiTextModel">Model</label>
-            <select id="geminiTextModel">
+            <label for="geminiSpeechModel">Model</label>
+            <select id="geminiSpeechModel">
               <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash</option>
               <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro</option>
             </select>
           </div>
           <div class="gemini-field">
-            <label for="geminiTextTemperature">Temperature</label>
-            <input type="number" id="geminiTextTemperature" step="0.1" min="0" max="2" value="0.7">
+            <label for="geminiSpeechTemperature">Temperature</label>
+            <input type="number" id="geminiSpeechTemperature" step="0.1" min="0" max="2" value="0.3">
           </div>
         </div>
         <div class="gemini-field">
-          <label for="geminiTextPrompt">Prompt</label>
-          <textarea id="geminiTextPrompt" rows="4" placeholder="Jelaskan konten yang ingin dihasilkan"></textarea>
-        </div>
-        <div class="gemini-field">
-          <label for="geminiTextSystem">System Instruction (opsional)</label>
-          <textarea id="geminiTextSystem" rows="3" placeholder="Contoh: Tulis dengan nada profesional."></textarea>
-        </div>
-        <div class="gemini-actions">
-          <button type="submit" id="geminiTextSubmit">Generate Text</button>
-          <button type="button" class="secondary" id="geminiTextReset">Reset</button>
-        </div>
-        <div class="account-form-status" id="geminiTextStatus" role="status"></div>
-      </form>
-      <div class="gemini-output-wrapper">
-        <textarea id="geminiTextOutput" class="gemini-output" rows="8" readonly placeholder="Hasil teks akan tampil di sini"></textarea>
-        <div class="gemini-output-actions">
-          <button type="button" class="small secondary" id="geminiTextCopy">Copy</button>
-        </div>
-      </div>
-    </article>
-
-    <article class="card-soft gemini-card">
-      <header class="gemini-card__header">
-        <div>
-          <h2>Text-to-Speech</h2>
-          <p>Buat narasi audio natural langsung dari teks menggunakan suara Gemini.</p>
-        </div>
-      </header>
-      <form id="geminiSpeechForm" class="gemini-form" novalidate>
-        <div class="gemini-field">
           <label for="geminiSpeechPrompt">Teks Narasi</label>
-          <textarea id="geminiSpeechPrompt" rows="4" placeholder="Masukkan skrip narasi yang ingin dibacakan"></textarea>
+          <textarea id="geminiSpeechPrompt" rows="5" placeholder="Masukkan skrip narasi yang ingin dibacakan"></textarea>
         </div>
         <div class="gemini-field-row">
           <div class="gemini-field">
@@ -6831,8 +7010,8 @@ body[data-theme="light"] .profile-credit {
             </select>
           </div>
           <div class="gemini-field">
-            <label for="geminiSpeechTemperature">Temperature</label>
-            <input type="number" id="geminiSpeechTemperature" step="0.1" min="0" max="2" value="0.3">
+            <label for="geminiSpeechReference">Referensi Suara (opsional)</label>
+            <input type="url" id="geminiSpeechReference" placeholder="https://contoh.com/ref.mp3">
           </div>
         </div>
         <div class="gemini-actions">
@@ -6845,55 +7024,14 @@ body[data-theme="light"] .profile-credit {
         <audio id="geminiSpeechAudio" controls style="display:none"></audio>
         <a id="geminiSpeechDownload" class="download-link" href="#" download hidden>Download Audio</a>
       </div>
-    </article>
-
-    <article class="card-soft gemini-card">
-      <header class="gemini-card__header">
-        <div>
-          <h2>VEO 3.1 Dialogue</h2>
-          <p>Rancang storyboard singkat dan dialog untuk menghasilkan video sinematik.</p>
-        </div>
-      </header>
-      <form id="geminiVeoForm" class="gemini-form" novalidate>
-        <div class="gemini-field">
-          <label for="geminiVeoPrompt">Prompt Video</label>
-          <textarea id="geminiVeoPrompt" rows="4" placeholder="Ceritakan adegan video yang ingin dibuat"></textarea>
-        </div>
-        <div class="gemini-field">
-          <label for="geminiVeoDialogue">Dialog / Narasi (opsional)</label>
-          <textarea id="geminiVeoDialogue" rows="3" placeholder="Contoh: Karakter menyapa penonton dengan nada semangat."></textarea>
-        </div>
-        <div class="gemini-field-row">
-          <div class="gemini-field">
-            <label for="geminiVeoDuration">Durasi</label>
-            <select id="geminiVeoDuration">
-              <option value="6">6 detik</option>
-              <option value="8">8 detik</option>
-              <option value="12">12 detik</option>
-            </select>
-          </div>
-          <div class="gemini-field">
-            <label for="geminiVeoAspect">Aspect Ratio</label>
-            <select id="geminiVeoAspect">
-              <option value="16:9">16:9 Landscape</option>
-              <option value="9:16">9:16 Portrait</option>
-              <option value="1:1">1:1 Square</option>
-            </select>
-          </div>
-        </div>
-        <div class="gemini-field">
-          <label for="geminiVeoStyle">Gaya Visual (opsional)</label>
-          <input type="text" id="geminiVeoStyle" placeholder="Contoh: cinematic lighting, product focus">
-        </div>
-        <div class="gemini-actions">
-          <button type="submit" id="geminiVeoSubmit">Generate Video</button>
-          <button type="button" class="secondary" id="geminiVeoClear">Reset</button>
-        </div>
-        <div class="account-form-status" id="geminiVeoStatus" role="status"></div>
-      </form>
-      <div class="gemini-video-results" id="geminiVeoResults">
-        <div class="gemini-placeholder">Belum ada hasil video. Isi prompt lalu generate untuk melihat preview.</div>
-      </div>
+      <section class="gemini-guides">
+        <h3>Tips Prompt</h3>
+        <ul>
+          <li>Gunakan detail suasana &amp; emosi: <em>"Narasi ramah dengan energi tinggi untuk video promosi."</em></li>
+          <li>Atur pengucapan dengan menambahkan catatan di dalam tanda kurung.</li>
+          <li>Gunakan referensi suara bila ingin mencocokkan tone tertentu.</li>
+        </ul>
+      </section>
     </article>
   </div>
 </div>
@@ -7204,15 +7342,13 @@ body[data-theme="light"] .profile-credit {
   const TOPUP_AMOUNTS = [10, 20, 30, 40, 50, 100, 150, 200];
   const TOPUP_WHATSAPP = 'https://wa.me/62818404222';
   const PLATFORM_FEATURE_META = {
-    imageGen: { label: 'Image Generator' },
-    imageEdit: { label: 'Image Editing' },
-    videoGen: { label: 'Video Generator' },
-    lipsync: { label: 'Lipsync Studio' },
+    imageGen: { label: 'Image Gen' },
+    videoGen: { label: 'Video Gen' },
+    audioGen: { label: 'Audio Gen' },
     filmmaker: { label: 'Filmmaker' },
-    ugc: { label: 'UGC Tool' },
-    geminiStudio: { label: 'Gemini Studio' }
+    ugc: { label: 'UGC Tool' }
   };
-  const HUB_FEATURE_KEYS = ['imageGen', 'imageEdit', 'videoGen', 'lipsync'];
+  const HUB_FEATURE_KEYS = ['imageGen', 'videoGen'];
 
   let currentAccount = null;
   let currentTheme = 'dark';
@@ -7606,8 +7742,8 @@ body[data-theme="light"] .profile-credit {
       showFeatureLockedMessage('ugc');
       showView('viewDashboard');
     }
-    if (viewGeminiSection && viewGeminiSection.style.display !== 'none' && !featureAvailableForCurrentUser('geminiStudio')) {
-      showFeatureLockedMessage('geminiStudio');
+    if (viewAudioSection && viewAudioSection.style.display !== 'none' && !featureAvailableForCurrentUser('audioGen')) {
+      showFeatureLockedMessage('audioGen');
       showView('viewDashboard');
     }
 
@@ -7832,6 +7968,7 @@ body[data-theme="light"] .profile-credit {
 
   function driveModelLabel(modelId) {
     if (!modelId) return 'Hasil Generate';
+    if (modelId === 'upload') return 'Unggahan Manual';
     const cfg = modelConfigMap[modelId];
     if (cfg && cfg.label) return cfg.label;
     return String(modelId).toUpperCase();
@@ -7949,6 +8086,12 @@ body[data-theme="light"] .profile-credit {
       previewBtn.textContent = 'Preview';
       previewBtn.addEventListener('click', () => openAssetPreview(item.url, type));
       actions.appendChild(previewBtn);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.textContent = 'Copy Link';
+      copyBtn.addEventListener('click', () => copyDriveLink(item, copyBtn));
+      actions.appendChild(copyBtn);
 
       const downloadLink = document.createElement('a');
       downloadLink.href = item.url;
@@ -8163,7 +8306,8 @@ body[data-theme="light"] .profile-credit {
     const payload = {};
     if (item.id) payload.id = item.id;
     if (item.url) payload.url = item.url;
-    if (!payload.id && !payload.url) {
+    if (item.storage_path) payload.storage_path = item.storage_path;
+    if (!payload.id && !payload.url && !payload.storage_path) {
       alert('Item drive tidak valid.');
       return;
     }
@@ -8194,6 +8338,60 @@ body[data-theme="light"] .profile-credit {
         button.disabled = false;
         button.textContent = 'Hapus';
       }
+    }
+  }
+
+  async function copyDriveLink(item, button) {
+    if (!item || !item.url) {
+      alert('Link tidak tersedia.');
+      return;
+    }
+
+    const link = ensureAbsoluteUrl(item.url);
+    const originalText = button ? button.textContent : '';
+
+    const fallbackCopy = text => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    };
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menyalin…';
+    }
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(link);
+      } else {
+        fallbackCopy(link);
+      }
+
+      if (button) {
+        button.textContent = 'Tersalin!';
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = 'Copy Link';
+        }, 1600);
+      } else {
+        alert('Link berhasil disalin.');
+      }
+    } catch (err) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText || 'Copy Link';
+      }
+      alert('Gagal menyalin link: ' + (err && err.message ? err.message : err));
     }
   }
 
@@ -8752,6 +8950,30 @@ body[data-theme="light"] .profile-credit {
         return body;
       }
     },
+    mystic: {
+      id: 'mystic',
+      label: 'Image Mystic',
+      type: 'image',
+      path: '/v1/ai/text-to-image/mystic',
+      statusPath: taskId => `/v1/ai/text-to-image/mystic/${taskId}`,
+      buildBody: f => {
+        const body = { prompt: f.prompt, num_images: f.numImages || 1 };
+        if (f.aspectRatio) body.aspect_ratio = f.aspectRatio;
+        return body;
+      }
+    },
+    getHyperflux: {
+      id: 'getHyperflux',
+      label: 'Get Hyperflux',
+      type: 'image',
+      path: '/v1/ai/text-to-image/get-hyperflux',
+      statusPath: taskId => `/v1/ai/text-to-image/get-hyperflux/${taskId}`,
+      buildBody: f => {
+        const body = { prompt: f.prompt, num_images: f.numImages || 1 };
+        if (f.aspectRatio) body.aspect_ratio = f.aspectRatio;
+        return body;
+      }
+    },
 
     upscalerCreative: {
       id: 'upscalerCreative',
@@ -8835,12 +9057,28 @@ body[data-theme="light"] .profile-credit {
       statusPath: taskId => `/v1/ai/image-to-video/kling-v2-1-std/${taskId}`,
       buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
+    kling21Master: {
+      id: 'kling21Master',
+      label: 'Kling v2.1 Master',
+      type: 'video',
+      path: '/v1/ai/image-to-video/kling-v2-1-master',
+      statusPath: taskId => `/v1/ai/image-to-video/kling-v2-1-master/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
     kling25Pro: {
       id: 'kling25Pro',
       label: 'Kling v2.5 Pro',
       type: 'video',
       path: '/v1/ai/image-to-video/kling-v2-5-pro',
       statusPath: taskId => `/v1/ai/image-to-video/kling-v2-5-pro/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    pixverse: {
+      id: 'pixverse',
+      label: 'PixVerse',
+      type: 'video',
+      path: '/v1/ai/image-to-video/pixverse',
+      statusPath: taskId => `/v1/ai/image-to-video/pixverse/${taskId}`,
       buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
     minimax1080: {
@@ -8871,10 +9109,8 @@ body[data-theme="light"] .profile-credit {
   modelConfigMap = MODEL_CONFIG;
 
   const FEATURE_MODELS = {
-    imageGen: ['gemini','imagen3','seedream4','fluxPro11'],
-    imageEdit: ['seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'],
-    videoGen: ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'],
-    lipsync: ['latentSync']
+    imageGen: ['gemini','imagen3','seedream4','fluxPro11','mystic','getHyperflux','seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'],
+    videoGen: ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','kling25Pro','pixverse','minimax1080','latentSync']
   };
 
   const STORAGE_KEY = 'freepik_jobs_v1';
@@ -9081,11 +9317,13 @@ body[data-theme="light"] .profile-credit {
   const geminiTextResetBtn = document.getElementById('geminiTextReset');
   const geminiTextSubmitBtn = document.getElementById('geminiTextSubmit');
   const geminiSpeechForm = document.getElementById('geminiSpeechForm');
+  const geminiSpeechModel = document.getElementById('geminiSpeechModel');
   const geminiSpeechPrompt = document.getElementById('geminiSpeechPrompt');
   const geminiSpeechVoice = document.getElementById('geminiSpeechVoice');
   const geminiSpeechLanguage = document.getElementById('geminiSpeechLanguage');
   const geminiSpeechFormat = document.getElementById('geminiSpeechFormat');
   const geminiSpeechTemperature = document.getElementById('geminiSpeechTemperature');
+  const geminiSpeechReference = document.getElementById('geminiSpeechReference');
   const geminiSpeechStatus = document.getElementById('geminiSpeechStatus');
   const geminiSpeechSubmitBtn = document.getElementById('geminiSpeechSubmit');
   const geminiSpeechResetBtn = document.getElementById('geminiSpeechReset');
@@ -9102,6 +9340,7 @@ body[data-theme="light"] .profile-credit {
   const geminiVeoClearBtn = document.getElementById('geminiVeoClear');
   const geminiVeoResults = document.getElementById('geminiVeoResults');
   const defaultGeminiTextTemperature = geminiTextTemperature ? geminiTextTemperature.value : '0.7';
+  const defaultGeminiSpeechModel = geminiSpeechModel ? geminiSpeechModel.value : 'gemini-1.5-flash-latest';
   const defaultGeminiSpeechTemperature = geminiSpeechTemperature ? geminiSpeechTemperature.value : '0.3';
   const defaultGeminiVeoDuration = geminiVeoDuration ? geminiVeoDuration.value : '6';
   const defaultGeminiVeoAspect = geminiVeoAspect ? geminiVeoAspect.value : '16:9';
@@ -9133,6 +9372,14 @@ body[data-theme="light"] .profile-credit {
   const historyEmpty = document.getElementById('historyEmpty');
   const refreshQueueBtn = document.getElementById('refreshQueueBtn');
   const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+  const webhookForm = document.getElementById('webhookForm');
+  const webhookUrlInput = document.getElementById('webhookUrl');
+  const webhookEventsInput = document.getElementById('webhookEvents');
+  const webhookSecretInput = document.getElementById('webhookSecret');
+  const webhookStatus = document.getElementById('webhookStatus');
+  const webhookList = document.getElementById('webhookList');
+  const webhookRefreshBtn = document.getElementById('webhookRefreshBtn');
+  const webhookSubmitBtn = document.getElementById('webhookSubmit');
   const featureTabs = document.querySelectorAll('.feature-tab');
   const featureLabel = document.getElementById('featureLabel');
   let navButtons = [];
@@ -9141,7 +9388,7 @@ body[data-theme="light"] .profile-credit {
   let viewHubSection = null;
   let viewFilmSection = null;
   let viewUGCSection = null;
-  let viewGeminiSection = null;
+  let viewAudioSection = null;
   let viewAccountSection = null;
   let viewSections = {};
 
@@ -9581,8 +9828,8 @@ body[data-theme="light"] .profile-credit {
       showRestrictionNotice();
       return false;
     }
-    if (!featureAvailableForCurrentUser('geminiStudio')) {
-      showFeatureLockedMessage('geminiStudio');
+    if (!featureAvailableForCurrentUser('audioGen')) {
+      showFeatureLockedMessage('audioGen');
       return false;
     }
     return true;
@@ -9618,8 +9865,14 @@ body[data-theme="light"] .profile-credit {
 
   function resetGeminiSpeechForm() {
     if (geminiSpeechPrompt) geminiSpeechPrompt.value = '';
+    if (geminiSpeechModel && typeof defaultGeminiSpeechModel !== 'undefined') {
+      geminiSpeechModel.value = defaultGeminiSpeechModel;
+    }
     if (geminiSpeechTemperature && typeof defaultGeminiSpeechTemperature !== 'undefined') {
       geminiSpeechTemperature.value = defaultGeminiSpeechTemperature;
+    }
+    if (geminiSpeechReference) {
+      geminiSpeechReference.value = '';
     }
     clearGeminiSpeechOutput();
     showInlineStatus(geminiSpeechStatus, '', null);
@@ -9732,7 +9985,7 @@ body[data-theme="light"] .profile-credit {
         return;
       }
 
-      const prompt = geminiSpeechPrompt ? geminiSpeechPrompt.value.trim() : '';
+      let prompt = geminiSpeechPrompt ? geminiSpeechPrompt.value.trim() : '';
       if (!prompt) {
         showInlineStatus(geminiSpeechStatus, 'Teks narasi wajib diisi.', 'err');
         if (geminiSpeechPrompt) geminiSpeechPrompt.focus();
@@ -9740,9 +9993,14 @@ body[data-theme="light"] .profile-credit {
       }
 
       const format = geminiSpeechFormat && geminiSpeechFormat.value ? geminiSpeechFormat.value : 'audio/mp3';
+      const model = geminiSpeechModel && geminiSpeechModel.value ? geminiSpeechModel.value : 'gemini-1.5-flash-latest';
+      const reference = geminiSpeechReference && geminiSpeechReference.value ? geminiSpeechReference.value.trim() : '';
+      if (reference) {
+        prompt += `\n\n[Voice reference: ${reference}]`;
+      }
       const payload = {
         prompt,
-        model: geminiTextModel && geminiTextModel.value ? geminiTextModel.value : 'gemini-1.5-flash-latest',
+        model,
         voice: geminiSpeechVoice && geminiSpeechVoice.value ? geminiSpeechVoice.value : 'Puck',
         language: geminiSpeechLanguage && geminiSpeechLanguage.value ? geminiSpeechLanguage.value : 'en-US',
         mimeType: format,
@@ -9929,9 +10187,9 @@ body[data-theme="light"] .profile-credit {
   function updateFields() {
     const id = modelSelect.value;
 
-    const isT2I = ['gemini','imagen3','seedream4','fluxPro11'].includes(id);
+    const isT2I = ['gemini','imagen3','seedream4','fluxPro11','mystic','getHyperflux'].includes(id);
     const isEdit = ['seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'].includes(id);
-    const isI2V = ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'].includes(id);
+    const isI2V = ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','kling25Pro','pixverse','minimax1080'].includes(id);
     const isLip = id === 'latentSync';
 
     rowImageUrl.classList.add('hidden');
@@ -9941,19 +10199,19 @@ body[data-theme="light"] .profile-credit {
     rowPrompt.classList.remove('hidden');
 
     if (isT2I) {
-      fieldsTitle.textContent = 'Image Generator';
+      fieldsTitle.textContent = 'Image Gen';
       rowTIOptions.classList.remove('hidden');
     } else if (isEdit) {
       fieldsTitle.textContent = 'Image Editing';
       rowImageUrl.classList.remove('hidden');
       if (id === 'removeBg') rowPrompt.classList.add('hidden');
     } else if (isI2V) {
-      fieldsTitle.textContent = 'Video Generator';
+      fieldsTitle.textContent = 'Video Gen';
       rowImageUrl.classList.remove('hidden');
       rowVideoSettings.classList.remove('hidden');
       configureVideoControls(id);
     } else if (isLip) {
-      fieldsTitle.textContent = 'Lipsync Studio';
+      fieldsTitle.textContent = 'Video Gen (Lipsync)';
       rowVideoAudio.classList.remove('hidden');
     } else {
       fieldsTitle.textContent = 'Input';
@@ -10005,10 +10263,8 @@ body[data-theme="light"] .profile-credit {
 
     if (!featureLabel) return;
     let label;
-    if (featureKey === 'imageGen') label = 'Image Generator';
-    else if (featureKey === 'imageEdit') label = 'Image Editing';
-    else if (featureKey === 'videoGen') label = 'Video Generator';
-    else if (featureKey === 'lipsync') label = 'Lipsync Studio';
+    if (featureKey === 'imageGen') label = 'Image Gen';
+    else if (featureKey === 'videoGen') label = 'Video Gen';
     else label = 'AI Hub';
     featureLabel.textContent = label;
     if (navButtons.length && viewHubSection && viewHubSection.style.display !== 'none') {
@@ -10272,6 +10528,156 @@ body[data-theme="light"] .profile-credit {
       throw new Error(`HTTP ${json.status} – ${(json.data && json.data.message) || json.error || 'unknown error'}`);
     }
     return json.data;
+  }
+
+  async function callFreepikEndpoint({ path, method = 'GET', body, contentType = 'json' } = {}) {
+    if (!path) {
+      throw new Error('Endpoint path wajib diisi.');
+    }
+    const payload = { path, method, contentType };
+    if (method !== 'GET' && typeof body !== 'undefined') {
+      payload.body = body;
+    }
+
+    const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=freepik', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      console.error('Response /?api=freepik bukan JSON. Raw:', text);
+      throw new Error('Endpoint PHP mengembalikan HTML / non-JSON.');
+    }
+
+    if (!json.ok) {
+      throw new Error(`HTTP ${json.status} – ${(json.data && json.data.message) || json.error || 'unknown error'}`);
+    }
+    return json.data;
+  }
+
+  function getSelectedWebhookEvents(selectEl) {
+    if (!selectEl || !selectEl.options) return [];
+    return Array.from(selectEl.options)
+      .filter(opt => opt.selected && opt.value)
+      .map(opt => opt.value);
+  }
+
+  function renderWebhookList(items) {
+    if (!webhookList) return;
+    webhookList.innerHTML = '';
+    const list = Array.isArray(items) ? items : [];
+
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'muted';
+      empty.style.fontSize = '11px';
+      empty.textContent = 'Belum ada webhook terdaftar.';
+      webhookList.appendChild(empty);
+      return;
+    }
+
+    list.forEach(item => {
+      const id = item && (item.id || item.webhook_id || item.uuid || item.name);
+      const callbackUrl = item && (item.callback_url || item.url || item.endpoint || item.target_url) || '-';
+      const eventsRaw = item && (item.events || item.event_types || item.event || []);
+      const events = Array.isArray(eventsRaw)
+        ? eventsRaw.filter(Boolean)
+        : (typeof eventsRaw === 'string' && eventsRaw ? [eventsRaw] : []);
+      const createdAt = item && (item.created_at || item.createdAt || item.created || null);
+      const isActive = item && typeof item.active === 'boolean' ? item.active : null;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'webhook-item';
+
+      const header = document.createElement('div');
+      header.className = 'webhook-item__header';
+
+      const urlEl = document.createElement('div');
+      urlEl.className = 'webhook-item__url';
+      urlEl.textContent = callbackUrl;
+      header.appendChild(urlEl);
+
+      const actions = document.createElement('div');
+      actions.className = 'webhook-item__actions';
+      if (id) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'small secondary';
+        deleteBtn.textContent = 'Hapus';
+        deleteBtn.addEventListener('click', () => deleteWebhook(id));
+        actions.appendChild(deleteBtn);
+      }
+      header.appendChild(actions);
+      wrapper.appendChild(header);
+
+      const metaParts = [];
+      if (id) metaParts.push(`ID: ${id}`);
+      if (events.length) metaParts.push(`Events: ${events.join(', ')}`);
+      if (typeof isActive === 'boolean') metaParts.push(isActive ? 'Aktif' : 'Nonaktif');
+      if (createdAt) {
+        const date = new Date(createdAt);
+        if (!Number.isNaN(date.getTime())) {
+          metaParts.push(date.toLocaleString('id-ID'));
+        }
+      }
+      if (metaParts.length) {
+        const metaLine = document.createElement('div');
+        metaLine.className = 'webhook-item__meta';
+        metaLine.textContent = metaParts.join(' • ');
+        wrapper.appendChild(metaLine);
+      }
+
+      webhookList.appendChild(wrapper);
+    });
+  }
+
+  async function fetchWebhooksList({ showStatus = true } = {}) {
+    if (!webhookList) return;
+    if (accountRestricted()) {
+      renderWebhookList([]);
+      showInlineStatus(webhookStatus, 'Akun dibatasi. Tidak dapat memuat webhook.', 'err');
+      return;
+    }
+    if (showStatus) {
+      showInlineStatus(webhookStatus, 'Memuat webhook…', 'progress');
+    }
+    try {
+      const data = await callFreepikEndpoint({ path: '/v1/ai/webhooks', method: 'GET' });
+      const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+      renderWebhookList(list);
+      if (showStatus) {
+        showInlineStatus(webhookStatus, `Memuat ${list.length} webhook.`, 'ok');
+        setTimeout(() => showInlineStatus(webhookStatus, '', null), 1600);
+      }
+    } catch (err) {
+      renderWebhookList([]);
+      showInlineStatus(webhookStatus, err.message || 'Gagal memuat webhook.', 'err');
+    }
+  }
+
+  async function deleteWebhook(id) {
+    if (!id) return;
+    if (!confirm('Hapus webhook ini?')) {
+      return;
+    }
+    if (accountRestricted()) {
+      showRestrictionNotice();
+      return;
+    }
+    showInlineStatus(webhookStatus, 'Menghapus webhook…', 'progress');
+    try {
+      await callFreepikEndpoint({ path: `/v1/ai/webhooks/${encodeURIComponent(id)}`, method: 'DELETE' });
+      showInlineStatus(webhookStatus, 'Webhook dihapus.', 'ok');
+      setTimeout(() => showInlineStatus(webhookStatus, '', null), 1600);
+      fetchWebhooksList({ showStatus: false });
+    } catch (err) {
+      showInlineStatus(webhookStatus, err.message || 'Gagal menghapus webhook.', 'err');
+    }
   }
 
   // ===== CACHE DI SERVER =====
@@ -10986,6 +11392,64 @@ body[data-theme="light"] .profile-credit {
     }
   });
 
+  if (webhookRefreshBtn) {
+    webhookRefreshBtn.addEventListener('click', () => {
+      fetchWebhooksList();
+    });
+  }
+
+  if (webhookForm) {
+    webhookForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (accountRestricted()) {
+        showRestrictionNotice();
+        return;
+      }
+
+      const url = webhookUrlInput ? webhookUrlInput.value.trim() : '';
+      if (!url) {
+        showInlineStatus(webhookStatus, 'Callback URL wajib diisi.', 'err');
+        if (webhookUrlInput) webhookUrlInput.focus();
+        return;
+      }
+
+      const events = getSelectedWebhookEvents(webhookEventsInput);
+      if (!events.length) {
+        showInlineStatus(webhookStatus, 'Pilih minimal satu event webhook.', 'err');
+        return;
+      }
+
+      const payload = { callback_url: url, events };
+      const secret = webhookSecretInput && webhookSecretInput.value.trim();
+      if (secret) {
+        payload.secret = secret;
+      }
+
+      try {
+        if (webhookSubmitBtn) {
+          toggleButtonLoading(webhookSubmitBtn, true, 'Mendaftarkan…');
+        }
+        showInlineStatus(webhookStatus, 'Mendaftarkan webhook…', 'progress');
+        await callFreepikEndpoint({ path: '/v1/ai/webhooks', method: 'POST', body: payload });
+        showInlineStatus(webhookStatus, 'Webhook berhasil dibuat.', 'ok');
+        webhookForm.reset();
+        if (webhookEventsInput) {
+          Array.from(webhookEventsInput.options).forEach(opt => {
+            opt.selected = opt.hasAttribute('selected');
+          });
+        }
+        setTimeout(() => showInlineStatus(webhookStatus, '', null), 1800);
+        fetchWebhooksList({ showStatus: false });
+      } catch (err) {
+        showInlineStatus(webhookStatus, err.message || 'Gagal membuat webhook.', 'err');
+      } finally {
+        if (webhookSubmitBtn) {
+          toggleButtonLoading(webhookSubmitBtn, false);
+        }
+      }
+    });
+  }
+
   if (featureTabs.length) {
     featureTabs.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -11021,7 +11485,7 @@ body[data-theme="light"] .profile-credit {
   viewHubSection = document.getElementById('viewHub');
   viewFilmSection = document.getElementById('viewFilm');
   viewUGCSection = document.getElementById('viewUGC');
-  viewGeminiSection = document.getElementById('viewGemini');
+  viewAudioSection = document.getElementById('viewAudio');
   viewAccountSection = document.getElementById('viewAccount');
   viewSections = {
     viewDashboard: viewDashboardSection,
@@ -11030,12 +11494,16 @@ body[data-theme="light"] .profile-credit {
     viewHub: viewHubSection,
     viewFilm: viewFilmSection,
     viewUGC: viewUGCSection,
-    viewGemini: viewGeminiSection
+    viewAudio: viewAudioSection
   };
 
   updateNavAvailability();
   updateFeatureTabsAvailability();
   updateMaintenanceOverlay();
+
+  if (webhookList) {
+    fetchWebhooksList({ showStatus: false });
+  }
 
   function activateNav(target, featureKey) {
     navButtons.forEach(btn => {
@@ -11068,8 +11536,8 @@ body[data-theme="light"] .profile-credit {
       showFeatureLockedMessage('ugc');
       return;
     }
-    if (target === 'viewGemini' && !featureAvailableForCurrentUser('geminiStudio')) {
-      showFeatureLockedMessage('geminiStudio');
+    if (target === 'viewAudio' && !featureAvailableForCurrentUser('audioGen')) {
+      showFeatureLockedMessage('audioGen');
       return;
     }
 
