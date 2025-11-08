@@ -1996,12 +1996,12 @@ if (!auth_is_logged_in()) {
             <button class="close-btn" type="button" aria-label="Tutup">&times;</button>
             <h2 id="signup-modal-title">Daftar Akun Baru</h2>
             <form>
-                <label for="signupFreepikKey" class="modal-label">Freepik API Key</label>
+                <label for="signupFreepikKey" class="modal-label">Freepik API Key (opsional)</label>
                 <div class="api-key-field">
-                    <input type="text" id="signupFreepikKey" name="freepik_api_key" placeholder="Masukkan Freepik API key" required autocomplete="off">
+                    <input type="text" id="signupFreepikKey" name="freepik_api_key" placeholder="Opsional: masukkan Freepik API key" autocomplete="off">
                     <button type="button" class="btn-primary" id="freepikValidateBtn">Validasi</button>
                 </div>
-                <div class="form-status small" data-role="apikey-status" aria-live="polite"></div>
+                <div class="form-status small" data-role="apikey-status" aria-live="polite" data-state="info">Opsional: isi Freepik API key jika ingin menghubungkan akun Freepik.</div>
 
                 <label for="signupUsername" class="modal-label">Username</label>
                 <input type="text" id="signupUsername" name="username" placeholder="Nama Pengguna" required autocomplete="username">
@@ -2449,7 +2449,7 @@ if (!auth_is_logged_in()) {
         const signupApiKeyInput = document.getElementById('signupFreepikKey');
         const freepikValidateBtn = document.getElementById('freepikValidateBtn');
         const signupSubmitBtn = document.getElementById('signupSubmit');
-        let freepikValidated = false;
+        let freepikValidated = !signupApiKeyInput || signupApiKeyInput.value.trim() === '';
         let freepikValidating = false;
         let signupSubmitting = false;
 
@@ -2636,11 +2636,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (apiKeyStatus) {
                     setStatus(apiKeyStatus, '', null);
                 }
-                freepikValidated = false;
+                freepikValidated = true;
                 freepikValidating = false;
                 if (signupApiKeyInput) {
                     signupApiKeyInput.value = '';
                 }
+                setDefaultApiKeyStatus();
                 refreshSignupControls();
                 openModal(signupModal);
                 if (signupForm) {
@@ -2677,9 +2678,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (signupApiKeyInput) {
             signupApiKeyInput.addEventListener('input', () => {
-                freepikValidated = false;
+                const value = signupApiKeyInput.value.trim();
+                freepikValidated = value === '';
                 if (apiKeyStatus) {
-                    setStatus(apiKeyStatus, '', null);
+                    if (value === '') {
+                        setDefaultApiKeyStatus();
+                    } else {
+                        setStatus(apiKeyStatus, 'Klik "Validasi" untuk memastikan API key aktif.', 'info');
+                    }
                 }
                 refreshSignupControls();
             });
@@ -2738,9 +2744,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        function setDefaultApiKeyStatus() {
+            if (!apiKeyStatus) return;
+            setStatus(apiKeyStatus, 'Opsional: isi Freepik API key jika ingin menghubungkan akun Freepik.', 'info');
+        }
+
         function refreshSignupControls() {
             if (signupSubmitBtn) {
-                signupSubmitBtn.disabled = signupSubmitting || !freepikValidated;
+                signupSubmitBtn.disabled = signupSubmitting || freepikValidating;
             }
             if (freepikValidateBtn) {
                 const hasKey = signupApiKeyInput && signupApiKeyInput.value.trim() !== '';
@@ -2748,6 +2759,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        setDefaultApiKeyStatus();
         refreshSignupControls();
 
         function extractErrorMessage(errorData, fallback) {
@@ -2827,18 +2839,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                if (!apiKey) {
-                    setStatus(apiKeyStatus, 'Masukkan Freepik API key terlebih dahulu.', 'error');
-                    if (signupApiKeyInput) signupApiKeyInput.focus();
-                    return;
-                }
-
-                if (!freepikValidated) {
-                    setStatus(apiKeyStatus, 'Validasi API key Freepik sebelum mendaftar.', 'error');
-                    if (signupApiKeyInput) signupApiKeyInput.focus();
-                    return;
-                }
-
                 const submitButton = signupSubmitBtn || signupForm.querySelector('button[type="submit"]');
                 signupSubmitting = true;
                 if (submitButton) submitButton.disabled = true;
@@ -2870,9 +2870,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     setStatus(signupStatus, 'Registrasi berhasil! Silakan login.', 'success');
-                    freepikValidated = false;
+                    freepikValidated = true;
                     if (signupApiKeyInput) signupApiKeyInput.value = '';
-                    if (apiKeyStatus) setStatus(apiKeyStatus, '', null);
+                    setDefaultApiKeyStatus();
                     refreshSignupControls();
                     setTimeout(() => {
                         closeModal(signupModal);
@@ -3459,6 +3459,7 @@ body[data-theme="light"] {
   align-items: center;
   justify-content: center;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.35);
+  z-index: 6;
 }
 .drive-type-badge {
   position: absolute;
@@ -3472,6 +3473,7 @@ body[data-theme="light"] {
   padding: 4px 8px;
   border-radius: 999px;
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
+  z-index: 6;
 }
 .drive-card-footer {
   display: flex;
@@ -5277,6 +5279,19 @@ body[data-theme="light"] .profile-credit {
     .preview-progress .progress-track {
       height: 4px;
     }
+    .watermark-notice {
+      font-size: 11px;
+      color: var(--muted);
+      background: rgba(99, 102, 241, 0.14);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 10px;
+      padding: 8px 10px;
+      line-height: 1.4;
+      margin-bottom: 10px;
+    }
+    .watermark-notice strong {
+      color: var(--text);
+    }
     .preview-item {
       background: var(--card);
       border-radius: 10px;
@@ -5311,6 +5326,38 @@ body[data-theme="light"] .profile-credit {
       height: 100%;
       object-fit: cover;
       background: #000;
+    }
+    .watermark-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      z-index: 4;
+    }
+    .watermark-overlay::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(8, 14, 26, 0.55), rgba(79, 70, 229, 0.2));
+      mix-blend-mode: multiply;
+    }
+    .watermark-overlay::after {
+      content: 'akay.io • akay.io • akay.io\Aakay.io • akay.io • akay.io\Aakay.io • akay.io • akay.io';
+      white-space: pre;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.35em;
+      color: rgba(255, 255, 255, 0.25);
+      text-shadow: 0 0 20px rgba(15, 23, 42, 0.45);
+      transform: rotate(-28deg);
+      line-height: 2.4;
+    }
+    [data-watermark="off"] .watermark-overlay {
+      display: none;
     }
     .preview-meta {
       display: flex;
@@ -6130,14 +6177,25 @@ body[data-theme="light"] .profile-credit {
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
     }
-    .asset-preview-body img,
-    .asset-preview-body video {
-      max-width: 100%;
-      max-height: 100%;
-      border-radius: 12px;
-      background: var(--card);
+    .asset-preview-frame {
+      position: relative;
+      width: min(100%, 520px);
+      max-height: 70vh;
+      border-radius: 14px;
+      background: #000;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .asset-preview-frame img,
+    .asset-preview-frame video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      display: block;
     }
     .asset-preview-download {
       align-self: flex-end;
@@ -6585,6 +6643,9 @@ body[data-theme="light"] .profile-credit {
         <div>
           <h1>Creative Drive</h1>
           <p>Simpan dan kelola seluruh hasil generate foto &amp; video kamu di satu tempat.</p>
+          <p id="driveWatermarkNotice" class="watermark-notice" hidden>
+            Hasil generate akun FREE akan menampilkan watermark <strong>akay.io</strong>. Upgrade ke PRO untuk menghilangkan watermark.
+          </p>
         </div>
         <div class="drive-meta">
           <span id="driveTotalCount">0 file</span>
@@ -6896,6 +6957,9 @@ body[data-theme="light"] .profile-credit {
           <div class="progress-track">
             <div class="progress-fill" id="previewProgressFill"></div>
           </div>
+        </div>
+        <div id="watermarkNotice" class="watermark-notice" hidden>
+          Hasil generate akun FREE akan menampilkan watermark <strong>akay.io</strong>. Upgrade ke PRO untuk menghilangkan watermark.
         </div>
         <div class="preview-grid" id="previewGrid"></div>
       </div>
@@ -7343,6 +7407,8 @@ body[data-theme="light"] .profile-credit {
   const driveClearDateBtn = document.getElementById('driveClearDate');
   const driveTotalCountEl = document.getElementById('driveTotalCount');
   const driveTypeSummaryEl = document.getElementById('driveTypeSummary');
+  const watermarkNotice = document.getElementById('watermarkNotice');
+  const driveWatermarkNotice = document.getElementById('driveWatermarkNotice');
   const maintenanceOverlayEl = document.getElementById('maintenanceOverlay');
   const maintenanceOverlayMessageEl = document.getElementById('maintenanceOverlayMessage');
   const topupModalEl = document.getElementById('topupModal');
@@ -7383,6 +7449,36 @@ body[data-theme="light"] .profile-credit {
   let platformState = defaultPlatformState();
   let selectedTopupAmount = null;
   let currentAnnouncements = [];
+
+  function getSubscriptionTier(account = currentAccount) {
+    if (!account || !account.subscription) {
+      return 'free';
+    }
+    return String(account.subscription).toLowerCase();
+  }
+
+  function isProAccount(account = currentAccount) {
+    return getSubscriptionTier(account) === 'pro';
+  }
+
+  function shouldShowWatermark(account = currentAccount) {
+    return !isProAccount(account);
+  }
+
+  function updateWatermarkNotice(account = currentAccount) {
+    const tier = getSubscriptionTier(account);
+    const show = shouldShowWatermark(account);
+    document.body.dataset.subscription = tier;
+    document.body.dataset.watermark = show ? 'on' : 'off';
+    if (watermarkNotice) {
+      watermarkNotice.hidden = !show;
+    }
+    if (driveWatermarkNotice) {
+      driveWatermarkNotice.hidden = !show;
+    }
+  }
+
+  updateWatermarkNotice(null);
 
   const COIN_COST_STANDARD = 1;
   const COIN_COST_FILM_PER_SCENE = 1;
@@ -8084,6 +8180,9 @@ body[data-theme="light"] .profile-credit {
         img.alt = 'Drive item';
         thumb.appendChild(img);
       }
+      const thumbWatermark = document.createElement('div');
+      thumbWatermark.className = 'watermark-overlay';
+      thumb.appendChild(thumbWatermark);
 
       thumb.addEventListener('click', () => {
         openAssetPreview(item.url, type);
@@ -8495,6 +8594,7 @@ body[data-theme="light"] .profile-credit {
   }
 
   function updateProfileCard(account) {
+    updateWatermarkNotice(account);
     if (!profileCard || !account) return;
     const display = account.display_name || account.username || 'User';
     const username = account.username ? `@${account.username}` : '';
@@ -8607,6 +8707,7 @@ body[data-theme="light"] .profile-credit {
       console.warn('Tidak dapat memuat akun:', err);
       applyTheme(currentTheme);
       currentAccount = null;
+      updateWatermarkNotice(null);
       applyPlatformState(null);
       renderDashboardAnnouncements([]);
       applyAccountRestrictions(null);
@@ -10468,6 +10569,9 @@ body[data-theme="light"] .profile-credit {
       }
 
       thumb.appendChild(media);
+      const wm = document.createElement('div');
+      wm.className = 'watermark-overlay';
+      thumb.appendChild(wm);
 
       if (assetType === 'image') {
         thumb.addEventListener('click', () => {
@@ -12958,7 +13062,13 @@ function openAssetPreview(url, type = 'image') {
     el.alt = 'Preview';
     el.classList.add('clickable-media');
   }
-  assetPreviewBody.appendChild(el);
+  const frame = document.createElement('div');
+  frame.className = 'asset-preview-frame';
+  frame.appendChild(el);
+  const overlay = document.createElement('div');
+  overlay.className = 'watermark-overlay';
+  frame.appendChild(overlay);
+  assetPreviewBody.appendChild(frame);
 
   if (assetPreviewDownload) {
     assetPreviewDownload.href = url;
