@@ -60,10 +60,10 @@ function auth_platform_default_generators(?string $now = null): array
             'enabled' => true,
             'updated_at' => $now,
         ],
-        'geminiStudio' => [
-            'key' => 'geminiStudio',
-            'label' => 'Gemini Studio',
-            'description' => 'Akses Gemini Text, Speech, dan Veo.',
+        'audioGen' => [
+            'key' => 'audioGen',
+            'label' => 'Audio Generator',
+            'description' => 'Konversi teks menjadi audio natural (TTS).',
             'enabled' => true,
             'updated_at' => $now,
         ],
@@ -934,6 +934,357 @@ function auth_accounts_contains_admin(array $accounts): bool
     return false;
 }
 
+function auth_drive_normalize_storage_path($path): ?string
+{
+    if (!is_string($path)) {
+        return null;
+    }
+
+    $path = trim(str_replace('\\', '/', $path));
+    $path = preg_replace('#/{2,}#', '/', $path);
+    $path = ltrim($path, '/');
+
+    if ($path === '' || strpos($path, '..') !== false || strpos($path, "\0") !== false) {
+        return null;
+    }
+
+    return $path;
+}
+
+function auth_drive_storage_info(?array $account): array
+{
+    $accountId = '';
+    $username = '';
+    if (is_array($account)) {
+        $accountId = isset($account['id']) ? (string)$account['id'] : '';
+        $username = isset($account['username']) ? (string)$account['username'] : '';
+    }
+
+    $candidate = $accountId !== '' ? $accountId : $username;
+    if ($candidate === '') {
+        $candidate = 'user';
+    }
+
+    $slug = strtolower(preg_replace('/[^a-z0-9]+/', '-', $candidate));
+    $slug = trim($slug, '-');
+    if ($slug === '') {
+        $slug = 'user';
+    }
+
+    $relative = 'generated/' . $slug;
+    $absolute = __DIR__ . '/' . $relative;
+
+    return [
+        'slug' => $slug,
+        'relative' => $relative,
+        'absolute' => $absolute,
+    ];
+}
+
+function auth_drive_ensure_storage_directory(?array $account): array
+{
+    $info = auth_drive_storage_info($account);
+    if (!is_dir($info['absolute'])) {
+        @mkdir($info['absolute'], 0775, true);
+    }
+
+    return $info;
+}
+
+function auth_drive_extension_from_mime(?string $mime, string $kind = 'image'): string
+{
+    $mime = $mime ? strtolower(trim($mime)) : '';
+    $map = [
+        'image/jpeg' => 'jpg',
+        'image/jpg'  => 'jpg',
+        'image/png'  => 'png',
+        'image/webp' => 'webp',
+        'image/gif'  => 'gif',
+        'image/bmp'  => 'bmp',
+        'image/heic' => 'heic',
+        'image/tiff' => 'tiff',
+        'video/mp4'  => 'mp4',
+        'video/quicktime' => 'mov',
+        'video/x-matroska' => 'mkv',
+        'video/webm' => 'webm',
+        'video/avi'  => 'avi',
+    ];
+
+    if ($mime !== '' && isset($map[$mime])) {
+        return $map[$mime];
+    }
+
+    return $kind === 'video' ? 'mp4' : 'jpg';
+}
+
+function auth_drive_download_remote_asset(array $account, string $url, string $kind = 'image'): ?array
+{
+    if ($url === '' || !preg_match('#^https?://#i', $url)) {
+        return null;
+    }
+
+    $storageInfo = auth_drive_ensure_storage_directory($account);
+    $dir = $storageInfo['absolute'];
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true)) {
+        return null;
+    }
+
+    $parsedPath = parse_url($url, PHP_URL_PATH);
+    $ext = strtolower(pathinfo($parsedPath ?? '', PATHINFO_EXTENSION));
+    if ($ext === 'jpeg') {
+        $ext = 'jpg';
+    }
+
+    $data = null;
+    $contentType = null;
+    $httpCode = 0;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        if (!$ch) {
+            return null;
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+        ]);
+
+        $data = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        curl_close($ch);
+
+        if ($errno || $data === false || $httpCode >= 400) {
+            return null;
+        }
+    } else {
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 30,
+                'follow_location' => 1,
+            ],
+        ]);
+
+        $data = @file_get_contents($url, false, $context);
+        if ($data === false) {
+            return null;
+        }
+
+        if (isset($http_response_header) && is_array($http_response_header)) {
+            foreach ($http_response_header as $headerLine) {
+                if (stripos($headerLine, 'content-type:') === 0) {
+                    $contentType = trim(substr($headerLine, strlen('content-type:')));
+                } elseif (preg_match('#^HTTP/[0-9.]+\s+(\d{3})#i', $headerLine, $matches)) {
+                    $httpCode = (int)$matches[1];
+                }
+            }
+        }
+
+        if ($httpCode >= 400 && $httpCode !== 0) {
+            return null;
+        }
+    }
+
+    if (!$ext) {
+        $ext = auth_drive_extension_from_mime($contentType, $kind);
+    }
+
+    try {
+        $rand = bin2hex(random_bytes(4));
+    } catch (Exception $e) {
+        $rand = substr(md5(mt_rand()), 0, 8);
+    }
+
+    $basename = 'drive_' . date('Ymd_His') . '_' . $rand . '.' . $ext;
+    $dest = rtrim($dir, '/\\') . '/' . $basename;
+
+    if (@file_put_contents($dest, $data) === false) {
+        return null;
+    }
+
+    @chmod($dest, 0664);
+
+    $relative = $storageInfo['relative'] . '/' . $basename;
+
+    return [
+        'relative_path' => $relative,
+        'absolute_path' => $dest,
+        'url' => app_public_url($relative),
+    ];
+}
+
+function auth_drive_prepare_local_item(array $account, array $item): ?array
+{
+    if (!is_array($item)) {
+        return null;
+    }
+
+    $type = isset($item['type']) && $item['type'] === 'video' ? 'video' : 'image';
+    $url = isset($item['url']) ? trim((string)$item['url']) : '';
+    $sourceUrl = isset($item['source_url']) ? trim((string)$item['source_url']) : '';
+    if ($sourceUrl === '' && $url !== '') {
+        $sourceUrl = $url;
+    }
+
+    $storagePath = isset($item['storage_path']) ? auth_drive_normalize_storage_path($item['storage_path']) : null;
+
+    if ($storagePath) {
+        $absolute = __DIR__ . '/' . $storagePath;
+        if (is_file($absolute)) {
+            $item['storage_path'] = $storagePath;
+            $localUrl = app_public_url($storagePath);
+            $item['url'] = $localUrl;
+            if ($type !== 'video') {
+                $item['thumbnail_url'] = $localUrl;
+            }
+            if ($sourceUrl !== '') {
+                $item['source_url'] = $sourceUrl;
+            }
+
+            return $item;
+        }
+
+        unset($item['storage_path']);
+        $storagePath = null;
+    }
+
+    if ($url !== '' && preg_match('#^https?://#i', $url)) {
+        $downloaded = auth_drive_download_remote_asset($account, $url, $type);
+        if ($downloaded) {
+            $item['storage_path'] = $downloaded['relative_path'];
+            $item['url'] = $downloaded['url'];
+            if ($type !== 'video') {
+                $item['thumbnail_url'] = $downloaded['url'];
+            }
+        }
+    }
+
+    if (isset($item['storage_path'])) {
+        $normalized = auth_drive_normalize_storage_path($item['storage_path']);
+        if ($normalized) {
+            $item['storage_path'] = $normalized;
+        } else {
+            unset($item['storage_path']);
+        }
+    }
+
+    if ($sourceUrl !== '') {
+        $item['source_url'] = $sourceUrl;
+    }
+
+    if (!isset($item['url']) || $item['url'] === '') {
+        return null;
+    }
+
+    return $item;
+}
+
+function auth_drive_localize_account_items(array $account, ?bool &$changed = null): array
+{
+    $changedFlag = false;
+    $items = [];
+    $seenStorage = [];
+    $seenSource = [];
+
+    if (!isset($account['drive_items']) || !is_array($account['drive_items'])) {
+        $account['drive_items'] = [];
+    }
+
+    foreach ($account['drive_items'] as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        $prepared = auth_drive_prepare_local_item($account, $entry);
+        if ($prepared === null) {
+            $changedFlag = true;
+            continue;
+        }
+
+        if ($prepared !== $entry) {
+            $changedFlag = true;
+        }
+
+        $storage = isset($prepared['storage_path']) ? auth_drive_normalize_storage_path($prepared['storage_path']) : null;
+        $source = isset($prepared['source_url']) ? trim((string)$prepared['source_url']) : '';
+        if ($source === '' && isset($prepared['url'])) {
+            $source = trim((string)$prepared['url']);
+            if ($source !== '') {
+                $prepared['source_url'] = $source;
+            }
+        }
+
+        if ($storage && isset($seenStorage[$storage])) {
+            $changedFlag = true;
+            continue;
+        }
+        if ($storage) {
+            $prepared['storage_path'] = $storage;
+            $seenStorage[$storage] = true;
+        }
+
+        if ($source !== '' && isset($seenSource[$source])) {
+            $changedFlag = true;
+            continue;
+        }
+        if ($source !== '') {
+            $seenSource[$source] = true;
+        }
+
+        $items[] = $prepared;
+    }
+
+    usort($items, function ($a, $b) {
+        return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+    });
+
+    $account['drive_items'] = $items;
+
+    if ($changed !== null) {
+        $changed = $changedFlag;
+    }
+
+    return $account;
+}
+
+function auth_drive_delete_storage_files(array $account, array $paths): void
+{
+    if (!$paths) {
+        return;
+    }
+
+    $info = auth_drive_storage_info($account);
+    $baseDir = $info['absolute'];
+    $realBase = realpath($baseDir) ?: null;
+
+    foreach ($paths as $path) {
+        $normalized = auth_drive_normalize_storage_path($path);
+        if (!$normalized) {
+            continue;
+        }
+
+        if (strpos($normalized, $info['relative']) !== 0) {
+            continue;
+        }
+
+        $absolute = __DIR__ . '/' . $normalized;
+        if (!is_file($absolute)) {
+            continue;
+        }
+
+        $realTarget = realpath($absolute);
+        if ($realBase && $realTarget && strpos($realTarget, $realBase) !== 0) {
+            continue;
+        }
+
+        @unlink($absolute);
+    }
+}
+
 function auth_normalize_drive_item($item): ?array
 {
     if (!is_array($item)) {
@@ -965,7 +1316,20 @@ function auth_normalize_drive_item($item): ?array
         ? (string)$item['created_at']
         : gmdate('c');
 
-    return [
+    $storagePath = null;
+    if (isset($item['storage_path'])) {
+        $storagePath = auth_drive_normalize_storage_path($item['storage_path']);
+    }
+
+    $sourceUrl = isset($item['source_url']) ? trim((string)$item['source_url']) : '';
+    if ($sourceUrl === '' && $url !== '') {
+        $sourceUrl = $url;
+    }
+    if ($sourceUrl !== '' && !preg_match('/^https?:\/\//i', $sourceUrl)) {
+        $sourceUrl = '';
+    }
+
+    $normalized = [
         'id' => $id,
         'type' => $type,
         'url' => $url,
@@ -974,6 +1338,16 @@ function auth_normalize_drive_item($item): ?array
         'prompt' => $prompt,
         'created_at' => $createdAt,
     ];
+
+    if ($storagePath) {
+        $normalized['storage_path'] = $storagePath;
+    }
+
+    if ($sourceUrl !== '') {
+        $normalized['source_url'] = $sourceUrl;
+    }
+
+    return $normalized;
 }
 
 function auth_normalize_account($account): array
@@ -1521,7 +1895,7 @@ function auth_account_public_payload(array $account): array
 function auth_drive_get_items(string $accountId): array
 {
     $data = auth_storage_read();
-    foreach ($data['accounts'] as $account) {
+    foreach ($data['accounts'] as $idx => $account) {
         if (!is_array($account)) {
             continue;
         }
@@ -1530,6 +1904,19 @@ function auth_drive_get_items(string $accountId): array
         }
 
         $normalized = auth_normalize_account($account);
+        $changed = false;
+        $localized = auth_drive_localize_account_items($normalized, $changed);
+
+        if ($changed) {
+            $localized['updated_at'] = gmdate('c');
+            $data['accounts'][$idx] = auth_normalize_account($localized);
+            auth_storage_write($data);
+            $normalized = $data['accounts'][$idx];
+            $normalized = auth_normalize_account($normalized);
+        } else {
+            $normalized = $localized;
+        }
+
         return $normalized['drive_items'] ?? [];
     }
 
@@ -1548,7 +1935,7 @@ function auth_drive_append_items(string $accountId, array $items, array &$errors
     foreach ($items as $item) {
         $normalized = auth_normalize_drive_item($item);
         if ($normalized) {
-            $payload[$normalized['url']] = $normalized;
+            $payload[] = $normalized;
         }
     }
 
@@ -1576,32 +1963,141 @@ function auth_drive_append_items(string $accountId, array $items, array &$errors
         ? $account['drive_items']
         : [];
 
-    $existingMap = [];
+    $existingSources = [];
+    $existingStorage = [];
     foreach ($existing as $entry) {
         if (!is_array($entry)) {
             continue;
         }
-        $url = $entry['url'] ?? null;
-        if (is_string($url) && $url !== '') {
-            $existingMap[$url] = $entry;
+
+        $sourceKey = isset($entry['source_url']) ? trim((string)$entry['source_url']) : '';
+        if ($sourceKey === '' && isset($entry['url'])) {
+            $sourceKey = trim((string)$entry['url']);
+        }
+        if ($sourceKey !== '') {
+            $existingSources[$sourceKey] = true;
+        }
+
+        if (isset($entry['storage_path'])) {
+            $normalizedPath = auth_drive_normalize_storage_path($entry['storage_path']);
+            if ($normalizedPath) {
+                $existingStorage[$normalizedPath] = true;
+            }
         }
     }
 
-    foreach (array_values($payload) as $item) {
-        $url = $item['url'];
-        if (isset($existingMap[$url])) {
+    $prepared = [];
+    $newSources = [];
+    foreach ($payload as $item) {
+        $sourceKey = isset($item['source_url']) ? trim((string)$item['source_url']) : '';
+        if ($sourceKey === '' && isset($item['url'])) {
+            $sourceKey = trim((string)$item['url']);
+        }
+
+        if ($sourceKey !== '' && (isset($existingSources[$sourceKey]) || isset($newSources[$sourceKey]))) {
             continue;
         }
-        array_unshift($existing, $item);
-        $existingMap[$url] = $item;
+
+        $preparedItem = auth_drive_prepare_local_item($account, $item);
+        if (!$preparedItem) {
+            continue;
+        }
+
+        $storagePath = isset($preparedItem['storage_path'])
+            ? auth_drive_normalize_storage_path($preparedItem['storage_path'])
+            : null;
+
+        if ($storagePath && isset($existingStorage[$storagePath])) {
+            continue;
+        }
+
+        $sourceKey = isset($preparedItem['source_url']) ? trim((string)$preparedItem['source_url']) : $sourceKey;
+        if ($sourceKey !== '') {
+            if (isset($existingSources[$sourceKey]) || isset($newSources[$sourceKey])) {
+                continue;
+            }
+            $newSources[$sourceKey] = true;
+        }
+
+        if ($storagePath) {
+            $existingStorage[$storagePath] = true;
+        }
+
+        $prepared[] = $preparedItem;
     }
+
+    if (!$prepared) {
+        $changed = false;
+        $account = auth_drive_localize_account_items($account, $changed);
+        if ($changed) {
+            $account['updated_at'] = gmdate('c');
+            $data['accounts'][$foundIndex] = auth_normalize_account($account);
+            if (!auth_storage_write($data)) {
+                $errors['general'] = 'Gagal menyimpan penyimpanan drive.';
+                return null;
+            }
+            return $data['accounts'][$foundIndex]['drive_items'] ?? [];
+        }
+
+        return $account['drive_items'] ?? [];
+    }
+
+    $combined = array_merge($prepared, $existing);
+    $filtered = [];
+    $seenStorage = [];
+    $seenSource = [];
+    $seenIds = [];
+
+    foreach ($combined as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        $id = isset($entry['id']) ? (string)$entry['id'] : '';
+        if ($id !== '' && isset($seenIds[$id])) {
+            continue;
+        }
+        if ($id !== '') {
+            $seenIds[$id] = true;
+        }
+
+        $storage = isset($entry['storage_path']) ? auth_drive_normalize_storage_path($entry['storage_path']) : null;
+        $source = isset($entry['source_url']) ? trim((string)$entry['source_url']) : '';
+        if ($source === '' && isset($entry['url'])) {
+            $source = trim((string)$entry['url']);
+            if ($source !== '') {
+                $entry['source_url'] = $source;
+            }
+        }
+
+        if ($storage && isset($seenStorage[$storage])) {
+            continue;
+        }
+        if ($storage) {
+            $entry['storage_path'] = $storage;
+            $seenStorage[$storage] = true;
+        }
+
+        if ($source !== '' && isset($seenSource[$source])) {
+            continue;
+        }
+        if ($source !== '') {
+            $seenSource[$source] = true;
+        }
+
+        $filtered[] = $entry;
+    }
+
+    usort($filtered, function ($a, $b) {
+        return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+    });
 
     $maxItems = 500;
-    if (count($existing) > $maxItems) {
-        $existing = array_slice($existing, 0, $maxItems);
+    if (count($filtered) > $maxItems) {
+        $filtered = array_slice($filtered, 0, $maxItems);
     }
 
-    $account['drive_items'] = $existing;
+    $account['drive_items'] = $filtered;
     $account['updated_at'] = gmdate('c');
     $data['accounts'][$foundIndex] = auth_normalize_account($account);
 
@@ -1613,13 +2109,14 @@ function auth_drive_append_items(string $accountId, array $items, array &$errors
     return $data['accounts'][$foundIndex]['drive_items'] ?? [];
 }
 
-function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $itemUrl, array &$errors = [])
+function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $itemUrl, ?string $storagePath = null, array &$errors = [])
 {
     $errors = [];
     $itemId = $itemId ? trim($itemId) : '';
     $itemUrl = $itemUrl ? trim($itemUrl) : '';
+    $storagePath = $storagePath ? auth_drive_normalize_storage_path($storagePath) : null;
 
-    if ($itemId === '' && $itemUrl === '') {
+    if ($itemId === '' && $itemUrl === '' && !$storagePath) {
         $errors['general'] = 'ID atau URL item wajib diisi.';
         return null;
     }
@@ -1645,6 +2142,7 @@ function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $ite
 
     $filtered = [];
     $removed = false;
+    $storageToDelete = [];
 
     foreach ($items as $entry) {
         if (!is_array($entry)) {
@@ -1657,13 +2155,30 @@ function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $ite
         if (!$matches && $itemUrl !== '' && isset($entry['url']) && strcasecmp((string)$entry['url'], $itemUrl) === 0) {
             $matches = true;
         }
+        if (!$matches && $storagePath !== null && isset($entry['storage_path'])) {
+            $entryStorage = auth_drive_normalize_storage_path($entry['storage_path']);
+            if ($entryStorage && $entryStorage === $storagePath) {
+                $matches = true;
+            }
+        }
 
         if ($matches) {
             $removed = true;
+            if (isset($entry['storage_path'])) {
+                $normalizedPath = auth_drive_normalize_storage_path($entry['storage_path']);
+                if ($normalizedPath) {
+                    $storageToDelete[] = $normalizedPath;
+                }
+            }
             continue;
         }
 
         $filtered[] = $entry;
+    }
+
+    if (!$removed && $storagePath) {
+        $storageToDelete[] = $storagePath;
+        $removed = true;
     }
 
     if (!$removed) {
@@ -1678,6 +2193,10 @@ function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $ite
     if (!auth_storage_write($data)) {
         $errors['general'] = 'Gagal menyimpan perubahan drive.';
         return null;
+    }
+
+    if ($storageToDelete) {
+        auth_drive_delete_storage_files($account, $storageToDelete);
     }
 
     return $data['accounts'][$foundIndex]['drive_items'] ?? [];
