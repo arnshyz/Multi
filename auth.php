@@ -934,6 +934,97 @@ function auth_accounts_contains_admin(array $accounts): bool
     return false;
 }
 
+function auth_drive_normalize_storage_path($path): ?string
+{
+    if (!is_string($path)) {
+        return null;
+    }
+
+    $path = trim(str_replace('\\', '/', $path));
+    $path = preg_replace('#/{2,}#', '/', $path);
+    $path = ltrim($path, '/');
+
+    if ($path === '' || strpos($path, '..') !== false || strpos($path, "\0") !== false) {
+        return null;
+    }
+
+    return $path;
+}
+
+function auth_drive_storage_info(?array $account): array
+{
+    $accountId = '';
+    $username = '';
+    if (is_array($account)) {
+        $accountId = isset($account['id']) ? (string)$account['id'] : '';
+        $username = isset($account['username']) ? (string)$account['username'] : '';
+    }
+
+    $candidate = $accountId !== '' ? $accountId : $username;
+    if ($candidate === '') {
+        $candidate = 'user';
+    }
+
+    $slug = strtolower(preg_replace('/[^a-z0-9]+/', '-', $candidate));
+    $slug = trim($slug, '-');
+    if ($slug === '') {
+        $slug = 'user';
+    }
+
+    $relative = 'generated/' . $slug;
+    $absolute = __DIR__ . '/' . $relative;
+
+    return [
+        'slug' => $slug,
+        'relative' => $relative,
+        'absolute' => $absolute,
+    ];
+}
+
+function auth_drive_ensure_storage_directory(?array $account): array
+{
+    $info = auth_drive_storage_info($account);
+    if (!is_dir($info['absolute'])) {
+        @mkdir($info['absolute'], 0775, true);
+    }
+
+    return $info;
+}
+
+function auth_drive_delete_storage_files(array $account, array $paths): void
+{
+    if (!$paths) {
+        return;
+    }
+
+    $info = auth_drive_storage_info($account);
+    $baseDir = $info['absolute'];
+    $realBase = realpath($baseDir) ?: null;
+
+    foreach ($paths as $path) {
+        $normalized = auth_drive_normalize_storage_path($path);
+        if (!$normalized) {
+            continue;
+        }
+
+        if (strpos($normalized, $info['relative']) !== 0) {
+            continue;
+        }
+
+        $absolute = __DIR__ . '/' . $normalized;
+        if (!is_file($absolute)) {
+            continue;
+        }
+
+        $realTarget = realpath($absolute);
+        if ($realBase && $realTarget && strpos($realTarget, $realBase) !== 0) {
+            continue;
+        }
+
+        @unlink($absolute);
+    }
+}
+
 function auth_normalize_drive_item($item): ?array
 {
     if (!is_array($item)) {
@@ -965,7 +1056,12 @@ function auth_normalize_drive_item($item): ?array
         ? (string)$item['created_at']
         : gmdate('c');
 
-    return [
+    $storagePath = null;
+    if (isset($item['storage_path'])) {
+        $storagePath = auth_drive_normalize_storage_path($item['storage_path']);
+    }
+
+    $normalized = [
         'id' => $id,
         'type' => $type,
         'url' => $url,
@@ -974,6 +1070,12 @@ function auth_normalize_drive_item($item): ?array
         'prompt' => $prompt,
         'created_at' => $createdAt,
     ];
+
+    if ($storagePath) {
+        $normalized['storage_path'] = $storagePath;
+    }
+
+    return $normalized;
 }
 
 function auth_normalize_account($account): array
@@ -1577,6 +1679,7 @@ function auth_drive_append_items(string $accountId, array $items, array &$errors
         : [];
 
     $existingMap = [];
+    $existingStorageMap = [];
     foreach ($existing as $entry) {
         if (!is_array($entry)) {
             continue;
@@ -1585,15 +1688,33 @@ function auth_drive_append_items(string $accountId, array $items, array &$errors
         if (is_string($url) && $url !== '') {
             $existingMap[$url] = $entry;
         }
+        if (isset($entry['storage_path'])) {
+            $normalizedPath = auth_drive_normalize_storage_path($entry['storage_path']);
+            if ($normalizedPath) {
+                $existingStorageMap[$normalizedPath] = $entry;
+            }
+        }
     }
 
     foreach (array_values($payload) as $item) {
         $url = $item['url'];
+        $storagePath = isset($item['storage_path'])
+            ? auth_drive_normalize_storage_path($item['storage_path'])
+            : null;
+
+        if ($storagePath && isset($existingStorageMap[$storagePath])) {
+            continue;
+        }
+
         if (isset($existingMap[$url])) {
             continue;
         }
+
         array_unshift($existing, $item);
         $existingMap[$url] = $item;
+        if ($storagePath) {
+            $existingStorageMap[$storagePath] = $item;
+        }
     }
 
     $maxItems = 500;
@@ -1613,13 +1734,14 @@ function auth_drive_append_items(string $accountId, array $items, array &$errors
     return $data['accounts'][$foundIndex]['drive_items'] ?? [];
 }
 
-function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $itemUrl, array &$errors = [])
+function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $itemUrl, ?string $storagePath = null, array &$errors = [])
 {
     $errors = [];
     $itemId = $itemId ? trim($itemId) : '';
     $itemUrl = $itemUrl ? trim($itemUrl) : '';
+    $storagePath = $storagePath ? auth_drive_normalize_storage_path($storagePath) : null;
 
-    if ($itemId === '' && $itemUrl === '') {
+    if ($itemId === '' && $itemUrl === '' && !$storagePath) {
         $errors['general'] = 'ID atau URL item wajib diisi.';
         return null;
     }
@@ -1645,6 +1767,7 @@ function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $ite
 
     $filtered = [];
     $removed = false;
+    $storageToDelete = [];
 
     foreach ($items as $entry) {
         if (!is_array($entry)) {
@@ -1657,13 +1780,30 @@ function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $ite
         if (!$matches && $itemUrl !== '' && isset($entry['url']) && strcasecmp((string)$entry['url'], $itemUrl) === 0) {
             $matches = true;
         }
+        if (!$matches && $storagePath !== null && isset($entry['storage_path'])) {
+            $entryStorage = auth_drive_normalize_storage_path($entry['storage_path']);
+            if ($entryStorage && $entryStorage === $storagePath) {
+                $matches = true;
+            }
+        }
 
         if ($matches) {
             $removed = true;
+            if (isset($entry['storage_path'])) {
+                $normalizedPath = auth_drive_normalize_storage_path($entry['storage_path']);
+                if ($normalizedPath) {
+                    $storageToDelete[] = $normalizedPath;
+                }
+            }
             continue;
         }
 
         $filtered[] = $entry;
+    }
+
+    if (!$removed && $storagePath) {
+        $storageToDelete[] = $storagePath;
+        $removed = true;
     }
 
     if (!$removed) {
@@ -1678,6 +1818,10 @@ function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $ite
     if (!auth_storage_write($data)) {
         $errors['general'] = 'Gagal menyimpan perubahan drive.';
         return null;
+    }
+
+    if ($storageToDelete) {
+        auth_drive_delete_storage_files($account, $storageToDelete);
     }
 
     return $data['accounts'][$foundIndex]['drive_items'] ?? [];

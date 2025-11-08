@@ -83,6 +83,84 @@ function app_public_url(string $path): string
     return $base . '/' . ltrim($path, '/');
 }
 
+function drive_item_type_from_extension(string $extension): string
+{
+    $extension = strtolower($extension);
+    $videoExtensions = ['mp4', 'mov', 'mkv', 'webm', 'avi'];
+    return in_array($extension, $videoExtensions, true) ? 'video' : 'image';
+}
+
+function drive_merge_items_with_filesystem(array $account, array $items): array
+{
+    $info = auth_drive_storage_info($account);
+    $dir = $info['absolute'];
+
+    if (!is_dir($dir)) {
+        return $items;
+    }
+
+    $existingByUrl = [];
+    $existingByStorage = [];
+    foreach ($items as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $url = isset($entry['url']) ? (string)$entry['url'] : '';
+        if ($url !== '') {
+            $existingByUrl[$url] = true;
+        }
+        $storage = isset($entry['storage_path']) ? auth_drive_normalize_storage_path($entry['storage_path']) : null;
+        if ($storage) {
+            $existingByStorage[$storage] = true;
+        }
+    }
+
+    $files = glob($dir . '/*');
+    if ($files === false) {
+        $files = [];
+    }
+
+    foreach ($files as $file) {
+        if (!is_file($file)) {
+            continue;
+        }
+        $basename = basename($file);
+        $relative = $info['relative'] . '/' . $basename;
+        $url = app_public_url($relative);
+
+        if (isset($existingByUrl[$url]) || isset($existingByStorage[$relative])) {
+            continue;
+        }
+
+        $type = drive_item_type_from_extension(pathinfo($basename, PATHINFO_EXTENSION));
+        $createdAt = @filemtime($file);
+        if (!$createdAt) {
+            $createdAt = time();
+        }
+
+        $items[] = [
+            'id' => 'fs_' . sha1($relative),
+            'type' => $type,
+            'url' => $url,
+            'thumbnail_url' => $type === 'image' ? $url : null,
+            'model' => 'upload',
+            'prompt' => null,
+            'created_at' => gmdate('c', $createdAt),
+            'storage_path' => $relative,
+        ];
+    }
+
+    usort($items, static function ($a, $b) {
+        $aTime = isset($a['created_at']) ? strtotime((string)$a['created_at']) : false;
+        $bTime = isset($b['created_at']) ? strtotime((string)$b['created_at']) : false;
+        $aTime = $aTime !== false ? $aTime : 0;
+        $bTime = $bTime !== false ? $bTime : 0;
+        return $bTime <=> $aTime;
+    });
+
+    return array_values($items);
+}
+
 function freepik_normalize_api_keys($keys)
 {
     $normalized = [];
@@ -767,6 +845,8 @@ if ($requestedApi === 'account-coins') {
         ], 401);
     }
 
+    $account = auth_normalize_account($account);
+
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
     if (!is_array($payload)) {
@@ -819,6 +899,8 @@ if ($requestedApi === 'account-avatar') {
             'error' => 'Sesi berakhir, silakan login ulang.'
         ], 401);
     }
+
+    $account = auth_normalize_account($account);
 
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
@@ -877,6 +959,8 @@ if ($requestedApi === 'account-password') {
             'error' => 'Sesi berakhir, silakan login ulang.'
         ], 401);
     }
+
+    $account = auth_normalize_account($account);
 
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
@@ -940,8 +1024,11 @@ if ($requestedApi === 'drive') {
         ], 401);
     }
 
+    $account = auth_normalize_account($account);
+
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $items = auth_drive_get_items($account['id']);
+        $items = drive_merge_items_with_filesystem($account, $items);
         auth_json_response([
             'ok' => true,
             'status' => 200,
@@ -978,11 +1065,14 @@ if ($requestedApi === 'drive') {
             ], $status);
         }
 
+        $storedItems = is_array($stored) ? $stored : [];
+        $storedItems = drive_merge_items_with_filesystem($account, $storedItems);
+
         auth_json_response([
             'ok' => true,
             'status' => 200,
             'data' => [
-                'items' => $stored,
+                'items' => $storedItems,
             ],
         ]);
     }
@@ -1012,6 +1102,8 @@ if ($requestedApi === 'drive-delete') {
         ], 401);
     }
 
+    $account = auth_normalize_account($account);
+
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true);
     if (!is_array($payload)) {
@@ -1020,8 +1112,9 @@ if ($requestedApi === 'drive-delete') {
 
     $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
     $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
+    $storagePath = isset($payload['storage_path']) ? trim((string)$payload['storage_path']) : '';
 
-    if ($itemId === '' && $itemUrl === '') {
+    if ($itemId === '' && $itemUrl === '' && $storagePath === '') {
         auth_json_response([
             'ok' => false,
             'status' => 422,
@@ -1030,7 +1123,7 @@ if ($requestedApi === 'drive-delete') {
     }
 
     $errors = [];
-    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $errors);
+    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $storagePath !== '' ? $storagePath : null, $errors);
     if ($items === null) {
         $status = isset($errors['general']) ? 500 : 404;
         auth_json_response([
@@ -1039,6 +1132,8 @@ if ($requestedApi === 'drive-delete') {
             'error' => $errors ?: 'Item drive tidak ditemukan.'
         ], $status);
     }
+
+    $items = drive_merge_items_with_filesystem($account, $items);
 
     auth_json_response([
         'ok' => true,
@@ -1395,7 +1490,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     }
 
     $account = auth_current_account();
-    if ($account && auth_is_account_restricted($account)) {
+    if (!$account) {
+        echo json_encode([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ]);
+        exit;
+    }
+
+    $account = auth_normalize_account($account);
+
+    if (auth_is_account_restricted($account)) {
         echo json_encode([
             'ok' => false,
             'status' => 403,
@@ -1433,10 +1539,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         exit;
     }
 
-    $dir = __DIR__ . '/generated';
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
+    $storageInfo = auth_drive_ensure_storage_directory($account);
+    $dir = $storageInfo['absolute'];
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $allowed = [
@@ -1481,7 +1585,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         exit;
     }
 
-    $publicPath = 'generated/' . $filename;
+    $publicPath = $storageInfo['relative'] . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -1498,7 +1602,18 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     header('Content-Type: application/json; charset=utf-8');
 
     $account = auth_current_account();
-    if ($account && auth_is_account_restricted($account)) {
+    if (!$account) {
+        echo json_encode([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ]);
+        exit;
+    }
+
+    $account = auth_normalize_account($account);
+
+    if (auth_is_account_restricted($account)) {
         echo json_encode([
             'ok' => false,
             'status' => 403,
@@ -1520,10 +1635,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         exit;
     }
 
-    $dir = __DIR__ . '/generated';
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
+    $storageInfo = auth_drive_ensure_storage_directory($account);
+    $dir = $storageInfo['absolute'];
 
     $pathPart = parse_url($url, PHP_URL_PATH);
     $ext = pathinfo($pathPart ?? '', PATHINFO_EXTENSION);
@@ -1565,7 +1678,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         exit;
     }
 
-    $publicPath = 'generated/' . $filename;
+    $publicPath = $storageInfo['relative'] . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -3347,12 +3460,14 @@ body[data-theme="light"] {
 }
 .drive-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
 }
 .drive-actions button,
 .drive-actions a {
-  flex: 1;
+  flex: 1 1 calc(50% - 8px);
+  min-width: 120px;
   border-radius: 10px;
   border: 1px solid rgba(99, 102, 241, 0.4);
   background: rgba(99, 102, 241, 0.12);
@@ -7853,6 +7968,7 @@ body[data-theme="light"] .profile-credit {
 
   function driveModelLabel(modelId) {
     if (!modelId) return 'Hasil Generate';
+    if (modelId === 'upload') return 'Unggahan Manual';
     const cfg = modelConfigMap[modelId];
     if (cfg && cfg.label) return cfg.label;
     return String(modelId).toUpperCase();
@@ -7970,6 +8086,12 @@ body[data-theme="light"] .profile-credit {
       previewBtn.textContent = 'Preview';
       previewBtn.addEventListener('click', () => openAssetPreview(item.url, type));
       actions.appendChild(previewBtn);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.textContent = 'Copy Link';
+      copyBtn.addEventListener('click', () => copyDriveLink(item, copyBtn));
+      actions.appendChild(copyBtn);
 
       const downloadLink = document.createElement('a');
       downloadLink.href = item.url;
@@ -8184,7 +8306,8 @@ body[data-theme="light"] .profile-credit {
     const payload = {};
     if (item.id) payload.id = item.id;
     if (item.url) payload.url = item.url;
-    if (!payload.id && !payload.url) {
+    if (item.storage_path) payload.storage_path = item.storage_path;
+    if (!payload.id && !payload.url && !payload.storage_path) {
       alert('Item drive tidak valid.');
       return;
     }
@@ -8215,6 +8338,60 @@ body[data-theme="light"] .profile-credit {
         button.disabled = false;
         button.textContent = 'Hapus';
       }
+    }
+  }
+
+  async function copyDriveLink(item, button) {
+    if (!item || !item.url) {
+      alert('Link tidak tersedia.');
+      return;
+    }
+
+    const link = ensureAbsoluteUrl(item.url);
+    const originalText = button ? button.textContent : '';
+
+    const fallbackCopy = text => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    };
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menyalin…';
+    }
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(link);
+      } else {
+        fallbackCopy(link);
+      }
+
+      if (button) {
+        button.textContent = 'Tersalin!';
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = 'Copy Link';
+        }, 1600);
+      } else {
+        alert('Link berhasil disalin.');
+      }
+    } catch (err) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText || 'Copy Link';
+      }
+      alert('Gagal menyalin link: ' + (err && err.message ? err.message : err));
     }
   }
 
