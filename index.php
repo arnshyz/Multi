@@ -95,6 +95,34 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
     $info = auth_drive_storage_info($account);
     $dir = $info['absolute'];
 
+    $normalizedItems = [];
+    foreach ($items as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        if (isset($entry['storage_path'])) {
+            $normalizedPath = auth_drive_normalize_storage_path($entry['storage_path']);
+            if ($normalizedPath) {
+                $absolute = __DIR__ . '/' . $normalizedPath;
+                if (is_file($absolute)) {
+                    $entry['storage_path'] = $normalizedPath;
+                    $localUrl = app_public_url($normalizedPath);
+                    $entry['url'] = $localUrl;
+                    if (($entry['type'] ?? 'image') !== 'video') {
+                        $entry['thumbnail_url'] = $localUrl;
+                    }
+                }
+            }
+        }
+
+        $normalizedItems[] = $entry;
+    }
+
+    if ($normalizedItems) {
+        $items = $normalizedItems;
+    }
+
     if (!is_dir($dir)) {
         return $items;
     }
