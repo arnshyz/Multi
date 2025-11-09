@@ -270,14 +270,26 @@ if ($username === '') {
             });
         }
 
+        function isImageFile(file) {
+            if (file.type && file.type.startsWith('image/')) {
+                return true;
+            }
+
+            const name = (file.name || '').toLowerCase();
+            return /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(name);
+        }
+
         function handleFiles(fileList) {
-            const files = Array.from(fileList).filter(file => file.type.startsWith('image/'));
+            const files = Array.from(fileList).filter(isImageFile);
             if (!files.length) {
                 selectedFiles = [];
                 previewGrid.innerHTML = '';
                 previewGrid.dataset.empty = 'true';
+                setStatus('Format file tidak dikenali. Unggah foto dalam format JPG, PNG, WEBP, GIF, BMP, HEIC, atau HEIF.', 'error');
                 return;
             }
+
+            setStatus('', '');
 
             selectedFiles = files.slice(0, MAX_FILES);
             previewGrid.innerHTML = '';
