@@ -39,6 +39,13 @@ function auth_platform_default_generators(?string $now = null): array
             'enabled' => true,
             'updated_at' => $now,
         ],
+        'flashPhotoEdit' => [
+            'key' => 'flashPhotoEdit',
+            'label' => 'Flash Photo Edit',
+            'description' => 'Studio Flash 2.5 multi referensi.',
+            'enabled' => true,
+            'updated_at' => $now,
+        ],
         'lipsync' => [
             'key' => 'lipsync',
             'label' => 'Lipsync Studio',

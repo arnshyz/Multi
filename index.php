@@ -6543,7 +6543,7 @@ body[data-theme="light"] .profile-credit {
       <span class="nav-label">Audio Gen</span>
     </button>
     <div class="sidebar-section">Studio Tambahan</div>
-    <a class="sidebar-link sidebar-link--external" href="photo-edit.php">
+    <a class="sidebar-link sidebar-link--external" href="photo-edit.php" id="photoEditLink" data-feature="flashPhotoEdit">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3zm3-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H7zm5 3.25a3.75 3.75 0 1 1 0 7.5a3.75 3.75 0 0 1 0-7.5zm0 2a1.75 1.75 0 1 0 0 3.5a1.75 1.75 0 0 0 0-3.5zm4.25-2.75a.75.75 0 1 1-1.5 0a.75.75 0 0 1 1.5 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </span>
@@ -7457,6 +7457,8 @@ body[data-theme="light"] .profile-credit {
   const ugcProgressEl = document.getElementById('ugcProgress');
   const ugcProgressFill = document.getElementById('ugcProgressFill');
   const ugcProgressValue = document.getElementById('ugcProgressValue');
+  const photoEditLink = document.getElementById('photoEditLink');
+  const externalFeatureLinks = [photoEditLink].filter(Boolean);
 
   const TOPUP_AMOUNTS = [10, 20, 30, 40, 50, 100, 150, 200];
   const TOPUP_WHATSAPP = 'https://wa.me/62818404222';
@@ -7465,7 +7467,8 @@ body[data-theme="light"] .profile-credit {
     videoGen: { label: 'Video Gen' },
     audioGen: { label: 'Audio Gen' },
     filmmaker: { label: 'Filmmaker' },
-    ugc: { label: 'UGC Tool' }
+    ugc: { label: 'UGC Tool' },
+    flashPhotoEdit: { label: 'Flash Photo Edit' }
   };
   const HUB_FEATURE_KEYS = ['imageGen', 'videoGen'];
 
@@ -7811,26 +7814,58 @@ body[data-theme="light"] .profile-credit {
   }
 
   function updateNavAvailability() {
-    if (!navButtons) return;
-    navButtons.forEach(btn => {
-      const featureKey = btn.dataset.feature;
-      if (!featureKey) {
-        btn.classList.remove('locked');
-        return;
-      }
-      const locked = !featureAvailableForCurrentUser(featureKey);
-      btn.classList.toggle('locked', locked);
-      if (typeof btn.disabled === 'boolean') {
-        btn.disabled = locked;
-      }
-      if (locked) {
-        btn.setAttribute('aria-disabled', 'true');
-        btn.title = `🔒 ${getFeatureLabel(featureKey)} dikunci oleh admin.`;
-      } else {
-        btn.removeAttribute('aria-disabled');
-        btn.removeAttribute('title');
-      }
-    });
+    if (navButtons) {
+      navButtons.forEach(btn => {
+        const featureKey = btn.dataset.feature;
+        if (!featureKey) {
+          btn.classList.remove('locked');
+          return;
+        }
+        const locked = !featureAvailableForCurrentUser(featureKey);
+        btn.classList.toggle('locked', locked);
+        if (typeof btn.disabled === 'boolean') {
+          btn.disabled = locked;
+        }
+        if (locked) {
+          btn.setAttribute('aria-disabled', 'true');
+          btn.title = `🔒 ${getFeatureLabel(featureKey)} dikunci oleh admin.`;
+        } else {
+          btn.removeAttribute('aria-disabled');
+          btn.removeAttribute('title');
+        }
+      });
+    }
+
+    if (externalFeatureLinks.length) {
+      externalFeatureLinks.forEach(link => {
+        const featureKey = link.dataset.feature;
+        if (!featureKey) {
+          link.classList.remove('locked');
+          return;
+        }
+        const locked = !featureAvailableForCurrentUser(featureKey);
+        link.classList.toggle('locked', locked);
+        if (locked) {
+          if (!link.dataset.href) {
+            const originalHref = link.getAttribute('href') || '';
+            if (originalHref) {
+              link.dataset.href = originalHref;
+            }
+          }
+          link.removeAttribute('href');
+          link.setAttribute('aria-disabled', 'true');
+          link.setAttribute('tabindex', '-1');
+          link.title = `🔒 ${getFeatureLabel(featureKey)} dikunci oleh admin.`;
+        } else {
+          if (link.dataset.href) {
+            link.setAttribute('href', link.dataset.href);
+          }
+          link.removeAttribute('aria-disabled');
+          link.removeAttribute('tabindex');
+          link.removeAttribute('title');
+        }
+      });
+    }
   }
 
   function updateFeatureTabsAvailability() {
@@ -11734,6 +11769,19 @@ body[data-theme="light"] .profile-credit {
       showView(target, featureKey);
     });
   });
+
+  if (externalFeatureLinks.length) {
+    externalFeatureLinks.forEach(link => {
+      link.addEventListener('click', event => {
+        const featureKey = link.dataset.feature;
+        if (featureKey && !featureAvailableForCurrentUser(featureKey)) {
+          event.preventDefault();
+          event.stopPropagation();
+          showFeatureLockedMessage(featureKey);
+        }
+      });
+    });
+  }
 
   showView('viewDashboard');
 
