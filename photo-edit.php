@@ -809,18 +809,26 @@ if ($username === '') {
             return /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(name);
         }
 
-        function handleFiles(fileList) {
-            const files = Array.from(fileList || []).filter(isImageFile);
-            if (!files.length) {
-                selectedFiles = [];
-                previewGrid.innerHTML = '';
-                previewGrid.dataset.empty = 'true';
-                setStatus('Format file tidak dikenali. Unggah foto dalam format JPG, PNG, WEBP, GIF, BMP, HEIC, atau HEIF.', 'error');
+        function getFileKey(file) {
+            const safeFile = file || {};
+            const name = typeof safeFile.name === 'string' ? safeFile.name : '';
+            const size = typeof safeFile.size === 'number' ? safeFile.size : 0;
+            const lastModified = typeof safeFile.lastModified === 'number' ? safeFile.lastModified : 0;
+            return `${name}::${size}::${lastModified}`;
+        }
+
+        function renderSelectedFiles() {
+            if (!previewGrid) {
                 return;
             }
 
-            selectedFiles = files.slice(0, MAX_FILES);
             previewGrid.innerHTML = '';
+
+            if (!selectedFiles.length) {
+                previewGrid.dataset.empty = 'true';
+                return;
+            }
+
             selectedFiles.forEach((file, index) => {
                 const url = URL.createObjectURL(file);
                 const figure = document.createElement('figure');
@@ -834,16 +842,78 @@ if ($username === '') {
                 const caption = document.createElement('figcaption');
                 caption.textContent = `Ref ${index + 1} · ${file.name}`;
 
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'preview-remove';
+                removeButton.dataset.index = String(index);
+                removeButton.setAttribute('aria-label', `Hapus foto referensi ${index + 1}`);
+                removeButton.innerHTML = '&times;';
+
+                figure.appendChild(removeButton);
                 figure.appendChild(img);
                 figure.appendChild(caption);
                 previewGrid.appendChild(figure);
             });
-            previewGrid.dataset.empty = selectedFiles.length ? 'false' : 'true';
 
-            if (files.length > MAX_FILES) {
-                setStatus('Hanya 3 foto pertama yang digunakan untuk blending.', 'info');
-            } else if (selectedFiles.length < MIN_FILES) {
-                setStatus('Tambahkan minimal dua foto referensi untuk mode multi-image.', 'info');
+            previewGrid.dataset.empty = 'false';
+        }
+
+        function handleFiles(fileList) {
+            const files = Array.from(fileList || []);
+            const imageFiles = files.filter(isImageFile);
+
+            if (!imageFiles.length) {
+                if (!selectedFiles.length) {
+                    previewGrid.innerHTML = '';
+                    previewGrid.dataset.empty = 'true';
+                }
+                setStatus('Format file tidak dikenali. Unggah foto dalam format JPG, PNG, WEBP, GIF, BMP, HEIC, atau HEIF.', 'error');
+                return;
+            }
+
+            const existingKeys = new Set(selectedFiles.map(getFileKey));
+            const seenNewFiles = new Set();
+            let ignoredDuplicates = 0;
+            let ignoredByLimit = 0;
+
+            imageFiles.forEach((file) => {
+                const key = getFileKey(file);
+                if (seenNewFiles.has(key) || existingKeys.has(key)) {
+                    ignoredDuplicates += 1;
+                    return;
+                }
+                if (selectedFiles.length >= MAX_FILES) {
+                    ignoredByLimit += 1;
+                    return;
+                }
+                seenNewFiles.add(key);
+                existingKeys.add(key);
+                selectedFiles.push(file);
+            });
+
+            renderSelectedFiles();
+
+            if (referenceInput) {
+                referenceInput.value = '';
+            }
+
+            const messages = [];
+            if (ignoredByLimit > 0) {
+                messages.push('Hanya 3 foto pertama yang digunakan untuk blending.');
+            }
+            if (ignoredDuplicates > 0) {
+                messages.push('Beberapa foto serupa diabaikan.');
+            }
+
+            if (selectedFiles.length < MIN_FILES) {
+                const infoMessage = selectedFiles.length
+                    ? 'Tambahkan satu foto lagi agar minimal dua referensi tersedia.'
+                    : 'Unggah minimal dua foto referensi terlebih dahulu.';
+                messages.push(infoMessage);
+            }
+
+            if (messages.length) {
+                setStatus(messages.join(' '), 'info');
             } else {
                 setStatus('', '');
             }
@@ -918,6 +988,29 @@ if ($username === '') {
         if (browseButton) {
             browseButton.addEventListener('click', () => {
                 referenceInput?.click();
+            });
+        }
+
+        if (previewGrid) {
+            previewGrid.addEventListener('click', (event) => {
+                const target = event.target;
+                if (!target || !target.classList || !target.classList.contains('preview-remove')) {
+                    return;
+                }
+                const index = Number(target.dataset.index);
+                if (Number.isNaN(index) || index < 0 || index >= selectedFiles.length) {
+                    return;
+                }
+                selectedFiles.splice(index, 1);
+                renderSelectedFiles();
+
+                if (selectedFiles.length === 0) {
+                    setStatus('Unggah minimal dua foto referensi terlebih dahulu.', 'info');
+                } else if (selectedFiles.length < MIN_FILES) {
+                    setStatus('Tambahkan satu foto lagi agar minimal dua referensi tersedia.', 'info');
+                } else {
+                    setStatus('', '');
+                }
             });
         }
 
