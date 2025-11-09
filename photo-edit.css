@@ -358,6 +358,35 @@ body {
     color: var(--text-muted);
 }
 
+.preview-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: none;
+    display: grid;
+    place-items: center;
+    background: rgba(15, 23, 42, 0.65);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.preview-remove:hover,
+.preview-remove:focus-visible {
+    background: rgba(56, 189, 248, 0.65);
+    transform: scale(1.05);
+}
+
+.preview-remove:focus-visible {
+    outline: 2px solid rgba(56, 189, 248, 0.85);
+    outline-offset: 2px;
+}
+
 .form-actions {
     display: flex;
     align-items: center;
