@@ -24,6 +24,23 @@ if ($username === '') {
     $username = 'Pengguna';
 }
 
+$platform = auth_platform_public_view();
+$flashFeature = $platform['generators']['flashPhotoEdit'] ?? null;
+$isFlashEnabled = $flashFeature && !empty($flashFeature['enabled']);
+if (!auth_is_admin() && !$isFlashEnabled) {
+    http_response_code(403);
+    $message = $platform['maintenance']['message'] ?? 'Fitur ini sedang tidak tersedia.';
+    echo '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Fitur Dinonaktifkan</title>'
+        . '<style>body{margin:0;font-family:system-ui;background:#020617;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;}'
+        . '.card{max-width:420px;text-align:center;padding:32px;border-radius:20px;background:rgba(15,23,42,0.82);border:1px solid rgba(96,165,250,0.28);box-shadow:0 25px 60px rgba(15,23,42,0.25);}'
+        . '.card h1{margin:0 0 12px;font-size:24px;} .card p{margin:0;font-size:14px;line-height:1.6;color:rgba(148,163,184,0.9);} .card a{display:inline-flex;margin-top:20px;padding:10px 18px;border-radius:999px;background:rgba(79,70,229,0.25);color:#c7d2fe;text-decoration:none;font-weight:600;}</style>'
+        . '</head><body><div class="card"><h1>Flash Photo Edit Dimatikan</h1>'
+        . '<p>' . htmlspecialchars($message, ENT_QUOTES) . '</p>'
+        . '<a href="index.php">← Kembali ke Dashboard</a>'
+        . '</div></body></html>';
+    exit;
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="id" data-theme="dark">
