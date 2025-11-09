@@ -3942,6 +3942,23 @@ body[data-theme="light"] {
   flex: 1;
   text-align: left;
 }
+.sidebar-link .tag {
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.sidebar-link.sidebar-link--external {
+  text-decoration: none;
+}
+.sidebar-link.sidebar-link--external:hover {
+  color: var(--text);
+}
 .sidebar-link:hover {
   transform: translateX(4px);
   background: rgba(37, 99, 235, 0.08);
@@ -6525,6 +6542,14 @@ body[data-theme="light"] .profile-credit {
       </span>
       <span class="nav-label">Audio Gen</span>
     </button>
+    <div class="sidebar-section">Studio Tambahan</div>
+    <a class="sidebar-link sidebar-link--external" href="photo-edit.php">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3zm3-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H7zm5 3.25a3.75 3.75 0 1 1 0 7.5a3.75 3.75 0 0 1 0-7.5zm0 2a1.75 1.75 0 1 0 0 3.5a1.75 1.75 0 0 0 0-3.5zm4.25-2.75a.75.75 0 1 1-1.5 0a.75.75 0 0 1 1.5 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Flash Photo Edit</span>
+      <span class="tag">Baru</span>
+    </a>
   </nav>
   <div class="sidebar-actions">
     <div class="profile-card" id="profileCard">
@@ -11611,7 +11636,7 @@ body[data-theme="light"] .profile-credit {
     });
   }
 
-  navButtons = Array.from(document.querySelectorAll('.sidebar-link'));
+  navButtons = Array.from(document.querySelectorAll('.sidebar-link[data-target]'));
   viewDashboardSection = document.getElementById('viewDashboard');
   viewDriveSection = document.getElementById('viewDrive');
   viewHubSection = document.getElementById('viewHub');
