@@ -1282,6 +1282,10 @@ if (isset($_GET['api'])) {
             </select>
           </div>
           <div class="field">
+            <label for="newAccountProExpires">Berakhir PRO</label>
+            <input id="newAccountProExpires" type="datetime-local" class="input">
+          </div>
+          <div class="field">
             <label for="newAccountCoins">Koin</label>
             <input id="newAccountCoins" type="number" class="input" min="0" step="1" value="25">
           </div>
@@ -1399,6 +1403,7 @@ if (isset($_GET['api'])) {
       const newAccountEmail = document.getElementById('newAccountEmail');
       const newAccountPassword = document.getElementById('newAccountPassword');
       const newAccountSubscription = document.getElementById('newAccountSubscription');
+      const newAccountProExpires = document.getElementById('newAccountProExpires');
       const newAccountCoins = document.getElementById('newAccountCoins');
       const newAccountRole = document.getElementById('newAccountRole');
       const newAccountApiKey = document.getElementById('newAccountApiKey');
@@ -1499,6 +1504,15 @@ if (isset($_GET['api'])) {
         const d = new Date(iso);
         if (Number.isNaN(d.getTime())) return '—';
         return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      }
+
+      function isoToLocalDateTime(iso) {
+        if (!iso) return '';
+        const parsed = new Date(iso);
+        if (Number.isNaN(parsed.getTime())) return '';
+        return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000)
+          .toISOString()
+          .slice(0, 16);
       }
 
       function normalizeMetrics(metrics) {
@@ -1807,6 +1821,10 @@ if (isset($_GET['api'])) {
                   <input type="text" class="input" data-field="subscription" placeholder="free / pro / enterprise">
                 </div>
                 <div class="field">
+                  <label>Berakhir PRO</label>
+                  <input type="datetime-local" class="input" data-field="pro_expires_at">
+                </div>
+                <div class="field">
                   <label>Koin</label>
                   <input type="number" class="input" data-field="coins" min="0" step="1">
                 </div>
@@ -1852,6 +1870,7 @@ if (isset($_GET['api'])) {
           const usernameInput = card.querySelector('[data-field="username"]');
           const emailInput = card.querySelector('[data-field="email"]');
           const subscriptionInput = card.querySelector('[data-field="subscription"]');
+          const proExpiryInput = card.querySelector('[data-field="pro_expires_at"]');
           const coinsInput = card.querySelector('[data-field="coins"]');
           const roleSelect = card.querySelector('[data-field="role"]');
           const keyInput = card.querySelector('[data-field="freepik_api_key"]');
@@ -1868,7 +1887,18 @@ if (isset($_GET['api'])) {
             const emailText = account.email && account.email !== '' ? account.email : 'Tidak ada email';
             const created = account.created_at ? `Dibuat ${formatDate(account.created_at)}` : '';
             const lastLogin = account.last_login_at ? `Login ${formatDate(account.last_login_at)}` : '';
-            const pieces = [emailText, `@${account.username || 'unknown'}`, String(account.subscription || 'free').toUpperCase()];
+            const pieces = [emailText, `@${account.username || 'unknown'}`];
+            const originalSub = String(account.subscription || 'free').toUpperCase();
+            const effectiveSub = String(account.effective_subscription || account.subscription || 'free').toUpperCase();
+            if (originalSub === effectiveSub) {
+              pieces.push(originalSub);
+            } else {
+              pieces.push(`${originalSub} → ${effectiveSub}`);
+            }
+            if ((account.subscription || '').toLowerCase() === 'pro' && account.pro_expires_at) {
+              const expiryInfo = `PRO Exp ${formatDate(account.pro_expires_at)}${account.pro_expired ? ' (expired)' : ''}`;
+              pieces.push(expiryInfo);
+            }
             if (created) pieces.push(created);
             if (lastLogin) pieces.push(lastLogin);
             if (account.last_generation_at) pieces.push(`Generate ${formatDate(account.last_generation_at)}`);
@@ -1889,6 +1919,14 @@ if (isset($_GET['api'])) {
             statusRow.appendChild(makeChip(account.is_blocked ? 'Blocked' : 'Live', account.is_blocked ? 'warning' : 'info'));
             const genCount = Number.isFinite(Number(account.generation_count)) ? Number(account.generation_count) : 0;
             statusRow.appendChild(makeChip(`${genCount} generate`, 'accent'));
+            if ((account.subscription || '').toLowerCase() === 'pro') {
+              if (account.pro_expires_at) {
+                const expiryLabel = `PRO Exp ${formatDate(account.pro_expires_at)}`;
+                statusRow.appendChild(makeChip(account.pro_expired ? `${expiryLabel} (expired)` : expiryLabel, account.pro_expired ? 'danger' : 'info'));
+              } else if (account.pro_active) {
+                statusRow.appendChild(makeChip('PRO aktif', 'success'));
+              }
+            }
             if (account.restricted) {
               statusRow.appendChild(makeChip('Restricted', 'warning'));
             }
@@ -1897,6 +1935,7 @@ if (isset($_GET['api'])) {
           if (usernameInput) usernameInput.value = account.username || '';
           if (emailInput) emailInput.value = account.email || '';
           if (subscriptionInput) subscriptionInput.value = account.subscription || 'free';
+          if (proExpiryInput) proExpiryInput.value = isoToLocalDateTime(account.pro_expires_at);
           if (coinsInput) coinsInput.value = Number.isFinite(Number(account.coins)) ? Number(account.coins) : 0;
           if (roleSelect) roleSelect.value = isAdmin ? 'admin' : 'user';
           if (keyInput) keyInput.value = account.freepik_api_key || '';
@@ -2163,8 +2202,9 @@ if (isset($_GET['api'])) {
             username: newAccountUsername.value.trim(),
             email: newAccountEmail.value.trim(),
             password: newAccountPassword.value,
-            subscription: newAccountSubscription.value,
-            coins: Number(newAccountCoins.value || 0),
+          subscription: newAccountSubscription.value,
+          pro_expires_at: newAccountProExpires.value ? isoFromLocalDateTime(newAccountProExpires.value) : null,
+          coins: Number(newAccountCoins.value || 0),
             role: newAccountRole.value,
             freepik_api_key: newAccountApiKey.value.trim(),
             is_banned: newAccountBanned.checked,
@@ -2190,8 +2230,9 @@ if (isset($_GET['api'])) {
             await apiCall('addAccount', payload);
             showToast('Akun berhasil ditambahkan', 'success');
             addAccountForm.reset();
-            if (newAccountCoins) newAccountCoins.value = 25;
-            if (newAccountSubscription) newAccountSubscription.value = 'pro';
+          if (newAccountCoins) newAccountCoins.value = 25;
+          if (newAccountSubscription) newAccountSubscription.value = 'pro';
+          if (newAccountProExpires) newAccountProExpires.value = '';
             if (newAccountRole) newAccountRole.value = 'user';
             await loadState();
           } catch (err) {
@@ -2229,6 +2270,7 @@ if (isset($_GET['api'])) {
             email: emailInput ? emailInput.value.trim() : '',
             coins: coinsInput ? Number(coinsInput.value || 0) : 0,
             subscription: subscriptionInput ? subscriptionInput.value.trim() : '',
+            pro_expires_at: proExpiryInput ? isoFromLocalDateTime(proExpiryInput.value) : null,
             role: roleSelect ? roleSelect.value : undefined,
             freepik_api_key: keyInput ? keyInput.value.trim() : '',
             theme: themeSelect ? themeSelect.value : undefined,

@@ -1357,6 +1357,73 @@ function auth_normalize_drive_item($item): ?array
     return $normalized;
 }
 
+function auth_normalize_pro_expires_at($value): ?string
+{
+    if (!isset($value)) {
+        return null;
+    }
+
+    if ($value instanceof DateTimeInterface) {
+        return $value->setTimezone(new DateTimeZone('UTC'))->format(DATE_ATOM);
+    }
+
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return null;
+    }
+
+    $timestamp = strtotime($raw);
+    if ($timestamp === false) {
+        return null;
+    }
+
+    return gmdate('c', $timestamp);
+}
+
+function auth_account_pro_expired(array $account): bool
+{
+    $subscription = strtolower((string)($account['subscription'] ?? 'free'));
+    if ($subscription !== 'pro') {
+        return false;
+    }
+
+    $expiresAt = $account['pro_expires_at'] ?? null;
+    if (!$expiresAt) {
+        return false;
+    }
+
+    $timestamp = strtotime((string)$expiresAt);
+    if ($timestamp === false) {
+        return false;
+    }
+
+    return $timestamp < time();
+}
+
+function auth_account_pro_active(array $account): bool
+{
+    $subscription = strtolower((string)($account['subscription'] ?? 'free'));
+    if ($subscription !== 'pro') {
+        return false;
+    }
+
+    if (auth_account_pro_expired($account)) {
+        return false;
+    }
+
+    return true;
+}
+
+function auth_account_effective_subscription(array $account): string
+{
+    $subscription = strtolower((string)($account['subscription'] ?? 'free'));
+    if ($subscription === '' || $subscription === 'pro' && auth_account_pro_expired($account)) {
+        return 'free';
+    }
+
+    return $subscription ?: 'free';
+}
+
 function auth_normalize_account($account): array
 {
     if (!is_array($account)) {
@@ -1387,6 +1454,7 @@ function auth_normalize_account($account): array
     if ($account['subscription'] === '') {
         $account['subscription'] = 'free';
     }
+    $account['pro_expires_at'] = auth_normalize_pro_expires_at($account['pro_expires_at'] ?? null);
     $account['coins'] = isset($account['coins']) ? max(0, (int)$account['coins']) : 0;
     $account['is_banned'] = !empty($account['is_banned']);
     $account['is_blocked'] = !empty($account['is_blocked']);
@@ -1861,6 +1929,10 @@ function auth_account_admin_view(array $account): array
         'email' => $account['email'] ?? '',
         'role' => $account['role'] ?? 'user',
         'subscription' => $account['subscription'] ?? 'free',
+        'effective_subscription' => auth_account_effective_subscription($account),
+        'pro_expires_at' => $account['pro_expires_at'] ?? null,
+        'pro_active' => auth_account_pro_active($account),
+        'pro_expired' => auth_account_pro_expired($account),
         'coins' => (int)($account['coins'] ?? 0),
         'freepik_api_key' => $account['freepik_api_key'] ?? null,
         'is_banned' => !empty($account['is_banned']),
@@ -1886,6 +1958,10 @@ function auth_account_public_payload(array $account): array
         'email' => $account['email'] ?? '',
         'role' => $account['role'] ?? 'user',
         'subscription' => $account['subscription'] ?? 'free',
+        'effective_subscription' => auth_account_effective_subscription($account),
+        'pro_expires_at' => $account['pro_expires_at'] ?? null,
+        'pro_active' => auth_account_pro_active($account),
+        'pro_expired' => auth_account_pro_expired($account),
         'coins' => (int)($account['coins'] ?? 0),
         'freepik_api_key' => $account['freepik_api_key'] ?? null,
         'theme' => $account['theme'] ?? 'dark',
@@ -2245,6 +2321,9 @@ function auth_create_account_entry(array $input, array &$errors = []): ?array
         $subscription = 'free';
     }
 
+    $proExpiresRaw = isset($input['pro_expires_at']) ? $input['pro_expires_at'] : null;
+    $proExpiresAt = auth_normalize_pro_expires_at($proExpiresRaw);
+
     $role = strtolower(trim((string)($input['role'] ?? 'user')));
     if (!in_array($role, ['user', 'admin'], true)) {
         $role = 'user';
@@ -2297,6 +2376,7 @@ function auth_create_account_entry(array $input, array &$errors = []): ?array
         'password_hash' => password_hash($password, PASSWORD_DEFAULT),
         'freepik_api_key' => $freepikKey,
         'subscription' => $subscription,
+        'pro_expires_at' => $proExpiresAt,
         'coins' => $coins,
         'is_banned' => !empty($input['is_banned']),
         'is_blocked' => !empty($input['is_blocked']),
@@ -2370,6 +2450,10 @@ function auth_update_account_entry(string $id, array $changes, array &$errors = 
     if (array_key_exists('subscription', $changes)) {
         $sub = strtolower(trim((string)$changes['subscription']));
         $updated['subscription'] = $sub === '' ? 'free' : $sub;
+    }
+
+    if (array_key_exists('pro_expires_at', $changes)) {
+        $updated['pro_expires_at'] = auth_normalize_pro_expires_at($changes['pro_expires_at']);
     }
 
     if (array_key_exists('role', $changes)) {
