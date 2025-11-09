@@ -179,6 +179,11 @@ if ($username === '') {
                 label: 'Pernikahan',
                 description: 'Tampilan elegan dengan tone hangat, cocok untuk dokumentasi momen resepsi.',
                 template: 'Gemini Flash 2.5, wedding editorial retouch, cinematic lighting, fokus pada ekspresi pasangan, nuansa emas hangat, kualitas majalah.',
+                adjustments: {
+                    filter: 'brightness(1.08) contrast(1.12) saturate(1.22)',
+                    overlayColor: '#f9d8bf',
+                    overlayOpacity: 0.16
+                },
                 poses: [
                     'Pose 1 · Tatapan romantis berhadapan dengan senyum lembut.',
                     'Pose 2 · Pegangan tangan sambil berjalan di aisle yang dihiasi bunga.',
@@ -190,6 +195,11 @@ if ($username === '') {
                 label: 'Liburan',
                 description: 'Suasana santai penuh warna dengan cahaya alami khas destinasi tropis.',
                 template: 'Gemini Flash 2.5, travel lifestyle edit, vibrant summer palette, langit biru dan cahaya matahari, ekspresi ceria dan energik.',
+                adjustments: {
+                    filter: 'brightness(1.12) contrast(1.08) saturate(1.35)',
+                    overlayColor: '#8ad5ff',
+                    overlayOpacity: 0.12
+                },
                 poses: [
                     'Pose 1 · Melompat di pantai dengan ombak di belakang.',
                     'Pose 2 · Duduk santai di kursi kayu menghadap laut.',
@@ -201,6 +211,11 @@ if ($username === '') {
                 label: 'Kerja',
                 description: 'Gaya profesional modern dengan palet warna netral dan clean lighting.',
                 template: 'Gemini Flash 2.5, corporate portrait retouch, pencahayaan soft studio, pakaian formal minimalis, kesan percaya diri dan profesional.',
+                adjustments: {
+                    filter: 'brightness(0.98) contrast(1.18) saturate(0.88)',
+                    overlayColor: '#d7dde4',
+                    overlayOpacity: 0.14
+                },
                 poses: [
                     'Pose 1 · Berdiri tegap dengan tangan menyilang dan tatapan fokus.',
                     'Pose 2 · Duduk di meja kerja sambil menatap laptop.',
@@ -212,6 +227,11 @@ if ($username === '') {
                 label: 'Akad Nikah',
                 description: 'Sentuhan tradisional yang lembut dengan detail busana adat dan dekorasi sakral.',
                 template: 'Gemini Flash 2.5, intimate akad ceremony edit, soft pastel tone, detail busana adat, nuansa sakral dan hangat.',
+                adjustments: {
+                    filter: 'brightness(1.1) contrast(1.07) saturate(1.18)',
+                    overlayColor: '#f2e7d7',
+                    overlayOpacity: 0.18
+                },
                 poses: [
                     'Pose 1 · Momen ijab kabul dengan fokus pada ekspresi khidmat.',
                     'Pose 2 · Close-up saling menyematkan cincin.',
@@ -236,6 +256,9 @@ if ($username === '') {
 
         function clearResults() {
             resultGrid.innerHTML = '';
+            if (emptyState) {
+                emptyState.hidden = true;
+            }
         }
 
         function showSkeletons() {
@@ -246,28 +269,111 @@ if ($username === '') {
             }
         }
 
-        function renderResults(styleKey) {
+        function renderResults(styleKey, styledImages) {
             const option = styleOptions[styleKey] || styleOptions.wedding;
             clearResults();
-            option.poses.forEach((pose, index) => {
+            if (!styledImages.length) {
+                if (emptyState) {
+                    emptyState.hidden = false;
+                    resultGrid.appendChild(emptyState);
+                }
+                return;
+            }
+
+            if (emptyState) {
+                emptyState.hidden = true;
+            }
+
+            styledImages.forEach((result, index) => {
                 const fragment = resultTemplate.content.cloneNode(true);
-                const card = fragment.querySelector('.result-card');
                 const image = fragment.querySelector('.result-thumb');
                 const badge = fragment.querySelector('.pose-badge');
                 const styleLabel = fragment.querySelector('.result-style');
                 const description = fragment.querySelector('.result-desc');
                 const downloadBtn = fragment.querySelector('.result-download');
 
-                const seed = `${styleKey}-${Date.now()}-${index}-${Math.random().toString(16).slice(2, 8)}`;
-                image.src = `https://picsum.photos/seed/${encodeURIComponent(seed)}/720/900`;
+                image.src = result.url;
                 image.alt = `Hasil Flash 2.5 ${option.label} pose ${index + 1}`;
                 badge.textContent = `Pose ${index + 1}`;
                 styleLabel.textContent = `${option.label} · Flash 2.5`;
-                description.textContent = pose;
-                downloadBtn.dataset.url = image.src;
+                description.textContent = option.poses[index] || option.poses[option.poses.length - 1] || '';
+                downloadBtn.dataset.url = result.url;
+                downloadBtn.dataset.filename = result.filename;
 
                 resultGrid.appendChild(fragment);
             });
+        }
+
+        function fileToDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve({
+                    name: file.name,
+                    dataUrl: reader.result
+                });
+                reader.onerror = () => reject(new Error('Gagal membaca file referensi.'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function createStyledImage(sourceUrl, adjustments) {
+            const { filter = 'none', overlayColor = '', overlayOpacity = 0 } = adjustments || {};
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.decoding = 'async';
+                image.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    if (!context) {
+                        reject(new Error('Browser tidak mendukung kanvas untuk pemrosesan gambar.'));
+                        return;
+                    }
+
+                    const maxDimension = 1600;
+                    const longestSide = Math.max(image.naturalWidth, image.naturalHeight) || 1;
+                    const scale = Math.min(1, maxDimension / longestSide);
+                    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+                    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+                    context.filter = filter;
+                    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+                    if (overlayColor && overlayOpacity > 0) {
+                        context.globalAlpha = overlayOpacity;
+                        context.fillStyle = overlayColor;
+                        context.fillRect(0, 0, canvas.width, canvas.height);
+                        context.globalAlpha = 1;
+                    }
+
+                    try {
+                        const output = canvas.toDataURL('image/jpeg', 0.92);
+                        resolve(output);
+                    } catch (error) {
+                        reject(new Error('Gagal membentuk hasil edit bergaya.'));
+                    }
+                };
+                image.onerror = () => reject(new Error('Gagal memuat gambar referensi.'));
+                image.src = sourceUrl;
+            });
+        }
+
+        async function generateStyledImages(styleKey, sources) {
+            const option = styleOptions[styleKey] || styleOptions.wedding;
+            const totalResults = 4;
+            if (!sources.length) {
+                return [];
+            }
+
+            const tasks = Array.from({ length: totalResults }, (_, index) => {
+                const source = sources[index % sources.length];
+                const filename = `flash-25-${styleKey}-pose-${index + 1}.jpg`;
+                return createStyledImage(source.dataUrl, option.adjustments).then((styledUrl) => ({
+                    url: styledUrl,
+                    filename
+                }));
+            });
+
+            return Promise.all(tasks);
         }
 
         function isImageFile(file) {
@@ -364,13 +470,19 @@ if ($username === '') {
             const target = event.target;
             if (target && target.classList.contains('result-download')) {
                 const url = target.dataset.url;
+                const filename = target.dataset.filename || 'flash-25.jpg';
                 if (url) {
-                    window.open(url, '_blank', 'noopener');
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
                 }
             }
         });
 
-        form.addEventListener('submit', (event) => {
+        form.addEventListener('submit', async (event) => {
             event.preventDefault();
             setStatus('', '');
             if (!ensureFilesSelected()) {
@@ -378,17 +490,27 @@ if ($username === '') {
             }
 
             const styleKey = styleSelect.value;
+            const option = styleOptions[styleKey] || styleOptions.wedding;
             generateButton.disabled = true;
             generateButton.classList.add('loading');
-            setStatus('Menjalankan Flash 2.5… mohon tunggu sebentar.', 'info');
+            setStatus('Menjalankan Flash 2.5… menyesuaikan foto dengan gaya terpilih.', 'info');
             showSkeletons();
 
-            setTimeout(() => {
-                renderResults(styleKey);
-                setStatus('Selesai! 4 pose berhasil dibuat oleh Flash 2.5.', 'success');
+            try {
+                const sources = await Promise.all(selectedFiles.map(fileToDataUrl));
+                const styledImages = await generateStyledImages(styleKey, sources);
+                renderResults(styleKey, styledImages);
+                setStatus(`Selesai! 4 pose gaya ${option.label} siap diunduh.`, 'success');
+            } catch (error) {
+                console.error(error);
+                clearResults();
+                resultGrid.appendChild(emptyState);
+                emptyState.hidden = false;
+                setStatus(error.message || 'Terjadi kesalahan saat menghasilkan hasil edit.', 'error');
+            } finally {
                 generateButton.disabled = false;
                 generateButton.classList.remove('loading');
-            }, 1200);
+            }
         });
 
         styleSelect.addEventListener('change', updateStyleUI);
