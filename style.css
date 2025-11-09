@@ -571,7 +571,18 @@ header {
     width: 100%;
     max-width: 950px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
-    transition: transform 0.3s ease-in-out;
+    opacity: 0;
+    transform: translateY(40px);
+    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out, opacity 0.45s ease;
+}
+
+.feature-card:not(.is-visible) {
+    pointer-events: none;
+}
+
+.feature-card.is-visible {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .feature-card:hover {

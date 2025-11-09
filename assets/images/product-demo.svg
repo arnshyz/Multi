@@ -1,0 +1,47 @@
+<svg width="640" height="900" viewBox="0 0 640 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="900" rx="40" fill="url(#grad)"/>
+  <defs>
+    <linearGradient id="grad" x1="80" y1="50" x2="560" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF6B6B"/>
+      <stop offset="1" stop-color="#FFB56B"/>
+    </linearGradient>
+  </defs>
+  <g opacity="0.18">
+    <circle cx="180" cy="200" r="130" fill="white"/>
+    <circle cx="480" cy="260" r="160" fill="white"/>
+    <circle cx="240" cy="620" r="220" fill="white"/>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="110" y="210" width="420" height="360" rx="32" fill="rgba(255,255,255,0.85)"/>
+  </g>
+  <g transform="translate(150 260)">
+    <rect width="340" height="200" rx="28" fill="#1E1E2F"/>
+    <rect x="24" y="32" width="292" height="136" rx="20" fill="url(#screen)"/>
+    <g transform="translate(50 64)">
+      <path d="M0 40 C20 0 80 0 100 40 C120 80 180 80 200 40" stroke="white" stroke-width="6" fill="none" opacity="0.7"/>
+      <circle cx="220" cy="40" r="26" fill="#FFD15C"/>
+      <path d="M214 42 L220 52 L230 28" stroke="#3D2C10" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+  <g transform="translate(150 520)">
+    <rect width="340" height="220" rx="32" fill="rgba(255,255,255,0.75)"/>
+    <text x="36" y="86" fill="#3E1C00" font-family="'Inter', sans-serif" font-size="34" font-weight="700">Product Demo</text>
+    <text x="36" y="134" fill="#3E1C00" font-family="'Inter', sans-serif" font-size="20" opacity="0.85">Visualisasikan fitur unggulan</text>
+    <text x="36" y="168" fill="#3E1C00" font-family="'Inter', sans-serif" font-size="20" opacity="0.85">dengan interaksi yang nyata.</text>
+  </g>
+  <defs>
+    <linearGradient id="screen" x1="30" y1="30" x2="260" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6838FF"/>
+      <stop offset="1" stop-color="#24D2FF"/>
+    </linearGradient>
+    <filter id="shadow" x="80" y="190" width="480" height="420" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feOffset dy="16"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.18"/>
+      </feComponentTransfer>
+      <feComposite in2="SourceAlpha" operator="in"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+  </defs>
+</svg>
