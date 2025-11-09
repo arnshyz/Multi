@@ -5,6 +5,115 @@ app_load_env(__DIR__ . '/.env');
 const AUTH_DEFAULT_USERNAME = 'admin';
 const AUTH_DEFAULT_PASSWORD_HASH = '$2y$12$8d6CiI0X1xIzaIPxtm6gWujpCv.nUoI6RxiX8MDqq9jia83DeQqGm';
 
+function auth_db_config(): ?array
+{
+    $host = getenv('APP_DB_HOST');
+    if ($host === false || $host === '') {
+        $host = getenv('DB_HOST');
+    }
+    $host = is_string($host) && $host !== '' ? $host : '127.0.0.1';
+
+    $port = getenv('APP_DB_PORT');
+    if ($port === false || $port === '') {
+        $port = getenv('DB_PORT');
+    }
+    $port = is_string($port) && $port !== '' ? (int)$port : 3306;
+    if ($port <= 0) {
+        $port = 3306;
+    }
+
+    $name = getenv('APP_DB_NAME');
+    if ($name === false || $name === '') {
+        $name = getenv('DB_NAME');
+    }
+    $name = is_string($name) ? trim($name) : '';
+
+    $user = getenv('APP_DB_USER');
+    if ($user === false) {
+        $user = getenv('DB_USER');
+    }
+    $user = is_string($user) ? $user : '';
+
+    $pass = getenv('APP_DB_PASS');
+    if ($pass === false) {
+        $pass = getenv('DB_PASS');
+    }
+    if ($pass === false) {
+        $pass = getenv('DB_PASSWORD');
+    }
+    $pass = is_string($pass) ? $pass : '';
+
+    if ($name === '') {
+        return null;
+    }
+
+    return [
+        'host' => $host,
+        'port' => $port,
+        'name' => $name,
+        'user' => $user,
+        'pass' => $pass,
+    ];
+}
+
+function auth_db_pdo(): ?\PDO
+{
+    static $pdo = null;
+    static $failed = false;
+
+    if ($failed) {
+        return null;
+    }
+
+    if ($pdo instanceof \PDO) {
+        return $pdo;
+    }
+
+    $config = auth_db_config();
+    if ($config === null) {
+        $failed = true;
+        return null;
+    }
+
+    $dsn = sprintf(
+        'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+        $config['host'],
+        $config['port'],
+        $config['name']
+    );
+
+    try {
+        $pdo = new \PDO($dsn, $config['user'], $config['pass'], [
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+            \PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+        return $pdo;
+    } catch (\PDOException $exception) {
+        error_log('auth_db_pdo: gagal koneksi database - ' . $exception->getMessage());
+        $failed = true;
+        return null;
+    }
+}
+
+function auth_storage_ensure_table(\PDO $pdo): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS admin_storage (
+            id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+            data LONGTEXT NOT NULL,
+            updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+
+    $ensured = true;
+}
+
 function auth_default_credential_values(): array
 {
     return [
@@ -257,12 +366,31 @@ function auth_env_credentials(): ?array
 
 function auth_storage_write(array $data): bool
 {
-    $path = auth_storage_path();
     $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     if ($json === false) {
         return false;
     }
 
+    $pdo = auth_db_pdo();
+    if ($pdo instanceof \PDO) {
+        try {
+            auth_storage_ensure_table($pdo);
+            $stmt = $pdo->prepare(
+                'INSERT INTO admin_storage (id, data, updated_at) VALUES (1, :data, NOW())
+                ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = VALUES(updated_at)'
+            );
+            $stmt->bindValue(':data', $json, \PDO::PARAM_STR);
+            $written = $stmt->execute();
+            if ($written) {
+                auth_storage_cache($data);
+                return true;
+            }
+        } catch (\PDOException $exception) {
+            error_log('auth_storage_write: gagal menyimpan ke database - ' . $exception->getMessage());
+        }
+    }
+
+    $path = auth_storage_path();
     $written = @file_put_contents($path, $json, LOCK_EX) !== false;
     if ($written) {
         auth_storage_cache($data);
@@ -294,22 +422,46 @@ function auth_storage_read(bool $fresh = false): array
         return $cached;
     }
 
-    $path = auth_storage_path();
-    if (!is_file($path)) {
-        $data = auth_storage_default();
-        auth_storage_write($data);
-        return $data;
+    $data = null;
+    $json = null;
+
+    $pdo = auth_db_pdo();
+    if ($pdo instanceof \PDO) {
+        try {
+            auth_storage_ensure_table($pdo);
+            $stmt = $pdo->query('SELECT data FROM admin_storage WHERE id = 1 LIMIT 1');
+            $row = $stmt->fetch();
+            if ($row && isset($row['data']) && is_string($row['data'])) {
+                $json = $row['data'];
+            }
+        } catch (\PDOException $exception) {
+            error_log('auth_storage_read: gagal membaca dari database - ' . $exception->getMessage());
+            $json = null;
+        }
     }
 
-    $json = @file_get_contents($path);
-    if ($json === false) {
-        $data = auth_storage_default();
-        auth_storage_write($data);
-        return $data;
+    if (is_string($json) && $json !== '') {
+        $decoded = json_decode($json, true);
+        if (is_array($decoded)) {
+            $data = $decoded;
+        }
     }
 
-    $data = json_decode($json, true);
-    if (!is_array($data)) {
+    if ($data === null) {
+        $path = auth_storage_path();
+        if (is_file($path)) {
+            $fileJson = @file_get_contents($path);
+            if ($fileJson !== false) {
+                $decoded = json_decode($fileJson, true);
+                if (is_array($decoded)) {
+                    $data = $decoded;
+                    auth_storage_write($data);
+                }
+            }
+        }
+    }
+
+    if ($data === null) {
         $data = auth_storage_default();
         auth_storage_write($data);
         return $data;
