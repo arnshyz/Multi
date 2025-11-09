@@ -605,6 +605,20 @@ if ($requestedApi === 'login') {
     }
 
     $account = null;
+    $record = auth_find_account($username);
+    $passwordMatches = false;
+    if ($record && isset($record['password_hash']) && $record['password_hash'] !== '') {
+        $passwordMatches = password_verify($password, (string)$record['password_hash']);
+    }
+
+    if ($passwordMatches && (!empty($record['is_banned']) || !empty($record['is_blocked']))) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 423,
+            'error' => 'Akun sedang di banned silahkan mengajukan banding ke customer service'
+        ], 423);
+    }
+
     if (!auth_verify($username, $password, $account)) {
         auth_record_security_event('login-failed', [
             'username' => $username,
@@ -826,7 +840,7 @@ if ($requestedApi === 'account-theme') {
         auth_json_response([
             'ok' => false,
             'status' => 403,
-            'error' => 'Akun Anda diblokir atau dibanned. Hubungi admin untuk bantuan.'
+            'error' => 'Akun sedang di banned silahkan mengajukan banding ke customer service'
         ], 403);
     }
 
@@ -1533,7 +1547,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         echo json_encode([
             'ok' => false,
             'status' => 403,
-            'error' => 'Akun Anda diblokir atau dibanned. Hubungi admin untuk bantuan.'
+            'error' => 'Akun sedang di banned silahkan mengajukan banding ke customer service'
         ]);
         exit;
     }
@@ -1645,7 +1659,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         echo json_encode([
             'ok' => false,
             'status' => 403,
-            'error' => 'Akun Anda diblokir atau dibanned. Hubungi admin untuk bantuan.'
+            'error' => 'Akun sedang di banned silahkan mengajukan banding ke customer service'
         ]);
         exit;
     }
@@ -1726,7 +1740,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         echo json_encode([
             'ok' => false,
             'status' => 403,
-            'error' => 'Akun Anda diblokir atau dibanned. Hubungi admin untuk bantuan.'
+            'error' => 'Akun sedang di banned silahkan mengajukan banding ke customer service'
         ], JSON_UNESCAPED_SLASHES);
         exit;
     }
@@ -2810,7 +2824,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (!response.ok || !data || !data.ok) {
                         const message = extractErrorMessage(data ? data.error || data.message : null, `HTTP ${response.status}`);
-                        throw new Error(message);
+                        const state = response.status === 423 ? 'warning' : 'error';
+                        setStatus(loginStatus, message || 'Login gagal. Coba lagi.', state);
+                        return;
                     }
 
                     setStatus(loginStatus, 'Login berhasil! Mengarahkan…', 'success');
@@ -4285,9 +4301,57 @@ body[data-theme="light"] .profile-avatar {
   position: relative;
   z-index: 1;
 }
+.profile-expiry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: rgba(226, 232, 240, 0.85);
+  margin-top: 6px;
+  gap: 12px;
+}
+.profile-expiry--inline {
+  margin-top: 6px;
+  background: rgba(15, 23, 42, 0.2);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 10px;
+}
+.profile-expiry-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.profile-expiry-value {
+  font-weight: 500;
+}
+.profile-expiry.expired {
+  border-color: rgba(248,113,113,0.45);
+  color: rgba(248,113,113,0.85);
+}
+.profile-expiry.expired .profile-expiry-label {
+  color: inherit;
+}
+.profile-card--mobile .profile-expiry {
+  margin-top: 4px;
+}
 body[data-theme="light"] .profile-credit {
   background: rgba(240, 249, 255, 0.9);
   border-color: rgba(59, 130, 246, 0.35);
+}
+body[data-theme="light"] .profile-expiry {
+  background: rgba(226, 232, 240, 0.55);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: rgba(30, 41, 59, 0.8);
+}
+body[data-theme="light"] .profile-expiry.expired {
+  background: rgba(254, 226, 226, 0.7);
+  border-color: rgba(248, 113, 113, 0.55);
+  color: rgba(153, 27, 27, 0.85);
 }
 .profile-credit .credit-label {
   font-size: 11px;
@@ -6324,11 +6388,125 @@ body[data-theme="light"] .profile-credit {
       color: rgba(226,232,240,0.75);
       line-height: 1.5;
     }
+    .maintenance-overlay__logout {
+      margin-top: 12px;
+      align-self: center;
+      padding: 10px 20px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.45);
+      background: rgba(15,23,42,0.6);
+      color: rgba(226,232,240,0.9);
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+    .maintenance-overlay__logout:hover {
+      background: rgba(59,130,246,0.35);
+      transform: translateY(-1px);
+    }
     body.maintenance-active {
       overflow: hidden;
     }
-    .topup-modal {
+    .free-upgrade-modal {
       position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 5500;
+    }
+    .free-upgrade-modal.active {
+      display: flex;
+    }
+    .free-upgrade-modal__backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(2,6,23,0.75);
+      backdrop-filter: blur(8px);
+    }
+    .free-upgrade-modal__dialog {
+      position: relative;
+      z-index: 1;
+      width: min(90%, 420px);
+      background: rgba(15,23,42,0.98);
+      border-radius: 20px;
+      border: 1px solid rgba(59,130,246,0.35);
+      padding: 32px 28px;
+      text-align: center;
+      box-shadow: 0 25px 50px rgba(15,23,42,0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .free-upgrade-modal__icon {
+      width: 68px;
+      height: 68px;
+      margin: 0 auto;
+      border-radius: 18px;
+      background: rgba(96,165,250,0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+    }
+    .free-upgrade-modal__title {
+      margin: 0;
+      font-size: 22px;
+      color: #e2e8f0;
+    }
+    .free-upgrade-modal__message {
+      margin: 0;
+      font-size: 14px;
+      color: rgba(226,232,240,0.8);
+      line-height: 1.6;
+    }
+    .free-upgrade-modal__cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 18px;
+      border-radius: 999px;
+      background: linear-gradient(120deg, #22d3ee, #6366f1);
+      color: #0f172a;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .free-upgrade-modal__cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(59,130,246,0.35);
+    }
+    .free-upgrade-modal__close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(148,163,184,0.16);
+      color: rgba(226,232,240,0.85);
+      font-size: 20px;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+      .free-upgrade-modal__close:hover {
+        background: rgba(148,163,184,0.28);
+        transform: rotate(90deg);
+      }
+      body[data-theme="light"] .free-upgrade-modal__dialog {
+        background: rgba(255,255,255,0.98);
+        border-color: rgba(148,163,184,0.32);
+        color: #0f172a;
+      }
+      body[data-theme="light"] .free-upgrade-modal__message {
+        color: rgba(30,41,59,0.75);
+      }
+      .topup-modal {
+        position: fixed;
       inset: 0;
       display: none;
       align-items: center;
@@ -6568,6 +6746,10 @@ body[data-theme="light"] .profile-credit {
         <span class="credit-value" id="profileCoins">0</span>
         <span class="credit-status"><span class="status-dot"></span><span id="profileStatusText">Live</span></span>
       </div>
+      <div class="profile-expiry" id="profileProExpiry" hidden>
+        <span class="profile-expiry-label">PRO berakhir</span>
+        <span class="profile-expiry-value" id="profileProExpiryValue">-</span>
+      </div>
       <button type="button" class="profile-topup" id="profileTopup">Top Up Credit</button>
     </div>
     <button type="button" class="logout-btn" id="logoutButton">
@@ -6610,6 +6792,10 @@ body[data-theme="light"] .profile-credit {
               <span class="profile-badge" id="profileBadgeMobile">PRO</span>
             </div>
             <div class="profile-username" id="profileUsernameMobile">@username</div>
+            <div class="profile-expiry profile-expiry--inline" id="profileProExpiryMobile" hidden>
+              <span class="profile-expiry-label">PRO berakhir</span>
+              <span class="profile-expiry-value" id="profileProExpiryValueMobile">-</span>
+            </div>
           </div>
         </div>
         </div>
@@ -7367,6 +7553,7 @@ body[data-theme="light"] .profile-credit {
     <div class="maintenance-overlay__icon">🛠️</div>
     <h2>Website Sedang Maintenance</h2>
     <p id="maintenanceOverlayMessage">Kami sedang melakukan perawatan sistem. Silakan kembali beberapa saat lagi.</p>
+    <button type="button" class="maintenance-overlay__logout" id="maintenanceLogoutButton">Keluar</button>
   </div>
 </div>
 
@@ -7380,6 +7567,17 @@ body[data-theme="light"] .profile-credit {
   </div>
 </div>
 
+<div class="free-upgrade-modal" id="freeUpgradeModal" aria-hidden="true">
+  <div class="free-upgrade-modal__backdrop" data-dismiss="free-upgrade"></div>
+  <div class="free-upgrade-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="freeUpgradeTitle">
+    <button type="button" class="free-upgrade-modal__close" id="freeUpgradeClose" aria-label="Tutup pop up">&times;</button>
+    <div class="free-upgrade-modal__icon">🚀</div>
+    <h3 class="free-upgrade-modal__title" id="freeUpgradeTitle">Upgrade ke PRO</h3>
+    <p class="free-upgrade-modal__message">Silahkan upgrade ke PRO untuk akses seluruh tools dan menghilangkan watermark.</p>
+    <a class="free-upgrade-modal__cta" id="freeUpgradeAction" href="#" target="_blank" rel="noopener">Upgrade via WhatsApp</a>
+  </div>
+</div>
+
 <script>
   const themeToggle = document.getElementById('themeToggle');
   const profileCard = document.getElementById('profileCard');
@@ -7387,12 +7585,16 @@ body[data-theme="light"] .profile-credit {
   const profileUsernameEl = document.getElementById('profileUsername');
   const profileCoinsEl = document.getElementById('profileCoins');
   const profileBadgeEl = document.getElementById('profileBadge');
+  const profileProExpiryEl = document.getElementById('profileProExpiry');
+  const profileProExpiryValueEl = document.getElementById('profileProExpiryValue');
   const profileAvatarEl = document.getElementById('profileAvatar');
   const profileStatusTextEl = document.getElementById('profileStatusText');
   const profileCardMobile = document.getElementById('profileCardMobile');
   const profileDisplayMobile = document.getElementById('profileDisplayMobile');
   const profileUsernameMobile = document.getElementById('profileUsernameMobile');
   const profileBadgeMobile = document.getElementById('profileBadgeMobile');
+  const profileProExpiryMobileEl = document.getElementById('profileProExpiryMobile');
+  const profileProExpiryMobileValueEl = document.getElementById('profileProExpiryValueMobile');
   const profileAvatarMobile = document.getElementById('profileAvatarMobile');
   const profileCoinsMobile = document.getElementById('profileCoinsMobile');
   const profileStatusMobileEl = document.getElementById('profileStatusMobile');
@@ -7413,6 +7615,7 @@ body[data-theme="light"] .profile-credit {
   const confirmPasswordInput = document.getElementById('confirmPasswordInput');
   const passwordFormStatus = document.getElementById('passwordFormStatus');
   const logoutButton = document.getElementById('logoutButton');
+  const maintenanceLogoutButton = document.getElementById('maintenanceLogoutButton');
   const workspace = document.querySelector('.workspace');
   const sidebarToggle = document.getElementById('sidebarToggle');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -7436,6 +7639,10 @@ body[data-theme="light"] .profile-credit {
   const driveWatermarkNotice = document.getElementById('driveWatermarkNotice');
   const maintenanceOverlayEl = document.getElementById('maintenanceOverlay');
   const maintenanceOverlayMessageEl = document.getElementById('maintenanceOverlayMessage');
+  const freeUpgradeModal = document.getElementById('freeUpgradeModal');
+  const freeUpgradeClose = document.getElementById('freeUpgradeClose');
+  const freeUpgradeAction = document.getElementById('freeUpgradeAction');
+  const freeUpgradeBackdrop = freeUpgradeModal ? freeUpgradeModal.querySelector('.free-upgrade-modal__backdrop') : null;
   const topupModalEl = document.getElementById('topupModal');
   const topupCloseBtn = document.getElementById('topupCloseBtn');
   const topupOptionsEl = document.getElementById('topupOptions');
@@ -7477,16 +7684,164 @@ body[data-theme="light"] .profile-credit {
   let platformState = defaultPlatformState();
   let selectedTopupAmount = null;
   let currentAnnouncements = [];
+  let freeUpgradeDismissed = false;
+  let freeUpgradeAutoShown = false;
 
   function getSubscriptionTier(account = currentAccount) {
-    if (!account || !account.subscription) {
+    if (!account) {
       return 'free';
     }
-    return String(account.subscription).toLowerCase();
+    const source = account.effective_subscription ?? account.subscription;
+    if (!source) {
+      return 'free';
+    }
+    const tier = String(source).toLowerCase();
+    if (tier === 'pro' && accountProExpired(account)) {
+      return 'free';
+    }
+    return tier || 'free';
+  }
+
+  function accountProExpiry(account = currentAccount) {
+    if (!account || !account.pro_expires_at) {
+      return null;
+    }
+    const date = new Date(account.pro_expires_at);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return date;
+  }
+
+  function accountProActive(account = currentAccount) {
+    if (!account) {
+      return false;
+    }
+    if (typeof account.pro_active === 'boolean') {
+      return account.pro_active;
+    }
+    const subscription = (account.subscription || '').toLowerCase();
+    if (subscription !== 'pro') {
+      return false;
+    }
+    const expiry = accountProExpiry(account);
+    if (!expiry) {
+      return true;
+    }
+    return expiry.getTime() >= Date.now();
+  }
+
+  function accountProExpired(account = currentAccount) {
+    if (!account) {
+      return false;
+    }
+    if (account.pro_expired === true) {
+      return true;
+    }
+    if (typeof account.pro_active === 'boolean') {
+      return account.pro_active === false && (account.subscription || '').toLowerCase() === 'pro';
+    }
+    const subscription = (account.subscription || '').toLowerCase();
+    if (subscription !== 'pro') {
+      return false;
+    }
+    const expiry = accountProExpiry(account);
+    if (!expiry) {
+      return false;
+    }
+    return expiry.getTime() < Date.now();
   }
 
   function isProAccount(account = currentAccount) {
     return getSubscriptionTier(account) === 'pro';
+  }
+
+  function formatProExpiry(iso) {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function buildFreeUpgradeLink(account = currentAccount) {
+    const name = account ? (account.display_name || account.username || 'User') : 'User';
+    const message = `Halo, saya ${name} ingin upgrade ke PRO`;
+    return `https://wa.me/62818404222?text=${encodeURIComponent(message)}`;
+  }
+
+  function updateFreeUpgradeLink(account = currentAccount) {
+    if (!freeUpgradeAction) return;
+    freeUpgradeAction.href = buildFreeUpgradeLink(account);
+  }
+
+  function openFreeUpgradeModal(account = currentAccount) {
+    if (!freeUpgradeModal) return;
+    updateFreeUpgradeLink(account);
+    freeUpgradeModal.classList.add('active');
+    freeUpgradeModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeFreeUpgradeModal(options = {}) {
+    if (!freeUpgradeModal) return;
+    freeUpgradeModal.classList.remove('active');
+    freeUpgradeModal.setAttribute('aria-hidden', 'true');
+    if (!options.skipDismiss) {
+      freeUpgradeDismissed = true;
+    }
+  }
+
+  function maybeShowFreeUpgrade(account = currentAccount, { forced = false } = {}) {
+    if (!freeUpgradeModal || !account) return;
+    if (platformState.maintenance && platformState.maintenance.active && !(currentAccount && currentAccount.role === 'admin')) {
+      closeFreeUpgradeModal({ skipDismiss: true });
+      freeUpgradeDismissed = false;
+      freeUpgradeAutoShown = false;
+      return;
+    }
+    if (account && account.role === 'admin') {
+      closeFreeUpgradeModal({ skipDismiss: true });
+      freeUpgradeDismissed = false;
+      freeUpgradeAutoShown = false;
+      return;
+    }
+    if (accountRestricted(account)) {
+      closeFreeUpgradeModal({ skipDismiss: true });
+      freeUpgradeDismissed = false;
+      freeUpgradeAutoShown = false;
+      return;
+    }
+    const tier = getSubscriptionTier(account);
+    if (tier !== 'free') {
+      const wasActive = freeUpgradeModal.classList.contains('active');
+      closeFreeUpgradeModal({ skipDismiss: true });
+      if (wasActive || freeUpgradeDismissed) {
+        freeUpgradeDismissed = false;
+      }
+      freeUpgradeAutoShown = false;
+      return;
+    }
+    updateFreeUpgradeLink(account);
+    if (forced) {
+      openFreeUpgradeModal(account);
+      return;
+    }
+    if (freeUpgradeModal.classList.contains('active')) {
+      return;
+    }
+    if (freeUpgradeDismissed) {
+      return;
+    }
+    if (freeUpgradeAutoShown) {
+      return;
+    }
+    openFreeUpgradeModal(account);
+    freeUpgradeAutoShown = true;
   }
 
   function shouldShowWatermark(account = currentAccount) {
@@ -7572,6 +7927,13 @@ body[data-theme="light"] .profile-credit {
     if (accountRestricted()) {
       return false;
     }
+    if (platformState.maintenance && platformState.maintenance.active) {
+      return false;
+    }
+    const tier = getSubscriptionTier();
+    if (tier === 'free' && featureKey !== 'ugc') {
+      return false;
+    }
     const entry = platformState.generators[featureKey];
     if (!entry) return true;
     return entry.enabled !== false;
@@ -7580,6 +7942,15 @@ body[data-theme="light"] .profile-credit {
   function showFeatureLockedMessage(featureKey) {
     if (accountRestricted()) {
       showRestrictionNotice();
+      return;
+    }
+    if (platformState.maintenance && platformState.maintenance.active && !(currentAccount && currentAccount.role === 'admin')) {
+      const maintenanceMessage = platformState.maintenance.message || 'Website sedang maintenance. Silakan coba lagi nanti.';
+      alert(`🛠️ ${maintenanceMessage}`);
+      return;
+    }
+    if (getSubscriptionTier() === 'free' && featureKey !== 'ugc') {
+      maybeShowFreeUpgrade(currentAccount, { forced: true });
       return;
     }
     const label = getFeatureLabel(featureKey);
@@ -7719,7 +8090,12 @@ body[data-theme="light"] .profile-credit {
   }
 
   function showRestrictionNotice(message) {
-    const info = message || 'Akun Anda sedang dibatasi oleh admin. Hubungi admin untuk bantuan lebih lanjut.';
+    let info = message || 'Akun Anda sedang dibatasi oleh admin. Hubungi admin untuk bantuan lebih lanjut.';
+    if (!message && currentAccount) {
+      if (currentAccount.is_banned || currentAccount.is_blocked) {
+        info = 'Akun sedang di banned silahkan mengajukan banding ke customer service.';
+      }
+    }
     alert(`⚠️ ${info}`);
   }
 
@@ -7744,9 +8120,9 @@ body[data-theme="light"] .profile-credit {
     if (restrictionMessageEl) {
       let message = 'Akun Anda sedang dibatasi oleh admin. Hubungi admin untuk reaktivasi.';
       if (account && account.is_banned) {
-        message = 'Akun Anda dibanned oleh admin. Hubungi admin untuk membuka blokir.';
+        message = 'Akun sedang di banned silahkan mengajukan banding ke customer service.';
       } else if (account && account.is_blocked) {
-        message = 'Akun Anda diblokir sementara oleh admin. Hubungi admin untuk bantuan.';
+        message = 'Akun sedang di banned silahkan mengajukan banding ke customer service.';
       }
       restrictionMessageEl.textContent = message;
     }
@@ -7828,7 +8204,13 @@ body[data-theme="light"] .profile-credit {
         }
         if (locked) {
           btn.setAttribute('aria-disabled', 'true');
-          btn.title = `🔒 ${getFeatureLabel(featureKey)} dikunci oleh admin.`;
+          let title = `🔒 ${getFeatureLabel(featureKey)} dikunci oleh admin.`;
+          if (platformState.maintenance && platformState.maintenance.active && !(currentAccount && currentAccount.role === 'admin')) {
+            title = `🛠️ ${platformState.maintenance.message || 'Website sedang maintenance. Silakan coba lagi nanti.'}`;
+          } else if (getSubscriptionTier() === 'free' && featureKey !== 'ugc') {
+            title = '🔓 Upgrade ke PRO untuk membuka seluruh tools.';
+          }
+          btn.title = title;
         } else {
           btn.removeAttribute('aria-disabled');
           btn.removeAttribute('title');
@@ -7855,7 +8237,13 @@ body[data-theme="light"] .profile-credit {
           link.removeAttribute('href');
           link.setAttribute('aria-disabled', 'true');
           link.setAttribute('tabindex', '-1');
-          link.title = `🔒 ${getFeatureLabel(featureKey)} dikunci oleh admin.`;
+          let title = `🔒 ${getFeatureLabel(featureKey)} dikunci oleh admin.`;
+          if (platformState.maintenance && platformState.maintenance.active && !(currentAccount && currentAccount.role === 'admin')) {
+            title = `🛠️ ${platformState.maintenance.message || 'Website sedang maintenance. Silakan coba lagi nanti.'}`;
+          } else if (getSubscriptionTier() === 'free' && featureKey !== 'ugc') {
+            title = '🔓 Upgrade ke PRO untuk membuka seluruh tools.';
+          }
+          link.title = title;
         } else {
           if (link.dataset.href) {
             link.setAttribute('href', link.dataset.href);
@@ -7880,8 +8268,16 @@ body[data-theme="light"] .profile-credit {
       }
       if (locked) {
         btn.setAttribute('aria-disabled', 'true');
+        let title = `🔒 ${getFeatureLabel(key)} dikunci oleh admin.`;
+        if (platformState.maintenance && platformState.maintenance.active && !(currentAccount && currentAccount.role === 'admin')) {
+          title = `🛠️ ${platformState.maintenance.message || 'Website sedang maintenance. Silakan coba lagi nanti.'}`;
+        } else if (getSubscriptionTier() === 'free' && key !== 'ugc') {
+          title = '🔓 Upgrade ke PRO untuk membuka seluruh tools.';
+        }
+        btn.title = title;
       } else {
         btn.removeAttribute('aria-disabled');
+        btn.removeAttribute('title');
       }
     });
   }
@@ -7932,6 +8328,7 @@ body[data-theme="light"] .profile-credit {
     }
 
     applyAccountRestrictions(currentAccount);
+    maybeShowFreeUpgrade(currentAccount);
   }
 
   function getWhatsappMessage(amount) {
@@ -8653,13 +9050,38 @@ body[data-theme="light"] .profile-credit {
     return String(subscription).toUpperCase();
   }
 
+  function updateProExpiryDisplay(container, valueEl, iso, expired) {
+    if (!container) return;
+    if (!iso) {
+      container.hidden = true;
+      container.classList.remove('expired');
+      if (valueEl) valueEl.textContent = '';
+      return;
+    }
+    const formatted = formatProExpiry(iso);
+    container.hidden = false;
+    container.classList.toggle('expired', !!expired);
+    if (valueEl) {
+      valueEl.textContent = formatted ? (expired ? `${formatted} · sudah berakhir` : formatted) : '-';
+    }
+  }
+
   function updateProfileCard(account) {
     updateWatermarkNotice(account);
     if (!profileCard || !account) return;
     const display = account.display_name || account.username || 'User';
     const username = account.username ? `@${account.username}` : '';
     const coins = Number.isFinite(Number(account.coins)) ? Number(account.coins) : 0;
-    const subscription = formatSubscriptionLabel(account.subscription);
+    const effectiveTier = getSubscriptionTier(account);
+    const originalSubscription = account.subscription || effectiveTier;
+    const proExpired = accountProExpired(account);
+    const showProExpiry = (account.subscription || '').toLowerCase() === 'pro' && account.pro_expires_at;
+    let badgeLabel = formatSubscriptionLabel(originalSubscription);
+    if ((account.subscription || '').toLowerCase() === 'pro') {
+      badgeLabel = proExpired ? 'PRO (EXPIRED)' : 'PRO';
+    } else if ((account.subscription || '').toLowerCase() !== effectiveTier) {
+      badgeLabel = formatSubscriptionLabel(effectiveTier);
+    }
     const isBanned = !!account.is_banned;
     const isBlocked = !!account.is_blocked;
     const formattedCoins = coins.toLocaleString('id-ID');
@@ -8668,12 +9090,12 @@ body[data-theme="light"] .profile-credit {
     if (profileDisplayEl) profileDisplayEl.textContent = display;
     if (profileUsernameEl) profileUsernameEl.textContent = username;
     if (profileCoinsEl) profileCoinsEl.textContent = formattedCoins;
-    if (profileBadgeEl) profileBadgeEl.textContent = subscription;
+    if (profileBadgeEl) profileBadgeEl.textContent = badgeLabel;
     applyAvatarToElement(profileAvatarEl, account.avatar_url, initials);
 
     if (profileDisplayMobile) profileDisplayMobile.textContent = display;
     if (profileUsernameMobile) profileUsernameMobile.textContent = username;
-    if (profileBadgeMobile) profileBadgeMobile.textContent = subscription;
+    if (profileBadgeMobile) profileBadgeMobile.textContent = badgeLabel;
     if (profileCoinsMobile) profileCoinsMobile.textContent = formattedCoins;
     applyAvatarToElement(profileAvatarMobile, account.avatar_url, initials);
     if (mobileCoinValue) mobileCoinValue.textContent = formattedCoins;
@@ -8681,6 +9103,9 @@ body[data-theme="light"] .profile-credit {
       avatarUrlInput.value = account.avatar_url || '';
     }
     updateAvatarPreview(account.avatar_url || '', initials);
+
+    updateProExpiryDisplay(profileProExpiryEl, profileProExpiryValueEl, showProExpiry ? account.pro_expires_at : null, proExpired);
+    updateProExpiryDisplay(profileProExpiryMobileEl, profileProExpiryMobileValueEl, showProExpiry ? account.pro_expires_at : null, proExpired);
 
     if (profileStatusTextEl) {
       if (isBanned) {
@@ -8718,6 +9143,7 @@ body[data-theme="light"] .profile-credit {
     profileCard.classList.toggle('profile-card--alert', isBanned || isBlocked);
     applyAccountRestrictions(account);
     updateDashboardStats();
+    maybeShowFreeUpgrade(account);
   }
 
   async function fetchAccountState() {
@@ -8771,6 +9197,9 @@ body[data-theme="light"] .profile-credit {
       applyPlatformState(null);
       renderDashboardAnnouncements([]);
       applyAccountRestrictions(null);
+      closeFreeUpgradeModal({ skipDismiss: true });
+      freeUpgradeDismissed = false;
+      freeUpgradeAutoShown = false;
       driveItems = [];
       driveLoaded = false;
       setDriveAccess(false);
@@ -8822,37 +9251,69 @@ body[data-theme="light"] .profile-credit {
     });
   }
 
-  if (logoutButton) {
-    logoutButton.addEventListener('click', async () => {
-      if (logoutButton.classList.contains('loading')) {
+  async function performLogout(trigger) {
+    if (!trigger) return;
+    if (trigger.classList.contains('loading')) {
+      return;
+    }
+    const hadDisabled = typeof trigger.disabled === 'boolean';
+    const previousDisabled = hadDisabled ? trigger.disabled : null;
+    trigger.classList.add('loading');
+    if (hadDisabled) {
+      trigger.disabled = true;
+    } else {
+      trigger.setAttribute('aria-disabled', 'true');
+    }
+    try {
+      const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({})
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.error('Logout gagal:', text);
+        alert('Logout gagal. Silakan coba lagi.');
         return;
       }
 
-      logoutButton.classList.add('loading');
-      try {
-        const res = await fetch('<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({})
-        });
-
-        if (!res.ok) {
-          const text = await res.text();
-          console.error('Logout gagal:', text);
-          alert('Logout gagal. Silakan coba lagi.');
-          return;
-        }
-
-        window.location.reload();
-      } catch (err) {
-        console.error('Logout error', err);
-        alert('Terjadi kesalahan saat logout.');
-      } finally {
-        logoutButton.classList.remove('loading');
+      window.location.reload();
+    } catch (err) {
+      console.error('Logout error', err);
+      alert('Terjadi kesalahan saat logout.');
+    } finally {
+      trigger.classList.remove('loading');
+      if (hadDisabled) {
+        trigger.disabled = !!previousDisabled;
+      } else {
+        trigger.removeAttribute('aria-disabled');
       }
-    });
+    }
   }
+
+  if (logoutButton) {
+    logoutButton.addEventListener('click', () => performLogout(logoutButton));
+  }
+
+  if (maintenanceLogoutButton) {
+    maintenanceLogoutButton.addEventListener('click', () => performLogout(maintenanceLogoutButton));
+  }
+
+  if (freeUpgradeClose) {
+    freeUpgradeClose.addEventListener('click', () => closeFreeUpgradeModal());
+  }
+
+  if (freeUpgradeBackdrop) {
+    freeUpgradeBackdrop.addEventListener('click', () => closeFreeUpgradeModal());
+  }
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && freeUpgradeModal && freeUpgradeModal.classList.contains('active')) {
+      closeFreeUpgradeModal();
+    }
+  });
 
   if (avatarUploadBtn && avatarFileInput) {
     avatarUploadBtn.addEventListener('click', () => avatarFileInput.click());

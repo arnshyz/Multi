@@ -416,6 +416,7 @@ header {
 .form-status[data-state="error"] { color: #ef4444; }
 .form-status[data-state="success"] { color: #10b981; }
 .form-status[data-state="info"] { color: var(--text-color); opacity: 0.8; }
+.form-status[data-state="warning"] { color: #fbbf24; }
 
 .form-status.small {
     font-size: 0.85rem;
