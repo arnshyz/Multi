@@ -1962,7 +1962,7 @@ if (!auth_is_logged_in()) {
             <p class="subtitle-mobile">menghasilkan video berkualitas studio tanpa keterampilan teknis apa pun.</p>
 
             <div class="cta-area">
-                <a href="#" class="cta-button">
+                <a href="#" class="cta-button js-open-signup">
                     <span class="icon-part"><i class="fas fa-arrow-right"></i></span>
                     <span class="text-part">Start Testing Free</span>
                 </a>
@@ -2042,13 +2042,13 @@ if (!auth_is_logged_in()) {
         <div class="feature-card glass-card">
             <div class="feature-image">
                 <span class="image-badge">UGC Affiliate & Seller</span>
-                <img src="https://xxx.akay.web.id/fp_20251106_171107_26c79bb5.png" alt="Instant UGC Video Generation">
+                <img src="assets/images/ugc-affiliate.svg" alt="Visual konsep konten UGC affiliate">
             </div>
             <div class="feature-content">
                 <span class="feature-tag">AI-POWERED</span>
                 <h3>Pembuatan Video UGC Instan</h3>
                 <p>Ubah produk apa pun menjadi video konten buatan pengguna yang autentik dalam hitungan menit. AI kami menemukan musik dan video menarik yang tampak seperti berasal dari pelanggan sungguhan.</p>
-                <a href="#" class="btn-try-now">
+                <a href="#" class="btn-try-now js-open-signup">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
             </div>
@@ -2057,13 +2057,13 @@ if (!auth_is_logged_in()) {
         <div class="feature-card glass-card reverse-layout">
             <div class="feature-image">
                 <span class="image-badge">Product Demo</span>
-                <img src="https://via.placeholder.com/250x350/FF66B2/FFFFFF?text=Product+2" alt="Real-Time Ad Optimization">
+                <img src="assets/images/product-demo.svg" alt="Visual demo produk interaktif">
             </div>
             <div class="feature-content">
                 <span class="feature-tag">LIGHTNING FAST</span>
                 <h3>Real-Time Ad Optimization</h3>
                 <p>Uji berbagai variasi secara otomatis dan optimalkan untuk konversi maksimal. AI kami menganalisis performa dan menyesuaikan iklan Anda secara real-time untuk hasil terbaik.</p>
-                <a href="#" class="btn-try-now">
+                <a href="#" class="btn-try-now js-open-signup">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
             </div>
@@ -2072,13 +2072,13 @@ if (!auth_is_logged_in()) {
         <div class="feature-card glass-card">
             <div class="feature-image">
                 <span class="image-badge">Analytics View</span>
-                <img src="https://via.placeholder.com/250x350/66FFFF/FFFFFF?text=Product+3" alt="Data-Driven Insights">
+                <img src="assets/images/analytics-view.svg" alt="Visual dashboard analitik">
             </div>
             <div class="feature-content">
                 <span class="feature-tag">PERFORMANCE</span>
                 <h3>Data-Driven Insights</h3>
                 <p>Dapatkan analisis mendetail tentang apa yang berhasil dan apa yang tidak. Lacak interaksi, konversi, dan ROI di semua iklan video Anda dengan wawasan yang dapat ditindaklanjuti.</p>
-                <a href="#" class="btn-try-now">
+                <a href="#" class="btn-try-now js-open-signup">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
             </div>
@@ -2087,13 +2087,13 @@ if (!auth_is_logged_in()) {
         <div class="feature-card glass-card reverse-layout">
             <div class="feature-image">
                 <span class="image-badge">Target Audience</span>
-                <img src="https://via.placeholder.com/250x350/FFD700/FFFFFF?text=Product+4" alt="Audience Precision">
+                <img src="assets/images/target-audience.svg" alt="Visual pemetaan target audiens">
             </div>
             <div class="feature-content">
                 <span class="feature-tag">SMART TARGETING</span>
                 <h3>Audience Precision</h3>
                 <p>Jangkau audiens yang tepat di waktu yang tepat. AI kami secara otomatis mengidentifikasi dan menargetkan pelanggan ideal Anda berdasarkan perilaku dan pola interaksi..</p>
-                <a href="#" class="btn-try-now">
+                <a href="#" class="btn-try-now js-open-signup">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
             </div>
@@ -2146,7 +2146,7 @@ if (!auth_is_logged_in()) {
 
         <div class="cases-cta">
             <p>Ready to transform your ad creation process?</p>
-            <a href="#" class="cta-button-small">
+            <a href="#" class="cta-button-small js-open-signup">
                 <span class="icon-part"><i class="fas fa-arrow-right"></i></span>
                 <span class="text-part">Get Started Free</span>
             </a>
@@ -2200,7 +2200,7 @@ if (!auth_is_logged_in()) {
                     </ul>
                 </div>
 
-                <a href="#" class="btn-plan-select">
+                <a href="#" class="btn-plan-select js-open-signup">
                     <span class="icon-part"><i class="fas fa-arrow-right"></i></span>
                     <span class="text-part">Get Started</span>
                 </a>
@@ -2231,7 +2231,7 @@ if (!auth_is_logged_in()) {
                     </ul>
                 </div>
 
-                <a href="#" class="btn-plan-select btn-primary-plan">
+                <a href="https://wa.me/62818404222?text=Halo%20AKAY%20IO%2C%20saya%20ingin%20registrasi%20paket%20Get%20Full%20Access." class="btn-plan-select btn-primary-plan" target="_blank" rel="noopener">
                     <span class="icon-part"><i class="fas fa-arrow-right"></i></span>
                     <span class="text-part">Get Full Access</span>
                 </a>
@@ -2258,7 +2258,7 @@ if (!auth_is_logged_in()) {
                     </ul>
                 </div>
 
-                <a href="#" class="btn-plan-select">
+                <a href="https://wa.me/62818404222?text=Halo%20AKAY%20IO%2C%20saya%20ingin%20registrasi%20paket%20Get%20Master%20Access." class="btn-plan-select" target="_blank" rel="noopener">
                     <span class="icon-part"><i class="fas fa-arrow-right"></i></span>
                     <span class="text-part">Get Master Access</span>
                 </a>
@@ -2452,7 +2452,7 @@ if (!auth_is_logged_in()) {
         const loginModal = document.getElementById('login-modal');
         const signupModal = document.getElementById('signup-modal');
         const loginButtons = Array.from(document.querySelectorAll('.btn-login, .btn-login-mobile'));
-        const signupButtons = Array.from(document.querySelectorAll('.btn-signup, .btn-signup-mobile'));
+        const signupButtons = Array.from(document.querySelectorAll('.btn-signup, .btn-signup-mobile, .js-open-signup'));
         const closeButtons = Array.from(document.querySelectorAll('.modal .close-btn'));
 
         const loginForm = loginModal ? loginModal.querySelector('form') : null;
@@ -2689,6 +2689,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 closeModal(signupModal);
             }
         });
+
+        const featureCards = Array.from(document.querySelectorAll('.feature-card'));
+        if (featureCards.length) {
+            if ('IntersectionObserver' in window) {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach((entry) => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('is-visible');
+                            observer.unobserve(entry.target);
+                        }
+                    });
+                }, { threshold: 0.25 });
+
+                featureCards.forEach((card) => observer.observe(card));
+            } else {
+                featureCards.forEach((card) => card.classList.add('is-visible'));
+            }
+        }
 
         if (signupApiKeyInput) {
             signupApiKeyInput.addEventListener('input', () => {

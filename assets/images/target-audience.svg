@@ -1,0 +1,44 @@
+<svg width="640" height="900" viewBox="0 0 640 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="900" rx="40" fill="url(#grad)"/>
+  <defs>
+    <linearGradient id="grad" x1="140" y1="80" x2="500" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F72585"/>
+      <stop offset="1" stop-color="#7209B7"/>
+    </linearGradient>
+  </defs>
+  <g opacity="0.16">
+    <circle cx="180" cy="200" r="130" fill="white"/>
+    <circle cx="470" cy="260" r="160" fill="white"/>
+    <circle cx="260" cy="620" r="220" fill="white"/>
+    <circle cx="520" cy="640" r="140" fill="white"/>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="120" y="200" width="400" height="480" rx="36" fill="rgba(255,255,255,0.86)"/>
+  </g>
+  <g transform="translate(150 260)">
+    <circle cx="170" cy="120" r="90" fill="#4361EE" opacity="0.22"/>
+    <circle cx="110" cy="100" r="56" fill="#4895EF"/>
+    <circle cx="240" cy="160" r="56" fill="#4CC9F0"/>
+    <circle cx="170" cy="60" r="56" fill="#560BAD"/>
+    <path d="M110 100 Q170 36 230 104" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.65"/>
+    <path d="M110 100 Q170 160 240 160" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.65"/>
+    <path d="M170 60 V200" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.65"/>
+  </g>
+  <g transform="translate(150 500)">
+    <rect width="340" height="220" rx="28" fill="#FFF5FB"/>
+    <text x="40" y="92" fill="#3B0D4F" font-family="'Inter', sans-serif" font-size="34" font-weight="700">Target Audience</text>
+    <text x="40" y="134" fill="#3B0D4F" font-family="'Inter', sans-serif" font-size="20" opacity="0.85">Bidik pelanggan ideal</text>
+    <text x="40" y="168" fill="#3B0D4F" font-family="'Inter', sans-serif" font-size="20" opacity="0.75">dengan segmentasi pintar.</text>
+  </g>
+  <defs>
+    <filter id="shadow" x="90" y="180" width="460" height="520" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feOffset dy="18"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.18"/>
+      </feComponentTransfer>
+      <feComposite in2="SourceAlpha" operator="in"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+  </defs>
+</svg>
