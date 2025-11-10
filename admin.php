@@ -2202,9 +2202,9 @@ if (isset($_GET['api'])) {
             username: newAccountUsername.value.trim(),
             email: newAccountEmail.value.trim(),
             password: newAccountPassword.value,
-          subscription: newAccountSubscription.value,
-          pro_expires_at: newAccountProExpires.value ? isoFromLocalDateTime(newAccountProExpires.value) : null,
-          coins: Number(newAccountCoins.value || 0),
+            subscription: newAccountSubscription.value,
+            pro_expires_at: newAccountProExpires.value ? isoFromLocalDateTime(newAccountProExpires.value) : null,
+            coins: Number(newAccountCoins.value || 0),
             role: newAccountRole.value,
             freepik_api_key: newAccountApiKey.value.trim(),
             is_banned: newAccountBanned.checked,
@@ -2230,9 +2230,9 @@ if (isset($_GET['api'])) {
             await apiCall('addAccount', payload);
             showToast('Akun berhasil ditambahkan', 'success');
             addAccountForm.reset();
-          if (newAccountCoins) newAccountCoins.value = 25;
-          if (newAccountSubscription) newAccountSubscription.value = 'pro';
-          if (newAccountProExpires) newAccountProExpires.value = '';
+            if (newAccountCoins) newAccountCoins.value = 25;
+            if (newAccountSubscription) newAccountSubscription.value = 'pro';
+            if (newAccountProExpires) newAccountProExpires.value = '';
             if (newAccountRole) newAccountRole.value = 'user';
             await loadState();
           } catch (err) {
@@ -2258,6 +2258,7 @@ if (isset($_GET['api'])) {
           const usernameInput = card.querySelector('[data-field="username"]');
           const emailInput = card.querySelector('[data-field="email"]');
           const coinsInput = card.querySelector('[data-field="coins"]');
+          const proExpiryInput = card.querySelector('[data-field="pro_expires_at"]');
           const subscriptionInput = card.querySelector('[data-field="subscription"]');
           const roleSelect = card.querySelector('[data-field="role"]');
           const keyInput = card.querySelector('[data-field="freepik_api_key"]');
