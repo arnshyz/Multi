@@ -2994,6 +2994,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
   --input-border: rgba(203, 213, 225, 0.75);
   --sidebar-text-muted: rgba(100, 116, 139, 0.75);
   --stat-bg: rgba(59, 130, 246, 0.1);
+  --mobile-nav-height: 88px;
 }
 body {
   margin: 0;
@@ -3024,6 +3025,105 @@ button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+.has-mobile-bottom-nav {
+  min-height: 100vh;
+}
+
+.mobile-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1200;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  min-height: var(--mobile-nav-height);
+  background: linear-gradient(90deg, #ff6a00 0%, #ff3b2f 100%);
+  box-shadow: 0 -18px 36px rgba(15, 23, 42, 0.3);
+  border-radius: 24px 24px 0 0;
+}
+
+.mobile-bottom-nav__item {
+  flex: 1 1 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: 0.01em;
+  transition: transform 0.25s ease, color 0.25s ease;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.mobile-bottom-nav__item:focus {
+  outline: none;
+}
+
+.mobile-bottom-nav__item[disabled],
+.mobile-bottom-nav__item.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mobile-bottom-nav__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
+}
+
+.mobile-bottom-nav__label {
+  display: block;
+}
+
+.mobile-bottom-nav__item.is-active,
+.mobile-bottom-nav__item:hover,
+.mobile-bottom-nav__item:focus-visible {
+  color: #ffffff;
+  transform: translateY(-2px);
+}
+
+.mobile-bottom-nav__item.is-active .mobile-bottom-nav__icon,
+.mobile-bottom-nav__item:hover .mobile-bottom-nav__icon,
+.mobile-bottom-nav__item:focus-visible .mobile-bottom-nav__icon {
+  background: #ffffff;
+  color: #ff4c1a;
+  transform: scale(1.05);
+}
+
+@media (max-width: 960px) {
+  body.has-mobile-bottom-nav {
+    padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+  }
+
+  .workspace {
+    padding-bottom: calc(var(--mobile-nav-height) + 16px);
+  }
+
+  .workspace-main {
+    padding-bottom: calc(var(--mobile-nav-height) + 32px);
+  }
 }
 body::before,
 body::after {
@@ -6674,7 +6774,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
   </style>
 </head>
-<body data-theme="dark">
+<body data-theme="dark" class="has-mobile-bottom-nav">
 
 <div class="workspace sidebar-open">
   <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true">
@@ -7557,6 +7657,39 @@ body[data-theme="light"] .profile-expiry.expired {
 
 </main>
 </div>
+
+<nav class="mobile-bottom-nav" aria-label="Navigasi utama dashboard mobile">
+  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav is-active" data-target="viewDashboard">
+    <span class="mobile-bottom-nav__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </span>
+    <span class="mobile-bottom-nav__label">Dashboard</span>
+  </button>
+  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewHub" data-feature="imageGen">
+    <span class="mobile-bottom-nav__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M8.757 15.243l-2.121 2.121m12.728 0-2.121-2.121M8.757 8.757 6.636 6.636" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </span>
+    <span class="mobile-bottom-nav__label">Image Gen</span>
+  </button>
+  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewFilm" data-feature="filmmaker">
+    <span class="mobile-bottom-nav__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 0V4m4 2V4m4 2V4m4 2V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </span>
+    <span class="mobile-bottom-nav__label">Filmmaker</span>
+  </button>
+  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewUGC" data-feature="ugc">
+    <span class="mobile-bottom-nav__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </span>
+    <span class="mobile-bottom-nav__label">UGC Tool</span>
+  </button>
+  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewAccount">
+    <span class="mobile-bottom-nav__icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M10.325 4.317a1 1 0 0 1 .987-.817h1.376a1 1 0 0 1 .987.817l.287 1.436a1 1 0 0 0 .96.804l1.45.055a1 1 0 0 1 .939.734l.345 1.31a1 1 0 0 1-.276.98l-1.07 1.026a1 1 0 0 0-.3.95l.332 1.406a1 1 0 0 1-.6 1.141l-1.307.522a1 1 0 0 0-.62.83l-.135 1.452a1 1 0 0 1-.995.915h-1.38a1 1 0 0 1-.994-.915l-.135-1.452a1 1 0 0 0-.62-.83l-1.307-.522a1 1 0 0 1-.6-1.141l.332-1.406a1 1 0 0 0-.3-.95l-1.07-1.026a1 1 0 0 1-.276-.98l.345-1.31a1 1 0 0 1 .939-.734l1.45-.055a1 1 0 0 0 .96-.804z" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="3" stroke-linecap="round" stroke-linejoin="round"></circle></svg>
+    </span>
+    <span class="mobile-bottom-nav__label">Akun</span>
+  </button>
+</nav>
 
 <div id="assetPreviewModal" class="asset-preview hidden">
   <div class="asset-preview-inner">
@@ -12150,7 +12283,7 @@ body[data-theme="light"] .profile-expiry.expired {
     });
   }
 
-  navButtons = Array.from(document.querySelectorAll('.sidebar-link[data-target]'));
+  navButtons = Array.from(document.querySelectorAll('.sidebar-link[data-target], .js-dashboard-nav[data-target]'));
   viewDashboardSection = document.getElementById('viewDashboard');
   viewDriveSection = document.getElementById('viewDrive');
   viewHubSection = document.getElementById('viewHub');
@@ -12180,7 +12313,11 @@ body[data-theme="light"] .profile-expiry.expired {
     navButtons.forEach(btn => {
       const isHub = btn.dataset.target === 'viewHub';
       const matches = btn.dataset.target === target && (!isHub || (btn.dataset.feature || 'imageGen') === (featureKey || 'imageGen'));
-      btn.classList.toggle('active', matches);
+      if (btn.classList.contains('mobile-bottom-nav__item')) {
+        btn.classList.toggle('is-active', matches);
+      } else {
+        btn.classList.toggle('active', matches);
+      }
     });
   }
 
