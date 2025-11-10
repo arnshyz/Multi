@@ -2994,7 +2994,7 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
   --input-border: rgba(203, 213, 225, 0.75);
   --sidebar-text-muted: rgba(100, 116, 139, 0.75);
   --stat-bg: rgba(59, 130, 246, 0.1);
-  --mobile-nav-height: 88px;
+  --mobile-nav-height: 64px;
 }
 body {
   margin: 0;
@@ -3040,12 +3040,12 @@ button:disabled {
   display: none;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  padding: 6px 12px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   min-height: var(--mobile-nav-height);
   background: linear-gradient(90deg, #ff6a00 0%, #ff3b2f 100%);
-  box-shadow: 0 -18px 36px rgba(15, 23, 42, 0.3);
-  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -14px 28px rgba(15, 23, 42, 0.25);
+  border-radius: 18px 18px 0 0;
 }
 
 .mobile-bottom-nav__item {
@@ -3054,17 +3054,17 @@ button:disabled {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.82);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: capitalize;
   letter-spacing: 0.01em;
   transition: transform 0.25s ease, color 0.25s ease;
   cursor: pointer;
-  padding: 6px 0;
+  padding: 4px 0;
 }
 
 .mobile-bottom-nav__item:focus {
@@ -3078,15 +3078,19 @@ button:disabled {
 }
 
 .mobile-bottom-nav__icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 19px;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
   transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
+}
+
+.mobile-bottom-nav__icon i {
+  font-size: 16px;
 }
 
 .mobile-bottom-nav__label {
@@ -7661,31 +7665,31 @@ body[data-theme="light"] .profile-expiry.expired {
 <nav class="mobile-bottom-nav" aria-label="Navigasi utama dashboard mobile">
   <button type="button" class="mobile-bottom-nav__item js-dashboard-nav is-active" data-target="viewDashboard">
     <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <i class="fas fa-tachometer-alt"></i>
     </span>
     <span class="mobile-bottom-nav__label">Dashboard</span>
   </button>
   <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewHub" data-feature="imageGen">
     <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M8.757 15.243l-2.121 2.121m12.728 0-2.121-2.121M8.757 8.757 6.636 6.636" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <i class="fas fa-image"></i>
     </span>
     <span class="mobile-bottom-nav__label">Image Gen</span>
   </button>
   <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewFilm" data-feature="filmmaker">
     <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 0V4m4 2V4m4 2V4m4 2V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <i class="fas fa-film"></i>
     </span>
     <span class="mobile-bottom-nav__label">Filmmaker</span>
   </button>
   <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewUGC" data-feature="ugc">
     <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <i class="fas fa-bullhorn"></i>
     </span>
     <span class="mobile-bottom-nav__label">UGC Tool</span>
   </button>
   <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewAccount">
     <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M10.325 4.317a1 1 0 0 1 .987-.817h1.376a1 1 0 0 1 .987.817l.287 1.436a1 1 0 0 0 .96.804l1.45.055a1 1 0 0 1 .939.734l.345 1.31a1 1 0 0 1-.276.98l-1.07 1.026a1 1 0 0 0-.3.95l.332 1.406a1 1 0 0 1-.6 1.141l-1.307.522a1 1 0 0 0-.62.83l-.135 1.452a1 1 0 0 1-.995.915h-1.38a1 1 0 0 1-.994-.915l-.135-1.452a1 1 0 0 0-.62-.83l-1.307-.522a1 1 0 0 1-.6-1.141l.332-1.406a1 1 0 0 0-.3-.95l-1.07-1.026a1 1 0 0 1-.276-.98l.345-1.31a1 1 0 0 1 .939-.734l1.45-.055a1 1 0 0 0 .96-.804z" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="3" stroke-linecap="round" stroke-linejoin="round"></circle></svg>
+      <i class="fas fa-user-circle"></i>
     </span>
     <span class="mobile-bottom-nav__label">Akun</span>
   </button>
