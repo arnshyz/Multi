@@ -13987,7 +13987,8 @@ body[data-theme="light"] .profile-expiry.expired {
 
   const UGC_IDEA_COUNT = 5;
   const UGC_DEFAULT_FRAMING_TEXT = 'versatile framing';
-  const UGC_DEFAULT_ASPECT_RATIO = 'auto';
+  const UGC_DEFAULT_IMAGE_ASPECT_RATIO = 'auto';
+  const UGC_DEFAULT_VIDEO_ASPECT_RATIO = 'landscape_16_9'; // Seedance Pro 1080p expects 16:9 per Freepik docs
 
   const UGC_STYLE_GROUPS = [
     {
@@ -14657,7 +14658,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
     const cfg = MODEL_CONFIG.gemini;
     const refs = buildUgcReferences();
-    const requestAspectRatio = UGC_DEFAULT_ASPECT_RATIO;
+    const requestAspectRatio = UGC_DEFAULT_IMAGE_ASPECT_RATIO;
     let successfulIdeas = 0;
 
     try {
@@ -14756,7 +14757,7 @@ body[data-theme="light"] .profile-expiry.expired {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
       imageUrl: item.remoteUrl,
       videoDuration: 10,
-      aspectRatio: UGC_DEFAULT_ASPECT_RATIO
+      aspectRatio: UGC_DEFAULT_VIDEO_ASPECT_RATIO
     };
 
     const body = typeof cfg.buildBody === 'function'
