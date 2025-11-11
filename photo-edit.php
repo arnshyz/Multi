@@ -14,14 +14,10 @@ if ($account) {
 }
 
 $username = '';
-$coinBalance = 0;
 if ($account) {
     $username = trim((string)($account['name'] ?? ''));
     if ($username === '') {
         $username = trim((string)($account['username'] ?? ''));
-    }
-    if (isset($account['coins'])) {
-        $coinBalance = (int)$account['coins'];
     }
 }
 if ($username === '') {
@@ -69,18 +65,12 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     <p>Padukan 2-3 foto referensi kamu untuk membuat empat pose sinematik ala Filmmaker dengan kualitas asli dari Flash 2.5.</p>
                 </div>
                 <div class="photo-film-meta">
-                    <div class="user-stack">
-                        <div class="credit-pill" aria-live="polite">
-                            <span class="credit-label">Saldo Kredit</span>
-                            <span class="credit-value" id="creditBalance" data-balance="<?php echo (int)$coinBalance; ?>"><?php echo number_format((int)$coinBalance, 0, ',', '.'); ?></span>
-                        </div>
-                        <div class="user-chip" aria-label="Akun aktif">
-                            <span class="avatar-circle" aria-hidden="true"><?php echo htmlspecialchars(strtoupper(substr($username, 0, 2))); ?></span>
-                            <span class="user-meta">
-                                <span class="user-label">Masuk sebagai</span>
-                                <span class="user-name"><?php echo htmlspecialchars($username, ENT_QUOTES); ?></span>
-                            </span>
-                        </div>
+                    <div class="user-chip" aria-label="Akun aktif">
+                        <span class="avatar-circle" aria-hidden="true"><?php echo htmlspecialchars(strtoupper(substr($username, 0, 2))); ?></span>
+                        <span class="user-meta">
+                            <span class="user-label">Masuk sebagai</span>
+                            <span class="user-name"><?php echo htmlspecialchars($username, ENT_QUOTES); ?></span>
+                        </span>
                     </div>
                     <a href="index.php" class="btn-secondary">← Kembali ke Dashboard</a>
                 </div>
@@ -129,6 +119,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                             <option value="urban">Neo Urban Story</option>
                             <option value="tropical">Tropical Journey</option>
                             <option value="heritage">Heritage Elegance</option>
+							<option value="holiday">Liburan</option>
                         </select>
                         <p id="themeHint" class="muted"></p>
                     </div>
@@ -142,10 +133,10 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     <div>
                         <div class="small-label">Foto referensi</div>
                         <div id="dropzone" class="film-dropzone" tabindex="0">
-                            <input id="referenceInput" class="film-file-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
+                            <input id="referenceInput" type="file" accept="image/*" multiple hidden>
                             <div class="film-drop-inner">
                                 <div style="margin-bottom:4px;">Tarik &amp; lepas atau <button type="button" class="link" id="browseButton">pilih dari perangkat</button></div>
-                                <span>Gunakan 2–3 foto (JPG, PNG, atau WEBP) untuk menjaga konsistensi wajah.</span>
+                                <span>Gunakan 2–3 foto (JPG, PNG, atau WEBP) untuk menjaga konsistensi wajah. (Usahakan Foto CloseUP)</span>
                             </div>
                         </div>
                         <div id="referencePreview" class="preview-grid"></div>
@@ -170,24 +161,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         const POLL_INTERVAL = 8000;
         const MIN_FILES = 2;
         const MAX_FILES = 3;
-        const VIDEO_CREATE_PATH = '/v1/ai/image-to-video/seedance-pro-1080p';
-        const VIDEO_STATUS_PATH = (taskId) => `/v1/ai/image-to-video/seedance-pro-1080p/${taskId}`;
-        const VIDEO_POLL_INTERVAL = 9000;
-        const VIDEO_DURATION_SECONDS = 5;
-        const VIDEO_RATIO_DEFAULT = 'landscape_16_9';
-        const VIDEO_RATIO_MAP = {
-            portrait_3_4: 'portrait_9_16',
-            portrait_4_5: 'portrait_9_16',
-            portrait_9_16: 'portrait_9_16',
-            portrait: 'portrait_9_16',
-            landscape_3_2: 'landscape_16_9',
-            landscape_16_9: 'landscape_16_9',
-            landscape: 'landscape_16_9',
-            square_1_1: 'square_1_1',
-            square: 'square_1_1'
-        };
-
-        const numberFormatter = new Intl.NumberFormat('id-ID');
 
         const themeSelect = document.getElementById('themeSelect');
         const themeHint = document.getElementById('themeHint');
@@ -202,28 +175,32 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         const referenceInput = document.getElementById('referenceInput');
         const browseButton = document.getElementById('browseButton');
         const previewGrid = document.getElementById('referencePreview');
-        const creditBalanceEl = document.getElementById('creditBalance');
 
         const themeOptions = {
             romantic: {
                 label: 'Romantic Fusion',
                 description: 'Palet rose gold dengan highlight lembut ala golden hour dan kilau editorial.',
-                template: 'romantic editorial portrait blend, warm golden hour glow, pearlescent highlights, soft focus lens flare, cinematic depth, cohesive styling',
+                template: 'Gabungkan kedua foto menjadi potret editorial pernikahan yang romantis. Pastikan ada cahaya keemasan hangat dari golden hour, dengan highlight pearlescent yang lembut dan flare lensa soft focus yang artistik. Ciptakan kedalaman sinematik pada komposisi, dan pastikan gaya keseluruhan menyatu dengan sempurna, seolah-olah ini adalah satu sesi pemotretan yang direncanakan dengan indah.',
             },
             urban: {
                 label: 'Neo Urban Story',
                 description: 'Mood metropolis malam dengan kontras matte, refleksi neon cyan-magenta, dan nuansa futuristik.',
-                template: 'neo urban fashion narrative, cinematic night city, teal and magenta glow, reflective surfaces, high contrast matte finish, dramatic shadows',
+                template: 'Gabungkan kedua foto ini dalam sebuah narasi fashion neo-urban. Latar belakangnya adalah kota di malam hari yang sinematik, didominasi oleh cahaya neon teal dan magenta yang memantul di permukaan. Berikan sentuhan akhir matte dengan kontras tinggi dan bayangan dramatis untuk menciptakan suasana yang intens dan bergaya.',
             },
             tropical: {
                 label: 'Tropical Journey',
                 description: 'Kombinasi warna tropis vibrant dengan kilau matahari dan ambience liburan energik.',
-                template: 'tropical travel editorial, vivid aqua and lime palette, sun-kissed skin, breezy motion, cinematic resort backdrops, lush foliage details',
+                template: 'Gabungkan kedua foto ini menjadi satu gambar editorial perjalanan tropis. Pastikan palet warna didominasi oleh aqua dan lime yang cerah, menonjolkan kulit yang terpapar matahari dan nuansa gerakan yang ringan dan berangin. Latar belakang harus menampilkan pemandangan resor sinematik yang indah dengan detail dedaunan tropis yang rimbun.',
             },
             heritage: {
                 label: 'Heritage Elegance',
                 description: 'Sentuhan tradisional hangat dengan tekstur kaya dan detail busana elegan.',
-                template: 'heritage ceremonial portrait, warm amber lighting, intricate textile details, soft cinematic haze, dignified poses, timeless storytelling',
+                template: 'Gabungkan kedua foto ini menjadi sebuah potret upacara warisan yang berkesan. Gunakan pencahayaan ambar yang hangat dan lembut untuk menciptakan suasana yang syahdu. Pastikan detail tekstil yang rumit pada pakaian atau latar belakang terlihat jelas. Tambahkan efek kabut sinematik yang lembut untuk sentuhan dramatis. Kedua subjek harus berpose dengan anggun dan bermartabat, seolah sedang menceritakan kisah abadi dari masa lalu.',
+            },
+            holiday: {
+                label: 'Holiday',
+                description: 'Pada gambar tersebut, Anda terlihat mengenakan bikini massive brust luar biasa besar dengan senyum tipis, rambut hitam tergerai, berlatar belakang pantai dengan pasir putih yang luas, air laut biru jernih, dan deretan pohon kelapa melengkung di kejauhan. Langit biru cerah dengan sedikit awan menambah kesan suasana liburan yang indah.',
+                template: 'Gabungkan foto ini ke dalam suasana liburan di pantai Indonesia yang cerah dan indah. Pastikan ada elemen khas pantai seperti pasir putih, air laut biru jernih, dan pohon kelapa. Pancarkan suasana relaksasi dan kebahagiaan saat berlibur.',
             }
         };
 
@@ -231,7 +208,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             {
                 key: 'closeUpGlow',
                 badge: 'Pose 1',
-                title: 'Pose 1 · Siluet Harmonis',
+                title: 'Siluet Harmonis',
                 shot: 'Close-up portrait angle dengan bahu sedikit miring, tatapan lembut ke kamera, tangan menyentuh wajah secara elegan.',
                 aspectRatio: 'portrait_3_4',
                 description(theme, prompt) {
@@ -242,7 +219,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             {
                 key: 'dynamicMotion',
                 badge: 'Pose 2',
-                title: 'Pose 2 · Dynamic Motion',
+                title: 'Dynamic Motion',
                 shot: 'Full body fashion stride dengan motion blur halus, kain bergerak dramatis, ekspresi percaya diri ke samping.',
                 aspectRatio: 'portrait_3_4',
                 description(theme, prompt) {
@@ -253,7 +230,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             {
                 key: 'wideStory',
                 badge: 'Pose 3',
-                title: 'Pose 3 · Wide Storytelling',
+                title: 'Wide Storytelling',
                 shot: 'Wide storytelling frame yang memperlihatkan karakter berinteraksi dengan lingkungan tematik.',
                 aspectRatio: 'landscape_3_2',
                 description(theme, prompt) {
@@ -264,7 +241,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             {
                 key: 'detailCinematic',
                 badge: 'Pose 4',
-                title: 'Pose 4 · Cinematic Detail',
+                title: 'Cinematic Detail',
                 shot: 'Medium close-up fokus pada aksesori dan tekstur bahan dengan pencahayaan dramatis.',
                 aspectRatio: 'square_1_1',
                 description(theme, prompt) {
@@ -273,185 +250,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 }
             }
         ];
-
-        let creditBalance = creditBalanceEl ? Number(creditBalanceEl.dataset.balance || 0) : 0;
-        if (!Number.isFinite(creditBalance)) {
-            creditBalance = 0;
-        }
-
-        const COIN_COST_PER_SUCCESS = 1;
-        const REQUIRED_COINS = Math.max(1, poseVariants.length * COIN_COST_PER_SUCCESS);
-        const chargedVariants = new Set();
-        let coinChargeInFlight = false;
-
-        function createVideoState() {
-            return {
-                taskId: null,
-                status: null,
-                videoUrl: null,
-                error: null,
-                prompt: '',
-                timerId: null
-            };
-        }
-
-        function ensureVideoState(task) {
-            if (!task) return createVideoState();
-            if (!task.videoState) {
-                task.videoState = createVideoState();
-            }
-            return task.videoState;
-        }
-
-        function resolveVideoAspect(task) {
-            if (!task || !task.variant) {
-                return VIDEO_RATIO_DEFAULT;
-            }
-            const key = String(task.variant.aspectRatio || '').toLowerCase();
-            return VIDEO_RATIO_MAP[key] || VIDEO_RATIO_DEFAULT;
-        }
-
-        function updateCreditDisplay() {
-            if (!creditBalanceEl) {
-                return;
-            }
-            const safeValue = Math.max(0, Math.round(Number.isFinite(creditBalance) ? creditBalance : 0));
-            creditBalanceEl.dataset.balance = String(safeValue);
-            creditBalanceEl.textContent = numberFormatter.format(safeValue);
-        }
-
-        async function refreshAccountCoins() {
-            if (!creditBalanceEl) {
-                return;
-            }
-            try {
-                const res = await fetch('index.php?api=account', { credentials: 'same-origin' });
-                if (!res.ok) {
-                    return;
-                }
-                const payload = await res.json();
-                if (!payload || !payload.ok || !payload.data) {
-                    return;
-                }
-                const coins = Number(payload.data.coins);
-                if (Number.isFinite(coins)) {
-                    creditBalance = coins;
-                    updateCreditDisplay();
-                }
-            } catch (error) {
-                console.warn('Tidak bisa memuat saldo koin:', error);
-            }
-        }
-
-        function ensureCoins(amount) {
-            if (!Number.isFinite(amount) || amount <= 0) {
-                return true;
-            }
-            return Number.isFinite(creditBalance) && creditBalance >= amount;
-        }
-
-        async function spendCoins(amount) {
-            if (!amount || amount <= 0) {
-                return;
-            }
-
-            const res = await fetch('index.php?api=account-coins', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ amount })
-            });
-
-            let payload;
-            try {
-                payload = await res.json();
-            } catch (error) {
-                throw new Error('Respons saldo tidak valid.');
-            }
-            return 'status-chip status-chip--pending';
-        }
-
-            if (!res.ok || !payload || !payload.ok) {
-                const message = payload?.error
-                    ? (typeof payload.error === 'string' ? payload.error : JSON.stringify(payload.error))
-                    : `HTTP ${res.status}`;
-                throw new Error(message);
-            }
-
-            if (payload.data && typeof payload.data.coins !== 'undefined') {
-                const next = Number(payload.data.coins);
-                if (Number.isFinite(next)) {
-                    creditBalance = next;
-                } else {
-                    creditBalance = Math.max(0, creditBalance - amount);
-                }
-            } else {
-                creditBalance = Math.max(0, creditBalance - amount);
-            }
-
-            updateCreditDisplay();
-        }
-
-        async function chargeCoinsForCompletedTasks() {
-            if (!tasks.length || coinChargeInFlight) {
-                return;
-            }
-
-            const chargeable = tasks.filter((task) => {
-                if (!task) return false;
-                if (typeof task.index !== 'number') return false;
-                if (chargedVariants.has(task.index)) return false;
-                if (normalizeStatus(task.status) !== 'COMPLETED') return false;
-                return Boolean(task.imageUrl);
-            });
-
-            if (!chargeable.length) {
-                return;
-            }
-
-            const total = chargeable.length * COIN_COST_PER_SUCCESS;
-            coinChargeInFlight = true;
-            try {
-                await spendCoins(total);
-                chargeable.forEach((task) => {
-                    chargedVariants.add(task.index);
-                });
-            } catch (error) {
-                console.error('Gagal mengurangi koin:', error);
-                updateFormStatus(`Saldo tidak dapat dikurangi: ${error.message || error}`, 'error');
-            } finally {
-                coinChargeInFlight = false;
-            }
-        }
-
-        function buildVideoPrompt(task) {
-            const theme = themeOptions[task.themeKey] || themeOptions.romantic;
-            const motion = (task.variant && task.variant.shot) ? task.variant.shot : 'Cinematic portrait motion with expressive movement.';
-            const custom = (task.customPrompt || '').trim();
-            const segments = [
-                motion,
-                `tema ${theme.label}`,
-                theme.description,
-                custom ? `detail tambahan: ${custom}` : '',
-                'smooth cinematic camera move, vivid lighting, 1080p high fidelity, natural motion'
-            ].filter(Boolean);
-            const promptText = segments.join(' | ').trim();
-            return promptText || 'cinematic portrait motion with expressive movement';
-        }
-
-        function triggerDownload(url, filename) {
-            if (!url) return;
-            const link = document.createElement('a');
-            link.href = url;
-            if (filename) {
-                link.download = filename;
-            }
-            link.target = '_blank';
-            link.rel = 'noopener';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
 
         let selectedFiles = [];
         let promptDirty = false;
@@ -501,18 +299,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         function finalStatus(status) {
             const value = normalizeStatus(status);
             return value === 'COMPLETED' || value === 'FAILED' || value === 'ERROR';
-        }
-
-        function stopVideoPollingForTask(task) {
-            if (!task || !task.videoState || !task.videoState.timerId) {
-                return;
-            }
-            clearInterval(task.videoState.timerId);
-            task.videoState.timerId = null;
-        }
-
-        function stopAllVideoPolling() {
-            tasks.forEach((task) => stopVideoPollingForTask(task));
         }
 
         function updateFormStatus(message, type = 'info') {
@@ -760,8 +546,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             const response = data?.data || {};
             return {
                 taskId: response.task_id || null,
-                status: response.status || 'CREATED',
-                generated: Array.isArray(response.generated) ? response.generated : []
+                status: response.status || 'CREATED'
             };
         }
 
@@ -778,112 +563,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             };
         }
 
-        async function pollVideoOnce(task) {
-            const videoState = ensureVideoState(task);
-            if (!videoState.taskId || finalStatus(videoState.status)) {
-                stopVideoPollingForTask(task);
-                return;
-            }
-
-            try {
-                const data = await callFreepik({ path: VIDEO_STATUS_PATH(videoState.taskId), method: 'GET' });
-                const response = data?.data || {};
-                if (response.status) {
-                    videoState.status = response.status;
-                }
-                const generated = Array.isArray(response.generated) ? response.generated : [];
-                if (generated.length) {
-                    videoState.videoUrl = generated[0];
-                }
-            } catch (error) {
-                videoState.status = 'ERROR';
-                videoState.error = error.message || 'Gagal mengambil status video.';
-            }
-
-            renderResults();
-
-            if (finalStatus(videoState.status)) {
-                stopVideoPollingForTask(task);
-                if (normalizeStatus(videoState.status) === 'COMPLETED' && !videoState.videoUrl && !videoState.error) {
-                    videoState.error = 'Video selesai tetapi URL tidak ditemukan.';
-                } else if (normalizeStatus(videoState.status) !== 'COMPLETED' && !videoState.error) {
-                    videoState.error = 'Video gagal diproses. Coba generate ulang.';
-                }
-            }
-        }
-
-        function startVideoPollingForTask(task) {
-            const videoState = ensureVideoState(task);
-            stopVideoPollingForTask(task);
-            pollVideoOnce(task);
-            videoState.timerId = setInterval(() => pollVideoOnce(task), VIDEO_POLL_INTERVAL);
-        }
-
-        async function handleGenerateVideo(task) {
-            if (!task || !task.imageUrl) {
-                updateFormStatus('Gambar pose belum tersedia untuk membuat video.', 'error');
-                return;
-            }
-
-            const videoState = ensureVideoState(task);
-            if (videoState.status && !finalStatus(videoState.status)) {
-                return;
-            }
-
-            stopVideoPollingForTask(task);
-
-            const prompt = buildVideoPrompt(task) || 'cinematic portrait motion';
-            videoState.prompt = prompt;
-            videoState.taskId = null;
-            videoState.videoUrl = null;
-            videoState.error = null;
-            videoState.status = 'PROCESSING';
-            renderResults();
-
-            try {
-                const body = {
-                    prompt,
-                    motion_prompt: prompt,
-                    image: task.imageUrl,
-                    duration: VIDEO_DURATION_SECONDS,
-                    aspect_ratio: resolveVideoAspect(task)
-                };
-                const data = await callFreepik({ path: VIDEO_CREATE_PATH, method: 'POST', body });
-                const response = data?.data || {};
-
-                videoState.taskId = response.task_id || null;
-                videoState.status = response.status || 'CREATED';
-
-                const generated = Array.isArray(response.generated) ? response.generated : [];
-                if (generated.length) {
-                    videoState.videoUrl = generated[0];
-                }
-
-                renderResults();
-
-                if (!videoState.taskId) {
-                    videoState.status = 'ERROR';
-                    videoState.error = 'Server tidak mengembalikan task ID video.';
-                    renderResults();
-                    return;
-                }
-
-                if (finalStatus(videoState.status)) {
-                    if (normalizeStatus(videoState.status) !== 'COMPLETED' && !videoState.error) {
-                        videoState.error = 'Video gagal diproses. Coba lagi.';
-                    }
-                    renderResults();
-                    return;
-                }
-
-                startVideoPollingForTask(task);
-            } catch (error) {
-                videoState.status = 'ERROR';
-                videoState.error = error.message || 'Gagal mengirim permintaan video.';
-                renderResults();
-            }
-        }
-
         function renderResults() {
             resultGrid.innerHTML = '';
             if (!tasks.length) {
@@ -896,114 +575,64 @@ if (!auth_is_admin() && !$isFlashEnabled) {
 
             tasks.forEach((task) => {
                 const card = document.createElement('article');
-                card.className = 'film-scene-card pose-card';
+                card.className = 'film-scene-card';
 
-                const media = document.createElement('div');
-                media.className = 'pose-media';
+                const header = document.createElement('div');
+                header.className = 'pose-header';
 
-                const videoState = ensureVideoState(task);
+                const titleWrap = document.createElement('div');
+                titleWrap.className = 'pose-title';
+
+                const badge = document.createElement('span');
+                badge.className = 'pose-badge-chip';
+                badge.textContent = task.variant.badge;
+
+                const titleText = document.createElement('span');
+                titleText.textContent = task.variant.title;
+
+                titleWrap.appendChild(badge);
+                titleWrap.appendChild(titleText);
+
+                const status = document.createElement('span');
+                status.className = statusClass(task.status);
+                status.textContent = statusLabel(task.status);
+
+                header.appendChild(titleWrap);
+                header.appendChild(status);
+                card.appendChild(header);
 
                 if (task.imageUrl) {
                     const img = document.createElement('img');
-                    img.className = 'pose-image';
+                    img.className = 'result-thumb';
                     img.src = task.imageUrl;
                     img.alt = task.variant.title;
-                    media.appendChild(img);
+                    card.appendChild(img);
                 } else {
                     const placeholder = document.createElement('div');
-                    placeholder.className = 'pose-placeholder';
+                    placeholder.className = 'result-thumb placeholder';
                     const label = document.createElement('span');
                     label.textContent = finalStatus(task.status) ? 'Belum ada gambar' : 'Menunggu hasil…';
                     placeholder.appendChild(label);
                     if (!finalStatus(task.status)) {
                         const spinner = document.createElement('span');
-                        spinner.className = 'pose-spinner';
+                        spinner.className = 'placeholder-spinner';
                         placeholder.appendChild(spinner);
                     }
-                    media.appendChild(placeholder);
+                    card.appendChild(placeholder);
                 }
 
-                const overlay = document.createElement('div');
-                overlay.className = 'pose-overlay';
+                const theme = themeOptions[task.themeKey] || themeOptions.romantic;
+                const description = document.createElement('p');
+                description.className = 'pose-description';
+                description.textContent = task.variant.description(theme, task.customPrompt || '');
+                card.appendChild(description);
 
-                const infoRow = document.createElement('div');
-                infoRow.className = 'pose-overlay-info';
-
-                const titleLabel = document.createElement('span');
-                titleLabel.className = 'pose-overlay-label';
-                titleLabel.textContent = task.variant.title;
-                infoRow.appendChild(titleLabel);
-
-                const statusChipEl = document.createElement('span');
-                statusChipEl.className = statusClass(task.status);
-                statusChipEl.textContent = statusLabel(task.status);
-                infoRow.appendChild(statusChipEl);
-
-                overlay.appendChild(infoRow);
-
-                const actionsRow = document.createElement('div');
-                actionsRow.className = 'pose-overlay-actions';
-
-                if (task.imageUrl) {
-                    const previewLink = document.createElement('a');
-                    previewLink.href = task.imageUrl;
-                    previewLink.target = '_blank';
-                    previewLink.rel = 'noopener';
-                    previewLink.className = 'pose-mini-btn';
-                    previewLink.textContent = 'Preview';
-                    actionsRow.appendChild(previewLink);
-
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = task.imageUrl;
-                    const baseKey = task.variant.key || `pose-${(task.index ?? 0) + 1}`;
-                    const token = task.downloadToken || Date.now();
-                    if (!task.downloadToken) {
-                        task.downloadToken = token;
-                    }
-                    downloadLink.download = `${baseKey}-${token}.png`;
-                    downloadLink.className = 'pose-mini-btn';
-                    downloadLink.textContent = 'Download';
-                    actionsRow.appendChild(downloadLink);
-
-                    const videoButton = document.createElement('button');
-                    videoButton.type = 'button';
-                    videoButton.className = 'pose-mini-btn primary';
-
-                    const videoStatusValue = normalizeStatus(videoState.status);
-                    let videoLabel = 'Video';
-                    let videoDisabled = false;
-                    let videoHandler = () => handleGenerateVideo(task);
-
-                    if (videoState.videoUrl && videoStatusValue === 'COMPLETED') {
-                        videoLabel = 'Unduh Video';
-                        videoHandler = () => triggerDownload(videoState.videoUrl, `${baseKey}-seedance-1080.mp4`);
-                    } else if (videoState.status && !finalStatus(videoState.status)) {
-                        videoLabel = 'Memproses…';
-                        videoDisabled = true;
-                        videoHandler = null;
-                    } else if (videoState.status && finalStatus(videoState.status) && videoStatusValue !== 'COMPLETED') {
-                        videoLabel = 'Ulangi Video';
-                    }
-
-                    videoButton.textContent = videoLabel;
-                    if (videoDisabled) {
-                        videoButton.disabled = true;
-                    }
-                    if (videoHandler) {
-                        videoButton.addEventListener('click', videoHandler);
-                    }
-
-                    actionsRow.appendChild(videoButton);
-                } else {
-                    const hint = document.createElement('span');
-                    hint.className = 'pose-overlay-hint';
-                    hint.textContent = finalStatus(task.status) ? 'Tidak ada gambar' : 'Menunggu hasil…';
-                    actionsRow.appendChild(hint);
+                if (task.prompt) {
+                    const promptBlock = document.createElement('div');
+                    promptBlock.className = 'pose-prompt';
+                    promptBlock.textContent = task.prompt;
+                    card.appendChild(promptBlock);
                 }
-
-                overlay.appendChild(actionsRow);
-                media.appendChild(overlay);
-                card.appendChild(media);
 
                 if (task.error) {
                     const errorBlock = document.createElement('div');
@@ -1012,11 +641,26 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     card.appendChild(errorBlock);
                 }
 
-                if (videoState.error) {
-                    const videoError = document.createElement('div');
-                    videoError.className = 'pose-video-error';
-                    videoError.textContent = videoState.error;
-                    card.appendChild(videoError);
+                if (task.imageUrl) {
+                    const actions = document.createElement('div');
+                    actions.className = 'pose-actions';
+
+                    const openLink = document.createElement('a');
+                    openLink.href = task.imageUrl;
+                    openLink.target = '_blank';
+                    openLink.rel = 'noopener';
+                    openLink.className = 'pose-action-btn secondary';
+                    openLink.textContent = 'Buka di Tab Baru';
+                    actions.appendChild(openLink);
+
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = task.imageUrl;
+                    downloadLink.download = `${task.variant.key || 'pose'}-${Date.now()}.png`;
+                    downloadLink.className = 'pose-action-btn primary';
+                    downloadLink.textContent = 'Download';
+                    actions.appendChild(downloadLink);
+
+                    card.appendChild(actions);
                 }
 
                 fragment.appendChild(card);
@@ -1033,36 +677,33 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         async function pollOnce() {
-            const active = tasks.filter((task) => task.taskId && !finalStatus(task.status));
+            const pending = tasks.filter((task) => task.taskId && !finalStatus(task.status));
+            if (!pending.length) {
+                stopPolling();
+                return;
+            }
 
-            if (active.length) {
-                for (const task of active) {
-                    try {
-                        const { status, generated } = await fetchGeminiStatus(task.taskId);
-                        if (status) {
-                            task.status = status;
-                        }
-                        if (generated && generated.length) {
-                            task.imageUrl = generated[0];
-                            if (!task.downloadToken) {
-                                task.downloadToken = Date.now();
-                            }
-                        }
-                    } catch (error) {
-                        task.status = 'ERROR';
-                        task.error = error.message || 'Gagal mengambil status generasi.';
+            for (const task of pending) {
+                try {
+                    const { status, generated } = await fetchGeminiStatus(task.taskId);
+                    if (status) {
+                        task.status = status;
                     }
+                    if (generated && generated.length) {
+                        task.imageUrl = generated[0];
+                    }
+                } catch (error) {
+                    task.status = 'ERROR';
+                    task.error = error.message || 'Gagal mengambil status generasi.';
                 }
             }
 
-            await chargeCoinsForCompletedTasks();
             renderResults();
 
             const completed = tasks.filter((task) => finalStatus(task.status)).length;
-            const successCount = tasks.filter((task) => normalizeStatus(task.status) === 'COMPLETED' && task.imageUrl).length;
-
             if (completed === tasks.length) {
                 stopPolling();
+                const successCount = tasks.filter((task) => normalizeStatus(task.status) === 'COMPLETED' && task.imageUrl).length;
                 if (successCount === tasks.length) {
                     updateFormStatus('Selesai! Semua pose berhasil dibuat.', 'success');
                 } else if (successCount > 0) {
@@ -1073,7 +714,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 return;
             }
 
-            if (completed > 0 && completed < tasks.length) {
+            if (completed > 0) {
                 updateFormStatus(`Progress: ${completed}/${tasks.length} pose selesai.`, 'info');
             }
         }
@@ -1087,34 +728,14 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         async function submitForm(event) {
             event.preventDefault();
 
-            if (completed === tasks.length) {
-                stopPolling();
-                if (successCount === tasks.length) {
-                    updateFormStatus('Selesai! Semua pose berhasil dibuat.', 'success');
-                } else if (successCount > 0) {
-                    updateFormStatus(`${successCount} pose berhasil. Periksa pose lain yang gagal.`, 'error');
-                } else {
-                    updateFormStatus('Semua pose gagal diproses. Coba lagi.', 'error');
-                }
+            if (!validateFiles(selectedFiles)) {
                 return;
             }
 
             setLoadingState(true);
-            updateFormStatus('Memeriksa saldo koin…', 'info');
-            await refreshAccountCoins();
-            if (!ensureCoins(REQUIRED_COINS)) {
-                setLoadingState(false);
-                updateFormStatus(`Saldo koin tidak cukup. Minimal ${REQUIRED_COINS} koin dibutuhkan.`, 'error');
-                return;
-            }
-        }
-
             updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
             stopPolling();
-            stopAllVideoPolling();
             tasks = [];
-            chargedVariants.clear();
-            coinChargeInFlight = false;
             renderResults();
 
             let base64Images;
@@ -1135,8 +756,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             const themeKey = themeSelect.value || 'romantic';
             const customPrompt = promptStyleInput.value.trim();
 
-            tasks = poseVariants.map((variant, index) => ({
-                index,
+            tasks = poseVariants.map((variant) => ({
                 variant,
                 themeKey,
                 customPrompt,
@@ -1144,9 +764,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 taskId: null,
                 status: 'PENDING',
                 imageUrl: null,
-                error: null,
-                downloadToken: null,
-                videoState: createVideoState()
+                error: null
             }));
             renderResults();
 
@@ -1157,15 +775,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 try {
                     const { prompt, body } = prepareVariantRequest(themeKey, task.variant, customPrompt, base64Images);
                     task.prompt = prompt;
-                    const { taskId, status, generated } = await createGeminiTask(body);
+                    const { taskId, status } = await createGeminiTask(body);
                     task.taskId = taskId;
                     task.status = status || 'CREATED';
-                    if (generated && generated.length) {
-                        task.imageUrl = generated[0];
-                        if (!task.downloadToken) {
-                            task.downloadToken = Date.now();
-                        }
-                    }
                     if (!taskId) {
                         task.error = 'Server tidak mengembalikan task ID.';
                         task.status = 'ERROR';
@@ -1181,7 +793,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 renderResults();
             }
 
-            await chargeCoinsForCompletedTasks();
             setLoadingState(false);
 
             if (successCount > 0) {
@@ -1246,8 +857,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
 
         form.addEventListener('submit', submitForm);
 
-        updateCreditDisplay();
-        refreshAccountCoins();
         renderThemeHint(themeSelect.value);
         ensurePromptTemplate(themeSelect.value, true);
         renderPreview();
