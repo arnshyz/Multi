@@ -279,6 +279,105 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             /* noop */
         });
 
+        let currentAccount = initialAccount;
+        let coinsDebitedForRun = false;
+
+        const creditValueEl = document.getElementById('creditValue');
+        const creditPillEl = document.getElementById('creditPill');
+
+        function formatCoins(value) {
+            const number = Number.isFinite(Number(value)) ? Number(value) : 0;
+            return number.toLocaleString('id-ID');
+        }
+
+        function updateCreditDisplay() {
+            if (!creditValueEl) {
+                return;
+            }
+            const balance = currentAccount && Number.isFinite(Number(currentAccount.coins))
+                ? Number(currentAccount.coins)
+                : 0;
+            creditValueEl.textContent = formatCoins(balance);
+            if (creditPillEl) {
+                creditPillEl.dataset.balance = String(balance);
+            }
+        }
+
+        async function fetchAccountState() {
+            const res = await fetch(ACCOUNT_ENDPOINT, {
+                credentials: 'same-origin',
+            });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) {
+                throw new Error((payload && payload.error) || 'Gagal memuat akun.');
+            }
+            return payload.data || null;
+        }
+
+        async function refreshAccountState() {
+            try {
+                const account = await fetchAccountState();
+                currentAccount = account;
+                updateCreditDisplay();
+                return account;
+            } catch (error) {
+                console.warn('Tidak dapat memperbarui akun:', error);
+                throw error;
+            }
+        }
+
+        function ensureCoins(amount) {
+            if (!currentAccount) {
+                return false;
+            }
+            const balance = Number.isFinite(Number(currentAccount.coins))
+                ? Number(currentAccount.coins)
+                : 0;
+            return balance >= amount;
+        }
+
+        async function spendCoins(amount) {
+            if (!amount || amount <= 0) {
+                return;
+            }
+            const res = await fetch(ACCOUNT_COINS_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ amount }),
+            });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) {
+                const message = (payload && payload.error) || 'Saldo koin gagal diperbarui.';
+                throw new Error(typeof message === 'string' ? message : 'Saldo koin gagal diperbarui.');
+            }
+            const data = payload.data || {};
+            if (!currentAccount) {
+                currentAccount = {};
+            }
+            if (typeof data.coins !== 'undefined') {
+                currentAccount.coins = data.coins;
+            }
+            updateCreditDisplay();
+        }
+
+        async function deductCoinsForSuccess(successCount) {
+            if (coinsDebitedForRun || !successCount) {
+                return;
+            }
+            const totalCost = successCount * COIN_COST_PER_POSE;
+            if (!totalCost) {
+                return;
+            }
+            await spendCoins(totalCost);
+            coinsDebitedForRun = true;
+        }
+
+        updateCreditDisplay();
+        refreshAccountState().catch(() => {
+            /* noop */
+        });
+
         const themeSelect = document.getElementById('themeSelect');
         const themeHint = document.getElementById('themeHint');
         const promptStyleInput = document.getElementById('promptStyle');
