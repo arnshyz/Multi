@@ -9748,19 +9748,53 @@ body[data-theme="light"] .profile-expiry.expired {
     return VIDEO_LAYOUT_TO_RATIO[key] || 'auto';
   }
 
+  function normalizeVideoImageField(target, field) {
+    if (!target || typeof target !== 'object' || !(field in target)) return;
+    const rawValue = target[field];
+    if (typeof rawValue !== 'string') return;
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      delete target[field];
+      return;
+    }
+
+    const dataUrlMatch = trimmed.match(/^data:image\/[a-z0-9.+-]+;base64,(.+)$/i);
+    if (dataUrlMatch && dataUrlMatch[1]) {
+      target[field] = dataUrlMatch[1];
+      return;
+    }
+
+    if (/^https?:\/\//i.test(trimmed)) {
+      target[`${field}_url`] = trimmed;
+      delete target[field];
+      return;
+    }
+
+    target[field] = trimmed;
+  }
+
   function applyVideoExtras(body, formData = {}) {
     if (!body || typeof body !== 'object') return body;
+    const payload = { ...body };
+
+    if (typeof payload.prompt === 'string') {
+      payload.prompt = payload.prompt.trim();
+    }
+
+    normalizeVideoImageField(payload, 'image');
+    normalizeVideoImageField(payload, 'first_frame_image');
+
     const duration = formData.videoDuration;
     if (typeof duration === 'number' && !Number.isNaN(duration) && duration > 0) {
-      body.duration = duration;
+      payload.duration = duration;
     }
     const ratio = mapVideoAspect(formData.videoLayout);
-    if (ratio && (ratio !== 'auto' || !body.aspect_ratio)) {
-      body.aspect_ratio = ratio;
-    } else if (!body.aspect_ratio) {
-      body.aspect_ratio = 'auto';
+    if (ratio && (ratio !== 'auto' || !payload.aspect_ratio)) {
+      payload.aspect_ratio = ratio;
+    } else if (!payload.aspect_ratio) {
+      payload.aspect_ratio = 'auto';
     }
-    return body;
+    return payload;
   }
 
   // ===== MODEL CONFIG =====
