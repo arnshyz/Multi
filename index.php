@@ -7863,12 +7863,6 @@ body[data-theme="light"] .profile-expiry.expired {
           Sistem akan membuat 5 ide UGC beserta gambar dari Gemini Flash 2.5.
           Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
         </div>
-        <div class="progress-inline" id="ugcProgress">
-          <div class="progress-label"><span>Progress</span><span id="ugcProgressValue">0%</span></div>
-          <div class="progress-bar">
-            <div class="progress-fill" id="ugcProgressFill"></div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
