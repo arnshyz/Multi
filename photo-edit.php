@@ -103,7 +103,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                         <div class="title" id="formTitle" style="font-size:16px">Setelan Photo Edit</div>
                         <div class="subtitle">Sama seperti Filmmaker, pilih tema dan atur prompt sebelum generate.</div>
                     </div>
+                    <div id="resultGrid" class="film-scenes-container"></div>
                 </div>
+            </section>
 
                 <form id="editForm" class="film-settings-section" novalidate>
                     <div>
@@ -413,6 +415,212 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
         ];
 
+        function isImageFile(file) {
+            if (!file) return false;
+            if (file.type && file.type.startsWith('image/')) {
+                return true;
+            }
+            const name = (file.name || '').toLowerCase();
+            return /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(name);
+        }
+
+        function fileToDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = typeof reader.result === 'string' ? reader.result : '';
+                    resolve({
+                        name: file?.name || 'reference',
+                        dataUrl: result
+                    });
+                };
+                reader.onerror = () => reject(new Error('Gagal membaca file referensi.'));
+                try {
+                    reader.readAsDataURL(file);
+                } catch (error) {
+                    reject(new Error('Gagal memproses file referensi.'));
+                }
+            });
+        }
+
+        function resolvePlacement(variant, total, index) {
+            const placements = variant?.placements || {};
+            const specific = placements[total];
+            if (Array.isArray(specific) && specific.length) {
+                return specific[Math.min(index, specific.length - 1)] || specific[0];
+            }
+            const fallback = placements.default;
+            if (Array.isArray(fallback) && fallback.length) {
+                return fallback[Math.min(index, fallback.length - 1)] || fallback[0];
+            }
+            resultGrid.appendChild(fragment);
+        }
+
+        function loadImageSource(source) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.decoding = 'async';
+                image.onload = () => resolve(image);
+                image.onerror = () => reject(new Error('Gagal memuat gambar referensi.'));
+                image.src = source;
+            });
+        }
+
+        function resolveOverlayColor(token, palette, promptColor) {
+            if (!token) return promptColor;
+            if (token === 'prompt') return promptColor;
+            if (palette && palette[token]) {
+                return palette[token];
+            }
+            return token;
+        }
+
+        async function composeVariantImage(themeKey, theme, variant, sources, promptText) {
+            if (!variant) {
+                return '';
+            }
+
+            const promptColor = extractPromptAccent(promptText || theme?.label || themeKey);
+            const images = await Promise.all(sources.map((source) => loadImageSource(source.dataUrl)));
+            if (!images.length) {
+                return '';
+            }
+
+            const width = variant.width || 720;
+            const height = variant.height || 960;
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                throw new Error('Browser tidak mendukung kanvas untuk pemrosesan gambar.');
+            }
+
+            ctx.fillStyle = theme?.palette?.background || '#0f172a';
+            ctx.fillRect(0, 0, width, height);
+
+            const total = images.length;
+            const baseFit = typeof variant.fit === 'number' ? variant.fit : 0.92;
+
+            images.forEach((image, index) => {
+                const placement = resolvePlacement(variant, total, index) || {};
+                const scaleModifier = placement.scale != null ? placement.scale : 1;
+                const rotation = placement.rotate || 0;
+                const translateX = placement.x || 0;
+                const translateY = placement.y || 0;
+                const blend = placement.blend || variant.blend || 'source-over';
+                const filter = placement.filter || variant.filter || theme?.palette?.filter || 'none';
+                const alpha = placement.alpha != null
+                    ? placement.alpha
+                    : (variant.alpha != null ? variant.alpha : (theme?.baseAlpha != null ? theme.baseAlpha : 0.9));
+
+                const fitScale = Math.min(
+                    (width * baseFit) / Math.max(image.naturalWidth, 1),
+                    (height * baseFit) / Math.max(image.naturalHeight, 1)
+                ) * scaleModifier;
+
+                const drawWidth = Math.max(image.naturalWidth * fitScale, 1);
+                const drawHeight = Math.max(image.naturalHeight * fitScale, 1);
+
+                ctx.save();
+                ctx.translate(width / 2 + translateX, height / 2 + translateY);
+                if (rotation) {
+                    ctx.rotate((rotation * Math.PI) / 180);
+                }
+                ctx.filter = filter;
+                ctx.globalAlpha = alpha;
+                ctx.globalCompositeOperation = blend;
+                ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                ctx.restore();
+            });
+
+            previewGrid.appendChild(fragment);
+            previewGrid.style.display = 'grid';
+            dropzone.classList.add('has-files');
+        }
+
+            if (theme?.palette?.overlayColor && theme.palette.overlayOpacity) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'soft-light';
+                ctx.fillStyle = convertHexToRgba(theme.palette.overlayColor, theme.palette.overlayOpacity);
+                ctx.fillRect(0, 0, width, height);
+                ctx.restore();
+            }
+
+            if (variant.overlay) {
+                const overlayColor = resolveOverlayColor(variant.overlay.color, theme?.palette, promptColor);
+                ctx.save();
+                ctx.globalCompositeOperation = variant.overlay.blend || 'soft-light';
+                ctx.fillStyle = convertHexToRgba(overlayColor, variant.overlay.opacity ?? 0.14);
+                ctx.fillRect(0, 0, width, height);
+                ctx.restore();
+            }
+
+            if (variant.gradient) {
+                drawGradientOverlay(ctx, variant.gradient, theme?.palette || {}, promptColor);
+            }
+
+            if (variant.accent) {
+                drawAccent(ctx, variant.accent, theme?.palette || {}, promptColor);
+            }
+
+            if (variant.noise) {
+                drawNoise(ctx, variant.noise);
+            }
+        }
+
+        function createOverlayCanvas(width, height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            return canvas;
+        }
+
+        function drawGradientOverlay(ctx, config, palette, promptColor) {
+            if (!config) return;
+            const angle = (config.angle || 0) * (Math.PI / 180);
+            const radius = Math.sqrt(ctx.canvas.width ** 2 + ctx.canvas.height ** 2) / 2;
+            const centerX = ctx.canvas.width / 2;
+            const centerY = ctx.canvas.height / 2;
+            const startX = centerX + Math.cos(angle) * radius;
+            const startY = centerY + Math.sin(angle) * radius;
+            const endX = centerX - Math.cos(angle) * radius;
+            const endY = centerY - Math.sin(angle) * radius;
+            const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+
+            config.stops.forEach((stop) => {
+                const colorKey = stop.color === 'prompt' ? promptColor : palette[stop.color] || palette.accent;
+                gradient.addColorStop(stop.offset, convertHexToRgba(colorKey, stop.opacity));
+            });
+
+            return canvas.toDataURL('image/png');
+        }
+
+        async function generateStyledImages(themeKey, promptText, files) {
+            if (!files.length) {
+                return [];
+            }
+
+            const theme = themeOptions[themeKey] || themeOptions.romantic;
+            const sources = await Promise.all(files.map((file) => fileToDataUrl(file)));
+            const promptLabel = (promptText || '').trim();
+
+            const results = [];
+            for (let index = 0; index < poseVariants.length; index += 1) {
+                const variant = poseVariants[index];
+                const imageUrl = await composeVariantImage(themeKey, theme, variant, sources, promptLabel);
+                if (!imageUrl) {
+                    throw new Error('Gagal membuat komposisi gambar dari referensi yang dipilih.');
+                }
+                results.push({
+                    imageUrl,
+                    downloadName: `${variant.key || 'result'}-${Date.now()}-${index + 1}.png`
+                });
+            }
+
+            return results;
+        }
+
         const gradientCache = new Map();
 
         function createSvgElement(tag, attrs = {}) {
@@ -522,6 +730,13 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 removeButton.addEventListener('click', () => {
                     selectedFiles.splice(index, 1);
                     renderPreview();
+                    if (!selectedFiles.length) {
+                        updateFormStatus('Unggah minimal dua foto referensi terlebih dahulu.', 'info');
+                    } else if (selectedFiles.length < MIN_FILES) {
+                        updateFormStatus(`Tambahkan minimal ${MIN_FILES} foto referensi.`, 'info');
+                    } else {
+                        updateFormStatus('');
+                    }
                 });
                 item.appendChild(img);
                 item.appendChild(removeButton);
@@ -686,17 +901,45 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             ctx.restore();
         }
 
-        function convertHexToRgba(hex, alpha = 1) {
-            if (!hex) return `rgba(255, 255, 255, ${alpha})`;
-            let normalized = hex.replace('#', '');
-            if (normalized.length === 3) {
-                normalized = normalized.split('').map((c) => c + c).join('');
+        function convertHexToRgba(input, alpha = 1) {
+            if (!input) {
+                return `rgba(255, 255, 255, ${alpha})`;
             }
-            const bigint = parseInt(normalized, 16);
-            const r = (bigint >> 16) & 255;
-            const g = (bigint >> 8) & 255;
-            const b = bigint & 255;
-            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+
+            const value = String(input).trim();
+
+            if (value.startsWith('#')) {
+                let normalized = value.slice(1);
+                if (normalized.length === 3) {
+                    normalized = normalized.split('').map((c) => c + c).join('');
+                }
+                if (normalized.length !== 6) {
+                    return `rgba(255, 255, 255, ${alpha})`;
+                }
+                const bigint = parseInt(normalized, 16);
+                const r = (bigint >> 16) & 255;
+                const g = (bigint >> 8) & 255;
+                const b = bigint & 255;
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+
+            if (value.startsWith('rgba')) {
+                return value;
+            }
+
+            if (value.startsWith('rgb')) {
+                return value.replace('rgb', 'rgba').replace(')', `, ${alpha})`);
+            }
+
+            if (value.startsWith('hsla')) {
+                return value;
+            }
+
+            if (value.startsWith('hsl')) {
+                return value.replace('hsl', 'hsla').replace(')', `, ${alpha})`);
+            }
+
+            return `rgba(255, 255, 255, ${alpha})`;
         }
 
         function extractPromptAccent(prompt) {
@@ -798,16 +1041,17 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 const variant = poseVariants[index] || poseVariants[index % poseVariants.length];
                 const card = createResultCard(themeKey, variant, promptText, index);
                 const image = card.querySelector('.result-thumb');
-                if (image && item.imageUrl) {
-                    image.src = item.imageUrl;
+                const imageUrl = item?.imageUrl || item?.url || '';
+                if (image && imageUrl) {
+                    image.src = imageUrl;
                 }
                 const downloadButton = card.querySelector('.result-download');
                 if (downloadButton) {
                     downloadButton.addEventListener('click', () => {
-                        if (!item.imageUrl) return;
+                        if (!imageUrl) return;
                         const link = document.createElement('a');
-                        link.href = item.imageUrl;
-                        link.download = `${variant.key || 'result'}-${Date.now()}.png`;
+                        link.href = imageUrl;
+                        link.download = item?.downloadName || `${variant.key || 'result'}-${Date.now()}.png`;
                         link.click();
                     });
                 }
@@ -829,16 +1073,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             return true;
         }
 
-        function collectPayload(themeKey, promptText, files) {
-            const formData = new FormData();
-            formData.append('theme', themeKey);
-            formData.append('prompt', promptText);
-            files.forEach((file, index) => {
-                formData.append(`reference_${index}`, file);
-            });
-            return formData;
-        }
-
         async function submitForm(event) {
             event.preventDefault();
             updateFormStatus('Menyiapkan sesi...', 'info');
@@ -850,29 +1084,29 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 return;
             }
 
+            const imageFiles = selectedFiles.filter((file) => isImageFile(file));
+            if (imageFiles.length < MIN_FILES) {
+                updateFormStatus(`Tambahkan minimal ${MIN_FILES} foto referensi.`, 'error');
+                return;
+            }
+
+            const usableFiles = imageFiles.slice(0, MAX_FILES);
+
             setLoadingState(true);
             showEmptyState(false);
             clearResults();
             showSkeletons(4);
 
             try {
-                const payload = collectPayload(themeKey, promptText, selectedFiles);
-                const response = await fetch('api/flash-photo-edit.php', {
-                    method: 'POST',
-                    body: payload
-                });
-
-                if (!response.ok) {
-                    throw new Error('Gagal menghubungi server.');
+                const results = await generateStyledImages(themeKey, promptText, usableFiles);
+                if (!results.length) {
+                    throw new Error('Tidak dapat membuat komposisi dari foto yang dipilih.');
                 }
 
-                const result = await response.json();
-                if (result.error) {
-                    throw new Error(result.error);
-                }
-
-                updateFormStatus('Berhasil generate pose multi-reference.', 'success');
-                updateResults(result.data || [], themeKey, promptText);
+                updateResults(results, themeKey, promptText);
+                const themeName = themeOptions[themeKey]?.label || themeKey;
+                const promptLabel = promptText ? `bertema "${promptText}"` : `dengan tema ${themeName}`;
+                updateFormStatus(`Selesai! 4 pose multi-reference ${promptLabel} siap diunduh.`, 'success');
             } catch (error) {
                 console.error(error);
                 updateFormStatus(error.message || 'Terjadi kesalahan saat generate.', 'error');
@@ -886,9 +1120,37 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         function handleFiles(files) {
             const normalized = normalizeFileList(files);
             if (!normalized.length) return;
-            selectedFiles = normalized.slice(0, MAX_FILES);
+
+            const imageFiles = normalized.filter((file) => isImageFile(file));
+            if (!imageFiles.length) {
+                updateFormStatus('Hanya file gambar (JPG, PNG, WEBP, GIF, BMP, HEIC, HEIF) yang dapat digunakan.', 'error');
+                return;
+            }
+
+            const messages = [];
+            if (imageFiles.length < normalized.length) {
+                messages.push('File non-gambar diabaikan.');
+            }
+            if (imageFiles.length > MAX_FILES) {
+                messages.push(`Hanya ${MAX_FILES} foto pertama yang digunakan untuk blending.`);
+            }
+
+            selectedFiles = imageFiles.slice(0, MAX_FILES);
             renderPreview();
-            updateFormStatus('');
+
+            if (selectedFiles.length && selectedFiles.length < MIN_FILES) {
+                messages.push(`Tambahkan minimal ${MIN_FILES} foto referensi.`);
+            }
+
+            if (!selectedFiles.length) {
+                messages.push('Unggah minimal dua foto referensi terlebih dahulu.');
+            }
+
+            if (messages.length) {
+                updateFormStatus(messages.join(' '), 'info');
+            } else {
+                updateFormStatus('');
+            }
         }
 
         dropzone.addEventListener('click', () => {
