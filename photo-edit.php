@@ -175,6 +175,109 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         const POLL_INTERVAL = 8000;
         const MIN_FILES = 2;
         const MAX_FILES = 3;
+        const UPLOAD_ENDPOINT = 'index.php?api=upload';
+        const CACHE_ENDPOINT = 'index.php?api=cache';
+
+        let currentAccount = initialAccount;
+        let coinsDebitedForRun = false;
+        const referenceUploadMap = new Map();
+        const cachedImageMap = new Map();
+
+        const creditValueEl = document.getElementById('creditValue');
+        const creditPillEl = document.getElementById('creditPill');
+
+        function formatCoins(value) {
+            const number = Number.isFinite(Number(value)) ? Number(value) : 0;
+            return number.toLocaleString('id-ID');
+        }
+
+        function updateCreditDisplay() {
+            if (!creditValueEl) {
+                return;
+            }
+            const balance = currentAccount && Number.isFinite(Number(currentAccount.coins))
+                ? Number(currentAccount.coins)
+                : 0;
+            creditValueEl.textContent = formatCoins(balance);
+            if (creditPillEl) {
+                creditPillEl.dataset.balance = String(balance);
+            }
+        }
+
+        async function fetchAccountState() {
+            const res = await fetch(ACCOUNT_ENDPOINT, {
+                credentials: 'same-origin',
+            });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) {
+                throw new Error((payload && payload.error) || 'Gagal memuat akun.');
+            }
+            return payload.data || null;
+        }
+
+        async function refreshAccountState() {
+            try {
+                const account = await fetchAccountState();
+                currentAccount = account;
+                updateCreditDisplay();
+                return account;
+            } catch (error) {
+                console.warn('Tidak dapat memperbarui akun:', error);
+                throw error;
+            }
+        }
+
+        function ensureCoins(amount) {
+            if (!currentAccount) {
+                return false;
+            }
+            const balance = Number.isFinite(Number(currentAccount.coins))
+                ? Number(currentAccount.coins)
+                : 0;
+            return balance >= amount;
+        }
+
+        async function spendCoins(amount) {
+            if (!amount || amount <= 0) {
+                return;
+            }
+            const res = await fetch(ACCOUNT_COINS_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ amount }),
+            });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) {
+                const message = (payload && payload.error) || 'Saldo koin gagal diperbarui.';
+                throw new Error(typeof message === 'string' ? message : 'Saldo koin gagal diperbarui.');
+            }
+            const data = payload.data || {};
+            if (!currentAccount) {
+                currentAccount = {};
+            }
+            if (typeof data.coins !== 'undefined') {
+                currentAccount.coins = data.coins;
+            }
+            updateCreditDisplay();
+        }
+
+        async function deductCoinsForSuccess(successCount) {
+            if (coinsDebitedForRun || !successCount) {
+                return;
+            }
+            const totalCost = successCount * COIN_COST_PER_POSE;
+            if (!totalCost) {
+                return;
+            }
+            await spendCoins(totalCost);
+            coinsDebitedForRun = true;
+        }
+
+        updateCreditDisplay();
+        refreshAccountState().catch(() => {
+            /* noop */
+        });
 
         let currentAccount = initialAccount;
         let coinsDebitedForRun = false;
@@ -395,18 +498,18 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
         }
 
-        function statusClass(status) {
+        function statusIndicatorKey(status) {
             const value = normalizeStatus(status);
             if (value === 'COMPLETED') {
-                return 'status-chip status-chip--success';
+                return 'completed';
             }
             if (value === 'FAILED' || value === 'ERROR') {
-                return 'status-chip status-chip--error';
+                return 'error';
             }
             if (value === 'PROCESSING' || value === 'RUNNING' || value === 'IN_PROGRESS') {
-                return 'status-chip status-chip--progress';
+                return 'processing';
             }
-            return 'status-chip status-chip--pending';
+            return 'pending';
         }
 
         function finalStatus(status) {
@@ -483,6 +586,100 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             return files;
         }
 
+        function fileCacheKey(file) {
+            if (!file) {
+                return 'unknown-0-0';
+            }
+            const name = file.name ? String(file.name) : 'unknown';
+            const size = Number.isFinite(Number(file.size)) ? Number(file.size) : 0;
+            const modified = Number.isFinite(Number(file.lastModified)) ? Number(file.lastModified) : 0;
+            return `${name}-${size}-${modified}`;
+        }
+
+        async function uploadReferenceFile(file) {
+            const formData = new FormData();
+            formData.append('file', file, file?.name || 'reference.jpg');
+
+            const res = await fetch(UPLOAD_ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+            });
+
+            const text = await res.text();
+            let payload;
+            try {
+                payload = JSON.parse(text);
+            } catch (error) {
+                throw new Error('Respon upload tidak valid.');
+            }
+
+            if (!res.ok || !payload.ok) {
+                const message = (payload && payload.error) || 'Gagal mengunggah foto referensi ke server.';
+                throw new Error(typeof message === 'string' ? message : 'Gagal mengunggah foto referensi ke server.');
+            }
+
+            return payload;
+        }
+
+        function ensureReferenceUpload(file) {
+            const key = fileCacheKey(file);
+            if (!referenceUploadMap.has(key)) {
+                const pending = uploadReferenceFile(file).catch((error) => {
+                    referenceUploadMap.delete(key);
+                    throw error;
+                });
+                referenceUploadMap.set(key, pending);
+            }
+            return referenceUploadMap.get(key);
+        }
+
+        async function ensureAllReferenceUploads(files) {
+            if (!files || !files.length) {
+                return [];
+            }
+            return Promise.all(files.map((file) => ensureReferenceUpload(file)));
+        }
+
+        async function cacheGeneratedAsset(url) {
+            if (!url) {
+                return null;
+            }
+            if (cachedImageMap.has(url)) {
+                return cachedImageMap.get(url);
+            }
+
+            const pending = (async () => {
+                const res = await fetch(CACHE_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ url }),
+                });
+
+                const text = await res.text();
+                let payload;
+                try {
+                    payload = JSON.parse(text);
+                } catch (error) {
+                    throw new Error('Respon cache tidak valid.');
+                }
+
+                if (!res.ok || !payload.ok) {
+                    const message = (payload && payload.error) || 'Gagal menyimpan hasil ke server.';
+                    throw new Error(typeof message === 'string' ? message : 'Gagal menyimpan hasil ke server.');
+                }
+
+                return payload.url || null;
+            })().catch((error) => {
+                cachedImageMap.delete(url);
+                throw error;
+            });
+
+            cachedImageMap.set(url, pending);
+            return pending;
+        }
+
         function renderPreview() {
             previewGrid.innerHTML = '';
             if (!selectedFiles.length) {
@@ -546,6 +743,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
 
             selectedFiles = imageFiles.slice(0, MAX_FILES);
             renderPreview();
+
+            ensureAllReferenceUploads(selectedFiles).catch((error) => {
+                console.error('Upload referensi gagal:', error);
+                updateFormStatus(error.message || 'Gagal mengunggah foto referensi ke server.', 'error');
+            });
 
             if (!selectedFiles.length) {
                 messages.push('Unggah minimal dua foto referensi terlebih dahulu.');
@@ -686,123 +888,71 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             showEmptyState(false);
             const fragment = document.createDocumentFragment();
 
-            tasks.forEach((task, index) => {
-                const card = document.createElement('article');
-                card.className = 'film-scene-card pose-card';
+            tasks.forEach((task) => {
+                const statusKey = statusIndicatorKey(task.status);
+                const tile = document.createElement('article');
+                tile.className = 'pose-tile';
+                tile.dataset.status = statusKey;
+                tile.setAttribute('aria-label', `${task.variant.badge} - ${statusLabel(task.status)}`);
+                tile.tabIndex = 0;
 
-                const media = document.createElement('div');
-                media.className = 'pose-media';
+                const frame = document.createElement('div');
+                frame.className = 'pose-frame';
 
                 if (task.imageUrl) {
                     const img = document.createElement('img');
                     img.className = 'pose-image';
                     img.src = task.imageUrl;
                     img.alt = task.variant.title;
-                    media.appendChild(img);
+                    frame.appendChild(img);
                 } else {
                     const placeholder = document.createElement('div');
                     placeholder.className = 'pose-placeholder';
-                    const label = document.createElement('span');
-                    label.textContent = finalStatus(task.status) ? 'Belum ada gambar' : 'Menunggu hasil…';
-                    placeholder.appendChild(label);
-                    if (!finalStatus(task.status)) {
-                        const spinner = document.createElement('span');
-                        spinner.className = 'pose-spinner';
-                        placeholder.appendChild(spinner);
-                    }
-                    media.appendChild(placeholder);
+                    const spinner = document.createElement('span');
+                    spinner.className = 'pose-spinner';
+                    spinner.setAttribute('aria-hidden', 'true');
+                    placeholder.appendChild(spinner);
+                    frame.appendChild(placeholder);
                 }
 
-                const overlay = document.createElement('div');
-                overlay.className = 'pose-overlay';
+                const statusDot = document.createElement('span');
+                statusDot.className = `pose-status-dot pose-status-dot--${statusKey}`;
+                statusDot.setAttribute('aria-hidden', 'true');
+                statusDot.title = statusLabel(task.status);
+                frame.appendChild(statusDot);
 
-                const header = document.createElement('div');
-                header.className = 'pose-overlay-info';
-
-                const titleWrap = document.createElement('div');
-                titleWrap.className = 'pose-overlay-label';
-
-                const badge = document.createElement('span');
-                badge.className = 'pose-badge-chip';
-                badge.textContent = task.variant.badge;
-                titleWrap.appendChild(badge);
-
-                const titleText = document.createElement('span');
-                titleText.textContent = task.variant.title;
-                titleWrap.appendChild(titleText);
-
-                const status = document.createElement('span');
-                status.className = statusClass(task.status);
-                status.textContent = statusLabel(task.status);
-
-                header.appendChild(titleWrap);
-                header.appendChild(status);
-                overlay.appendChild(header);
-
-                const theme = themeOptions[task.themeKey] || themeOptions.romantic;
-                const hint = document.createElement('div');
-                hint.className = 'pose-overlay-hint';
-                hint.textContent = task.variant.description(theme, task.customPrompt || '');
-                overlay.appendChild(hint);
-
-                const actions = document.createElement('div');
-                actions.className = 'pose-overlay-actions';
-
-                let promptBlock = null;
-                if (task.prompt) {
-                    promptBlock = document.createElement('div');
-                    promptBlock.className = 'pose-prompt';
-                    promptBlock.textContent = task.prompt;
-                    const promptId = `posePrompt-${task.variant.key || 'pose'}-${index}`;
-                    promptBlock.id = promptId;
-
-                    const promptButton = document.createElement('button');
-                    promptButton.type = 'button';
-                    promptButton.className = 'pose-mini-btn';
-                    promptButton.textContent = 'Prompt';
-                    promptButton.setAttribute('aria-expanded', 'false');
-                    promptButton.setAttribute('aria-controls', promptId);
-                    promptButton.addEventListener('click', () => {
-                        const isVisible = promptBlock.classList.toggle('is-visible');
-                        promptButton.setAttribute('aria-expanded', isVisible ? 'true' : 'false');
-                        promptButton.textContent = isVisible ? 'Tutup' : 'Prompt';
-                    });
-                    actions.appendChild(promptButton);
-                    card.appendChild(promptBlock);
-                }
+                tile.appendChild(frame);
 
                 if (task.imageUrl) {
+                    const toolbar = document.createElement('div');
+                    toolbar.className = 'pose-toolbar';
+
+                    if (!task.downloadName) {
+                        const timestamp = Date.now();
+                        task.downloadName = `${task.variant.key || 'pose'}-${timestamp}.png`;
+                    }
+
                     const openLink = document.createElement('a');
                     openLink.href = task.imageUrl;
                     openLink.target = '_blank';
                     openLink.rel = 'noopener';
-                    openLink.className = 'pose-mini-btn';
-                    openLink.textContent = 'Buka';
-                    actions.appendChild(openLink);
+                    openLink.className = 'pose-icon-btn';
+                    openLink.textContent = '↗';
+                    openLink.setAttribute('aria-label', 'Buka pose di tab baru');
+                    toolbar.appendChild(openLink);
 
                     const downloadLink = document.createElement('a');
                     downloadLink.href = task.imageUrl;
-                    downloadLink.download = `${task.variant.key || 'pose'}-${Date.now()}.png`;
-                    downloadLink.className = 'pose-mini-btn primary';
-                    downloadLink.textContent = 'Unduh';
-                    actions.appendChild(downloadLink);
+                    downloadLink.download = task.downloadName;
+                    downloadLink.className = 'pose-icon-btn';
+                    downloadLink.textContent = '⬇';
+                    downloadLink.setAttribute('aria-label', 'Unduh pose');
+                    toolbar.appendChild(downloadLink);
+
+                    tile.appendChild(toolbar);
                 }
 
-                if (actions.children.length) {
-                    overlay.appendChild(actions);
-                }
-
-                card.appendChild(media);
-                card.appendChild(overlay);
-
-                if (task.error) {
-                    const errorBlock = document.createElement('div');
-                    errorBlock.className = 'pose-error';
-                    errorBlock.textContent = task.error;
-                    card.appendChild(errorBlock);
-                }
-
-                fragment.appendChild(card);
+                fragment.appendChild(tile);
             });
 
             resultGrid.appendChild(fragment);
@@ -829,7 +979,30 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                         task.status = status;
                     }
                     if (generated && generated.length) {
-                        task.imageUrl = generated[0];
+                        const remoteUrl = generated[0];
+                        if (remoteUrl) {
+                            const previousRemote = task.remoteUrl;
+                            const remoteChanged = remoteUrl !== previousRemote;
+                            const attempts = remoteChanged ? 0 : (typeof task.cacheAttempts === 'number' ? task.cacheAttempts : 0);
+                            const shouldRetryCache = !!task.cacheError && attempts < 3;
+
+                            if (remoteChanged || shouldRetryCache || !task.imageUrl) {
+                                try {
+                                    const cachedUrl = await cacheGeneratedAsset(remoteUrl);
+                                    task.imageUrl = cachedUrl || remoteUrl;
+                                    task.cachedUrl = cachedUrl || null;
+                                    task.cacheError = null;
+                                } catch (error) {
+                                    task.imageUrl = remoteUrl;
+                                    task.cachedUrl = null;
+                                    task.cacheError = error.message || 'Gagal menyimpan hasil ke server.';
+                                    console.warn('Gagal menyimpan hasil ke server:', error);
+                                }
+
+                                task.remoteUrl = remoteUrl;
+                                task.cacheAttempts = attempts + 1;
+                            }
+                        }
                     }
                 } catch (error) {
                     task.status = 'ERROR';
@@ -843,6 +1016,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             if (completed === tasks.length) {
                 stopPolling();
                 const successCount = tasks.filter((task) => normalizeStatus(task.status) === 'COMPLETED' && task.imageUrl).length;
+                const hasCacheError = tasks.some((task) => task.cacheError);
                 let statusMessage = 'Semua pose gagal diproses. Coba lagi.';
                 let statusType = 'error';
                 if (successCount === tasks.length && successCount > 0) {
@@ -861,6 +1035,15 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                         updateFormStatus('Hasil berhasil dibuat, tetapi saldo kredit tidak dapat diperbarui. Hubungi admin.', 'error');
                         return;
                     }
+                }
+
+                if (successCount > 0 && hasCacheError) {
+                    if (statusType === 'success') {
+                        statusMessage = 'Hasil berhasil dibuat, tetapi tidak semua file dapat disalin ke server. Gunakan tombol unduh bila diperlukan.';
+                    } else {
+                        statusMessage = `${statusMessage} Namun, tidak semua file dapat disalin ke server. Gunakan tombol unduh bila diperlukan.`;
+                    }
+                    statusType = 'error';
                 }
 
                 updateFormStatus(statusMessage, statusType);
@@ -894,11 +1077,21 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
 
             setLoadingState(true);
-            updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
+            updateFormStatus('Mengunggah referensi ke server…', 'info');
             stopPolling();
             tasks = [];
             coinsDebitedForRun = false;
             renderResults();
+
+            try {
+                await ensureAllReferenceUploads(selectedFiles);
+            } catch (error) {
+                setLoadingState(false);
+                updateFormStatus(error.message || 'Gagal mengunggah foto referensi ke server.', 'error');
+                return;
+            }
+
+            updateFormStatus('Mengonversi referensi dan menyiapkan permintaan…', 'info');
 
             let base64Images;
             try {
@@ -926,6 +1119,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 taskId: null,
                 status: 'PENDING',
                 imageUrl: null,
+                remoteUrl: null,
+                cachedUrl: null,
+                cacheError: null,
+                cacheAttempts: 0,
+                downloadName: null,
                 error: null
             }));
             renderResults();
