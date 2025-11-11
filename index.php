@@ -4898,8 +4898,7 @@ body[data-theme="light"] .profile-expiry.expired {
     gap: 16px;
     min-height: 0;
   }
-  .film-scenes-board,
-  .ugc-list-card {
+  .film-scenes-board {
     padding: 16px;
   }
   .film-scenes-container {
@@ -4947,13 +4946,19 @@ body[data-theme="light"] .profile-expiry.expired {
     width: 100%;
     text-align: center;
   }
-  .preview-btn-group,
-  .ugc-video-actions {
+  .preview-btn-group {
     flex-direction: column;
     align-items: stretch;
   }
-  .preview-btn-group > *,
-  .ugc-video-actions > * {
+  .preview-btn-group > * {
+    width: 100%;
+  }
+  .ugc-video-actions {
+    justify-content: flex-start;
+    gap: 10px;
+  }
+  .ugc-download-btn,
+  .ugc-generate-btn {
     width: 100%;
   }
   .film-slider-row {
@@ -6131,13 +6136,12 @@ body[data-theme="light"] .profile-expiry.expired {
       .ugc-app { grid-template-columns: 1fr; }
     }
     .ugc-list-card {
-      background: linear-gradient(135deg, rgba(37,99,235,0.14), rgba(14,165,233,0.1));
-      border-radius: 12px;
-      border: 1px dashed rgba(75,85,99,0.8);
-      padding: 12px 14px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 18px;
+      padding: 0;
+      background: transparent;
+      border: none;
     }
     .ugc-empty {
       flex: 1;
@@ -6145,91 +6149,250 @@ body[data-theme="light"] .profile-expiry.expired {
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 32px 10px;
+      padding: 36px 12px;
       font-size: 12px;
       color: var(--muted);
+      border-radius: 16px;
+      border: 1px dashed rgba(148,163,184,0.3);
+      background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(14,165,233,0.06));
     }
     .ugc-row {
       background: var(--card);
-      border-radius: 12px;
-      border: 1px solid var(--border);
+      border-radius: 18px;
+      border: 1px solid rgba(148,163,184,0.22);
+      box-shadow: 0 24px 44px rgba(15,23,42,0.22);
       display: grid;
-      grid-template-columns: 210px 1fr;
-      gap: 12px;
-      padding: 10px;
+      grid-template-columns: minmax(0, 240px) minmax(0, 220px) minmax(0, 1fr);
+      gap: 20px;
+      padding: 22px;
+      align-items: stretch;
     }
     @media (max-width: 900px) {
-      .ugc-row { grid-template-columns: 1fr; }
+      .ugc-row {
+        grid-template-columns: 1fr;
+        padding: 18px;
+      }
     }
-    .ugc-media-block {
+    .ugc-column {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 12px;
     }
-    .ugc-media-card {
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: linear-gradient(180deg,#7c3aed,#0f172a);
-      padding: 10px 8px;
-      color: #e5e7eb;
-      font-size: 11px;
-      text-align: center;
-      min-height: 160px;
+    .ugc-column-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.95);
+    }
+    .ugc-image-card {
+      position: relative;
+      border-radius: 16px;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: linear-gradient(145deg, rgba(37,99,235,0.18), rgba(14,165,233,0.12));
+      min-height: 240px;
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
     }
-    .ugc-media-card img {
+    .ugc-image-card img {
       width: 100%;
-      aspect-ratio: 9 / 16;
-      border-radius: 12px;
+      height: 100%;
       object-fit: cover;
-      background:#000;
     }
-    .ugc-media-title {
+    .ugc-image-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      color: rgba(148,163,184,0.85);
+      text-align: center;
+      padding: 16px;
+    }
+    .ugc-placeholder-title {
+      font-weight: 600;
+      color: rgba(226,232,240,0.95);
+    }
+    .ugc-placeholder-status {
       font-size: 11px;
-      font-weight: 500;
-      margin-bottom: 2px;
-    }
-    .ugc-media-status {
-      font-size: 10px;
-      opacity: .8;
+      color: rgba(148,163,184,0.7);
     }
     .ugc-video-card {
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.12));
-      padding: 10px;
-      font-size: 11px;
-      text-align: center;
-      min-height: 80px;
-      display:flex;
-      flex-direction: column;
-      gap: 6px;
-      align-items:center;
-      justify-content:center;
+      border-radius: 16px;
+      border: 1px solid rgba(30,41,59,0.45);
+      background: radial-gradient(circle at top, rgba(17,24,39,0.88), rgba(2,6,23,0.92));
+      min-height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
     }
     .ugc-video-card video {
       width: 100%;
-      aspect-ratio: 9 / 16;
-      border-radius: 12px;
-      background: #000;
+      height: 100%;
+      border-radius: 14px;
       object-fit: cover;
+      background: #000;
+    }
+    .ugc-video-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-align: center;
+      color: rgba(203,213,225,0.9);
+      font-size: 12px;
+    }
+    .ugc-video-placeholder .ugc-placeholder-status {
+      color: rgba(148,163,184,0.7);
+    }
+    .ugc-video-badge {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(34,197,94,0.18);
+      color: rgba(187,247,208,0.95);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(34,197,94,0.35);
     }
     .ugc-video-actions {
       display: flex;
-      gap: 6px;
-      justify-content: center;
+      gap: 12px;
       flex-wrap: wrap;
+      align-items: center;
     }
-    .ugc-right {
+    .ugc-result-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ugc-result-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .ugc-result-subtitle {
+      font-size: 13px;
+      color: rgba(148,163,184,0.92);
+    }
+    .ugc-download-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ugc-download-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 22px;
+      border-radius: 999px;
+      border: none;
+      background: linear-gradient(135deg, rgba(59,130,246,0.92), rgba(14,165,233,0.86));
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .ugc-download-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 30px rgba(14,165,233,0.25);
+    }
+    .ugc-download-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      transform: none;
+      box-shadow: none;
+    }
+    .ugc-secondary-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+    .ugc-link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      color: rgba(96,165,250,0.95);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    .ugc-link-btn:hover {
+      color: rgba(129,212,250,0.95);
+    }
+    .ugc-link-btn:disabled {
+      color: rgba(148,163,184,0.6);
+      cursor: not-allowed;
+    }
+    .ugc-form-group {
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
-    .ugc-prompt-label {
-      font-size: 11px;
-      color: var(--muted);
+    .ugc-field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(148,163,184,0.92);
+    }
+    textarea.ugc-textarea {
+      width: 100%;
+      min-height: 90px;
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: rgba(15,23,42,0.45);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 13px;
+      resize: vertical;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    textarea.ugc-textarea:focus {
+      outline: none;
+      border-color: rgba(96,165,250,0.65);
+      box-shadow: 0 0 0 2px rgba(96,165,250,0.25);
+    }
+    textarea.ugc-textarea:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    .ugc-generate-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ugc-generate-btn {
+      align-self: flex-start;
+      border-radius: 999px;
+      border: none;
+      padding: 10px 22px;
+      background: linear-gradient(135deg, rgba(139,92,246,0.92), rgba(14,165,233,0.86));
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .ugc-generate-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 30px rgba(139,92,246,0.3);
+    }
+    .ugc-generate-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      transform: none;
+      box-shadow: none;
     }
     .ugc-product-preview {
       display:flex;
@@ -7698,13 +7861,7 @@ body[data-theme="light"] .profile-expiry.expired {
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
           Sistem akan membuat 5 ide UGC beserta gambar dari Gemini Flash 2.5.
-          Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
-        </div>
-        <div class="progress-inline" id="ugcProgress">
-          <div class="progress-label"><span>Progress</span><span id="ugcProgressValue">0%</span></div>
-          <div class="progress-bar">
-            <div class="progress-fill" id="ugcProgressFill"></div>
-          </div>
+          Tiap baris punya prompt video + tombol Generate Video (Seedance 1080) &amp; Download.
         </div>
       </div>
     </div>
@@ -13426,11 +13583,16 @@ body[data-theme="light"] .profile-expiry.expired {
       row.className = 'ugc-row';
       row.dataset.index = item.index;
 
-      const left = document.createElement('div');
-      left.className = 'ugc-media-block';
+      const imageCol = document.createElement('div');
+      imageCol.className = 'ugc-column ugc-column-image';
+
+      const imageLabel = document.createElement('div');
+      imageLabel.className = 'ugc-column-label';
+      imageLabel.textContent = 'Image ' + item.index;
+      imageCol.appendChild(imageLabel);
 
       const imgCard = document.createElement('div');
-      imgCard.className = 'ugc-media-card';
+      imgCard.className = 'ugc-image-card';
 
       if (item.imageUrl) {
         const img = document.createElement('img');
@@ -13438,20 +13600,38 @@ body[data-theme="light"] .profile-expiry.expired {
         img.alt = 'UGC Image ' + item.index;
         img.classList.add('clickable-media');
         img.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
-        imgCard.innerHTML = '';
         imgCard.appendChild(img);
       } else {
-        imgCard.innerHTML = '<div><div class=\"ugc-media-title\">Image #' + item.index +
-          '</div><div class=\"ugc-media-status\">Generating... ' + (item.status || 'CREATED') + '</div></div>';
+        const placeholder = document.createElement('div');
+        placeholder.className = 'ugc-image-placeholder';
+        const title = document.createElement('div');
+        title.className = 'ugc-placeholder-title';
+        title.textContent = 'Image #' + item.index;
+        const status = document.createElement('div');
+        status.className = 'ugc-placeholder-status';
+        status.textContent = 'Generating… ' + (item.status || 'CREATED');
+        placeholder.appendChild(title);
+        placeholder.appendChild(status);
+        imgCard.appendChild(placeholder);
       }
+
+      imageCol.appendChild(imgCard);
+
+      const videoCol = document.createElement('div');
+      videoCol.className = 'ugc-column ugc-column-video';
+
+      const videoLabel = document.createElement('div');
+      videoLabel.className = 'ugc-column-label';
+      videoLabel.textContent = 'Video';
+      videoCol.appendChild(videoLabel);
 
       const videoCard = document.createElement('div');
       videoCard.className = 'ugc-video-card';
+
       if (item.videoUrl) {
-        videoCard.innerHTML = '';
-        const title = document.createElement('div');
-        title.className = 'ugc-media-title';
-        title.textContent = 'Video ready';
+        const badge = document.createElement('div');
+        badge.className = 'ugc-video-badge';
+        badge.textContent = 'Video ready';
 
         const video = document.createElement('video');
         video.src = item.videoUrl;
@@ -13460,87 +13640,95 @@ body[data-theme="light"] .profile-expiry.expired {
         video.muted = true;
         video.playsInline = true;
 
+        videoCard.appendChild(badge);
+        videoCard.appendChild(video);
+        videoCol.appendChild(videoCard);
+
         const actions = document.createElement('div');
         actions.className = 'ugc-video-actions';
 
         const previewVideoBtn = document.createElement('button');
         previewVideoBtn.type = 'button';
-        previewVideoBtn.className = 'small secondary';
+        previewVideoBtn.className = 'ugc-link-btn';
         previewVideoBtn.textContent = 'Preview Video';
         previewVideoBtn.addEventListener('click', () => openAssetPreview(item.videoUrl, 'video'));
         actions.appendChild(previewVideoBtn);
 
-        const videoDownloadLink = document.createElement('a');
-        videoDownloadLink.href = item.videoUrl;
-        videoDownloadLink.target = '_blank';
-        videoDownloadLink.download = '';
-        videoDownloadLink.className = 'download-link';
-
         const videoDownloadBtn = document.createElement('button');
         videoDownloadBtn.type = 'button';
-        videoDownloadBtn.className = 'small';
-        videoDownloadBtn.textContent = 'Download';
-        videoDownloadLink.appendChild(videoDownloadBtn);
-        actions.appendChild(videoDownloadLink);
+        videoDownloadBtn.className = 'ugc-link-btn';
+        videoDownloadBtn.textContent = 'Download Video';
+        videoDownloadBtn.addEventListener('click', () => {
+          const a = document.createElement('a');
+          a.href = item.videoUrl;
+          a.download = '';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        });
+        actions.appendChild(videoDownloadBtn);
 
         const videoSaveBtn = document.createElement('button');
         videoSaveBtn.type = 'button';
-        videoSaveBtn.className = 'small secondary';
+        videoSaveBtn.className = 'ugc-link-btn';
         videoSaveBtn.textContent = 'Simpan Video';
         videoSaveBtn.addEventListener('click', () => saveUgcVideoToDrive(item, videoSaveBtn));
         actions.appendChild(videoSaveBtn);
 
-        videoCard.appendChild(title);
-        videoCard.appendChild(video);
-        videoCard.appendChild(actions);
-      } else if (item.videoJobId) {
-        videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video generating...</div><div class=\"ugc-media-status\">Check status di Queue</div></div>';
+        videoCol.appendChild(actions);
       } else {
-        videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video</div><div class=\"ugc-media-status\">No video yet</div></div>';
+        const placeholder = document.createElement('div');
+        placeholder.className = 'ugc-video-placeholder';
+        const title = document.createElement('div');
+        title.className = 'ugc-placeholder-title';
+        if (item.videoJobId) {
+          title.textContent = 'Video generating…';
+        } else {
+          title.textContent = 'No video yet';
+        }
+        const status = document.createElement('div');
+        status.className = 'ugc-placeholder-status';
+        if (item.videoJobId) {
+          status.textContent = 'Check status di Queue';
+        } else {
+          status.textContent = 'Generate video setelah gambar siap';
+        }
+        placeholder.appendChild(title);
+        placeholder.appendChild(status);
+        videoCard.appendChild(placeholder);
+        videoCol.appendChild(videoCard);
       }
 
-      left.appendChild(imgCard);
-      left.appendChild(videoCard);
+      const detailCol = document.createElement('div');
+      detailCol.className = 'ugc-column ugc-column-details';
 
-      const right = document.createElement('div');
-      right.className = 'ugc-right';
+      const header = document.createElement('div');
+      header.className = 'ugc-result-header';
+      const title = document.createElement('div');
+      title.className = 'ugc-result-title';
+      title.textContent = 'UGC Image #' + item.index;
+      header.appendChild(title);
 
-      const pLabel = document.createElement('div');
-      pLabel.className = 'ugc-prompt-label';
-      pLabel.textContent = 'UGC Prompt #' + item.index;
-      const pText = document.createElement('textarea');
-      pText.value = item.prompt || '';
-      pText.rows = 3;
-      pText.addEventListener('input', () => {
-        item.prompt = pText.value;
-      });
-
-      const vLabel = document.createElement('div');
-      vLabel.className = 'ugc-prompt-label';
-      vLabel.textContent = 'Video Animation Prompt';
-      const vText = document.createElement('textarea');
-      vText.placeholder = 'contoh: model showing the product with a smile';
-      vText.value = item.videoPrompt || '';
-      vText.rows = 2;
-      vText.addEventListener('input', () => {
-        item.videoPrompt = vText.value;
-      });
-
-      const btnRow = document.createElement('div');
-      btnRow.className = 'btn-group';
-
-      const previewImgBtn = document.createElement('button');
-      previewImgBtn.type = 'button';
-      previewImgBtn.className = 'secondary small';
-      previewImgBtn.textContent = 'Preview Image';
-      previewImgBtn.disabled = !item.imageUrl;
-      if (item.imageUrl) {
-        previewImgBtn.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
+      const styleLabel = (item.styleLabel || '').trim();
+      const styleDescription = (item.styleDescription || '').trim();
+      if (styleLabel || styleDescription) {
+        const meta = document.createElement('div');
+        meta.className = 'ugc-result-subtitle';
+        const parts = [];
+        if (styleLabel) parts.push(styleLabel);
+        if (styleDescription) parts.push(styleDescription);
+        meta.textContent = 'Generated with ' + parts.join(' • ');
+        header.appendChild(meta);
       }
+
+      detailCol.appendChild(header);
+
+      const downloadGroup = document.createElement('div');
+      downloadGroup.className = 'ugc-download-group';
 
       const dlBtn = document.createElement('button');
       dlBtn.type = 'button';
-      dlBtn.className = 'small';
+      dlBtn.className = 'ugc-download-btn';
       dlBtn.textContent = 'Download Image';
       dlBtn.disabled = !item.imageUrl;
       if (item.imageUrl) {
@@ -13553,36 +13741,91 @@ body[data-theme="light"] .profile-expiry.expired {
           document.body.removeChild(a);
         });
       }
+      downloadGroup.appendChild(dlBtn);
+
+      const secondaryActions = document.createElement('div');
+      secondaryActions.className = 'ugc-secondary-actions';
+
+      const previewImgBtn = document.createElement('button');
+      previewImgBtn.type = 'button';
+      previewImgBtn.className = 'ugc-link-btn';
+      previewImgBtn.textContent = 'Preview Image';
+      previewImgBtn.disabled = !item.imageUrl;
+      if (item.imageUrl) {
+        previewImgBtn.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
+      }
+      secondaryActions.appendChild(previewImgBtn);
 
       const saveImgBtn = document.createElement('button');
       saveImgBtn.type = 'button';
-      saveImgBtn.className = 'small secondary';
+      saveImgBtn.className = 'ugc-link-btn';
       saveImgBtn.textContent = 'Simpan ke Drive';
       saveImgBtn.disabled = !item.imageUrl;
       if (item.imageUrl) {
         saveImgBtn.addEventListener('click', () => saveUgcImageToDrive(item, saveImgBtn));
       }
+      secondaryActions.appendChild(saveImgBtn);
+
+      downloadGroup.appendChild(secondaryActions);
+      detailCol.appendChild(downloadGroup);
+
+      const promptGroup = document.createElement('div');
+      promptGroup.className = 'ugc-form-group';
+
+      const pLabel = document.createElement('label');
+      pLabel.className = 'ugc-field-label';
+      pLabel.textContent = 'UGC Prompt #' + item.index;
+      pLabel.setAttribute('for', 'ugcPrompt' + item.index);
+      const pText = document.createElement('textarea');
+      pText.className = 'ugc-textarea';
+      pText.id = 'ugcPrompt' + item.index;
+      pText.value = item.prompt || '';
+      pText.rows = 3;
+      pText.addEventListener('input', () => {
+        item.prompt = pText.value;
+      });
+
+      promptGroup.appendChild(pLabel);
+      promptGroup.appendChild(pText);
+      detailCol.appendChild(promptGroup);
+
+      const videoPromptGroup = document.createElement('div');
+      videoPromptGroup.className = 'ugc-form-group';
+
+      const vLabel = document.createElement('label');
+      vLabel.className = 'ugc-field-label';
+      vLabel.textContent = 'Video Animation Prompt';
+      vLabel.setAttribute('for', 'ugcVideoPrompt' + item.index);
+      const vText = document.createElement('textarea');
+      vText.className = 'ugc-textarea';
+      vText.id = 'ugcVideoPrompt' + item.index;
+      vText.placeholder = 'contoh: model showing the product with a smile';
+      vText.value = item.videoPrompt || '';
+      vText.rows = 2;
+      vText.addEventListener('input', () => {
+        item.videoPrompt = vText.value;
+      });
+
+      videoPromptGroup.appendChild(vLabel);
+      videoPromptGroup.appendChild(vText);
+      detailCol.appendChild(videoPromptGroup);
+
+      const generateRow = document.createElement('div');
+      generateRow.className = 'ugc-generate-row';
 
       const vidBtn = document.createElement('button');
       vidBtn.type = 'button';
-      vidBtn.className = 'small';
+      vidBtn.className = 'ugc-generate-btn';
       vidBtn.textContent = 'Generate Video';
       vidBtn.disabled = !item.imageUrl;
       vidBtn.addEventListener('click', () => ugcGenerateVideo(item));
 
-      btnRow.appendChild(previewImgBtn);
-      btnRow.appendChild(dlBtn);
-      btnRow.appendChild(saveImgBtn);
-      btnRow.appendChild(vidBtn);
+      generateRow.appendChild(vidBtn);
+      detailCol.appendChild(generateRow);
 
-      right.appendChild(pLabel);
-      right.appendChild(pText);
-      right.appendChild(vLabel);
-      right.appendChild(vText);
-      right.appendChild(btnRow);
-
-      row.appendChild(left);
-      row.appendChild(right);
+      row.appendChild(imageCol);
+      row.appendChild(videoCol);
+      row.appendChild(detailCol);
 
       ugcList.appendChild(row);
     });
@@ -13704,6 +13947,7 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
     const styleKey = (ugcStyleValueInput && ugcStyleValueInput.value) || DEFAULT_UGC_STYLE_KEY;
+    const styleMeta = getUgcStyle(styleKey);
     const brief = ugcBriefInput.value.trim() || 'Product UGC photo shot';
     const requiredCoins = Math.max(1, UGC_IDEA_COUNT * COIN_COST_UGC);
     if (!ensureCoins(requiredCoins)) {
@@ -13729,7 +13973,10 @@ body[data-theme="light"] .profile-expiry.expired {
         taskId: null,
         imageUrl: null,
         videoJobId: null,
-        videoUrl: null
+        videoUrl: null,
+        styleKey,
+        styleLabel: styleMeta && styleMeta.label ? styleMeta.label : '',
+        styleDescription: styleMeta && styleMeta.description ? styleMeta.description : ''
       };
       ugcItems.push(item);
       renderUgcList();
@@ -13795,13 +14042,34 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
 
-    const cfg = MODEL_CONFIG.wan720;
-    const body = {
+    const cfg = MODEL_CONFIG.seedancePro1080;
+    const requestPayload = {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
-      image: item.remoteUrl,   // <-- PENTING
-      duration: 5,
-      aspect_ratio: 'auto'
+      imageUrl: item.remoteUrl,
+      videoDuration: 10
     };
+
+    const body = typeof cfg.buildBody === 'function'
+      ? cfg.buildBody(requestPayload)
+      : (() => {
+          const fallback = {
+            prompt: requestPayload.prompt,
+            aspect_ratio: 'auto'
+          };
+          if (requestPayload.imageUrl) {
+            fallback.image_url = requestPayload.imageUrl;
+          }
+          if (typeof requestPayload.videoDuration === 'number' && !Number.isNaN(requestPayload.videoDuration)) {
+            fallback.duration = requestPayload.videoDuration;
+          }
+          return fallback;
+        })();
+
+    const previousVideoUrl = item.videoUrl || null;
+    const previousVideoJobId = item.videoJobId || null;
+    item.videoUrl = null;
+    item.videoJobId = null;
+    renderUgcList();
 
     try {
       const data = await callFreepik(cfg, body, 'POST');
@@ -13818,7 +14086,7 @@ body[data-theme="light"] .profile-expiry.expired {
       const jobId = uuid();
       const job = {
         id: jobId,
-        modelId: 'wan720',
+        modelId: 'seedancePro1080',
         type: 'video',
         taskId,
         createdAt: nowIso(),
@@ -13840,12 +14108,30 @@ body[data-theme="light"] .profile-expiry.expired {
           await ensureLocalFiles(job);
         }
         await syncJobToDrive(job);
+        const immediateUrl = (job.localUrls && job.localUrls[0]) ||
+                              (job.generated && job.generated[0]) ||
+                              job.extraUrl || null;
+        if (immediateUrl) {
+          item.videoUrl = immediateUrl;
+          renderUgcList();
+        }
+      }
+
+      if (!finalStatus(status) && generated && Array.isArray(generated) && generated.length) {
+        const generatedUrl = generated.find(u => typeof u === 'string' && u.trim() !== '');
+        if (generatedUrl) {
+          item.videoUrl = generatedUrl;
+          renderUgcList();
+        }
       }
 
       item.videoJobId = jobId;
       renderUgcList();
     } catch (e) {
       console.error(e);
+      item.videoUrl = previousVideoUrl;
+      item.videoJobId = previousVideoJobId;
+      renderUgcList();
       alert('Gagal membuat video: ' + e.message);
     }
   }
