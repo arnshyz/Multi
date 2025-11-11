@@ -6383,8 +6383,34 @@ body[data-theme="light"] .profile-expiry.expired {
       min-height: 240px;
       overflow: hidden;
       display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .ugc-result-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ugc-result-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .ugc-result-subtitle {
+      font-size: 13px;
+      color: rgba(148,163,184,0.92);
+    }
+    .ugc-download-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ugc-download-btn {
+      display: inline-flex;
       align-items: center;
       justify-content: center;
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
     }
     .ugc-image-card img {
       width: 100%;
@@ -6401,6 +6427,9 @@ body[data-theme="light"] .profile-expiry.expired {
       color: rgba(148,163,184,0.85);
       text-align: center;
       padding: 16px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 14px;
     }
     .ugc-placeholder-title {
       font-weight: 600;
@@ -6421,8 +6450,14 @@ body[data-theme="light"] .profile-expiry.expired {
       padding: 18px;
       position: relative;
       overflow: hidden;
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
     }
-    .ugc-video-card video {
+    .ugc-field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(148,163,184,0.92);
+    }
+    textarea.ugc-textarea {
       width: 100%;
       height: 100%;
       border-radius: 14px;
@@ -6438,9 +6473,39 @@ body[data-theme="light"] .profile-expiry.expired {
       text-align: center;
       color: rgba(203,213,225,0.9);
       font-size: 12px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 14px;
     }
     .ugc-video-placeholder .ugc-placeholder-status {
       color: rgba(148,163,184,0.7);
+    }
+    .ugc-image-placeholder.is-loading::before,
+    .ugc-video-placeholder.is-loading::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(148,163,184,0.05) 0%, rgba(148,163,184,0.18) 45%, rgba(148,163,184,0.05) 100%);
+      animation: ugcShimmer 1.6s linear infinite;
+      opacity: 0.85;
+    }
+    .ugc-image-placeholder.is-loading > *,
+    .ugc-video-placeholder.is-loading > * {
+      position: relative;
+      z-index: 1;
+    }
+    .ugc-loading-spinner {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 3px solid rgba(148,163,184,0.28);
+      border-top-color: rgba(96,165,250,0.9);
+      animation: ugcSpin 0.9s linear infinite;
+    }
+    .ugc-image-card.is-loading,
+    .ugc-video-card.is-loading {
+      box-shadow: 0 14px 28px rgba(15,23,42,0.28);
+      transform: translateY(1px);
     }
     .ugc-video-badge {
       position: absolute;
@@ -6491,17 +6556,22 @@ body[data-theme="light"] .profile-expiry.expired {
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+      background-size: 220% 220%;
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
     }
     .ugc-download-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 12px 30px rgba(14,165,233,0.25);
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 18px 34px rgba(14,165,233,0.26);
+      background-position: 100% 0;
     }
     .ugc-download-btn:disabled {
       cursor: not-allowed;
       opacity: 0.55;
       transform: none;
       box-shadow: none;
+      background-position: 0 0;
     }
     .ugc-secondary-actions {
       display: flex;
@@ -6572,17 +6642,84 @@ body[data-theme="light"] .profile-expiry.expired {
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+      background-size: 220% 220%;
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
     }
     .ugc-generate-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 12px 30px rgba(139,92,246,0.3);
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 18px 32px rgba(139,92,246,0.3);
+      background-position: 100% 0;
     }
     .ugc-generate-btn:disabled {
       cursor: not-allowed;
       opacity: 0.55;
       transform: none;
       box-shadow: none;
+      background-position: 0 0;
+    }
+    .ugc-primary-btn {
+      width: 100%;
+      margin-top: 4px;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      background: linear-gradient(135deg, rgba(37,99,235,0.95), rgba(14,165,233,0.9));
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      background-size: 220% 220%;
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
+    }
+    .ugc-primary-btn:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 20px 38px rgba(14,165,233,0.26);
+      background-position: 100% 0;
+    }
+    .ugc-primary-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+      background-position: 0 0;
+    }
+    .ugc-download-btn::before,
+    .ugc-generate-btn::before,
+    .ugc-primary-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(255,255,255,0.4), rgba(255,255,255,0));
+      transform: translateX(-120%);
+      opacity: 0;
+      transition: transform 0.45s ease, opacity 0.45s ease;
+      pointer-events: none;
+    }
+    .ugc-download-btn:hover::before,
+    .ugc-generate-btn:hover::before,
+    .ugc-primary-btn:hover::before {
+      transform: translateX(120%);
+      opacity: 0.35;
+    }
+    .ugc-aspect-select select {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid rgba(148,163,184,0.28);
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 13px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .ugc-aspect-select select:focus {
+      outline: none;
+      border-color: rgba(96,165,250,0.65);
+      box-shadow: 0 0 0 2px rgba(96,165,250,0.25);
     }
     .ugc-product-preview {
       display:flex;
@@ -6746,6 +6883,9 @@ body[data-theme="light"] .profile-expiry.expired {
       z-index: 2000;
     }
     .asset-preview.hidden { display: none; }
+    .asset-preview.visible {
+      animation: ugcOverlayFade 0.28s ease forwards;
+    }
     .asset-preview-inner {
       background: var(--card);
       border-radius: 14px;
@@ -6759,6 +6899,9 @@ body[data-theme="light"] .profile-expiry.expired {
       gap: 12px;
       box-shadow: 0 18px 55px rgba(15,23,42,0.8);
       position: relative;
+    }
+    .asset-preview.visible .asset-preview-inner {
+      animation: ugcModalPop 0.34s cubic-bezier(0.22,0.61,0.36,1) forwards;
     }
     .asset-preview-close {
       position: absolute;
@@ -7113,6 +7256,23 @@ body[data-theme="light"] .profile-expiry.expired {
       font-size: 11px;
       color: var(--muted);
       text-align: center;
+    }
+    @keyframes ugcSpin {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes ugcShimmer {
+      0% { transform: translateX(-80%); }
+      50% { transform: translateX(0); }
+      100% { transform: translateX(80%); }
+    }
+    @keyframes ugcOverlayFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes ugcModalPop {
+      0% { transform: translateY(24px) scale(0.92); opacity: 0; }
+      60% { transform: translateY(-6px) scale(1.01); opacity: 1; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
     }
     @keyframes maintenanceGlow {
       0% { transform: rotate(0deg) scale(1); opacity: 0.45; }
@@ -8052,12 +8212,24 @@ body[data-theme="light"] .profile-expiry.expired {
       </div>
 
       <div>
+        <div class="small-label">Aspect Ratio</div>
+        <div class="ugc-aspect-select">
+          <select id="ugcAspectRatio">
+            <option value="square_1_1">Square 1:1</option>
+            <option value="portrait_3_4">Portrait 3:4</option>
+            <option value="portrait_9_16">Portrait 9:16</option>
+            <option value="landscape_16_9">Landscape 16:9</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
         <div class="small-label">Product Brief (Optional)</div>
         <textarea id="ugcBrief" placeholder="Contoh: Mempromosikan botol air berkelanjutan untuk penggemar kebugaran, menekankan gaya hidup ramah lingkungan dan aktivitas luar ruangan"></textarea>
       </div>
 
       <div>
-        <button type="button" id="ugcGenerateBtn" style="width:100%;margin-top:4px;">
+        <button type="button" id="ugcGenerateBtn" class="ugc-primary-btn">
           Generate UGC
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
@@ -10356,7 +10528,14 @@ body[data-theme="light"] .profile-expiry.expired {
     if (typeof duration === 'number' && !Number.isNaN(duration) && duration > 0) {
       payload.duration = duration;
     }
-    const ratio = mapVideoAspect(formData.videoLayout);
+    let ratio = null;
+    if (typeof formData.aspectRatio === 'string' && formData.aspectRatio.trim()) {
+      ratio = formData.aspectRatio.trim();
+    } else if (typeof formData.aspect_ratio === 'string' && formData.aspect_ratio.trim()) {
+      ratio = formData.aspect_ratio.trim();
+    } else {
+      ratio = mapVideoAspect(formData.videoLayout);
+    }
     if (ratio && (ratio !== 'auto' || !payload.aspect_ratio)) {
       payload.aspect_ratio = ratio;
     } else if (!payload.aspect_ratio) {
@@ -10930,6 +11109,7 @@ body[data-theme="light"] .profile-expiry.expired {
   const ugcStyleLabelEl    = document.getElementById('ugcStyleLabel');
   const ugcStyleDescEl     = document.getElementById('ugcStyleDescription');
   const ugcStyleIconEl     = document.getElementById('ugcStyleIcon');
+  const ugcAspectRatioSelect = document.getElementById('ugcAspectRatio');
   const ugcBriefInput      = document.getElementById('ugcBrief');
   const ugcGenerateBtn     = document.getElementById('ugcGenerateBtn');
 
@@ -13791,6 +13971,16 @@ body[data-theme="light"] .profile-expiry.expired {
   });
 
   const UGC_IDEA_COUNT = 5;
+  const UGC_ASPECT_OPTIONS = [
+    { value: 'square_1_1', label: 'Square 1:1' },
+    { value: 'portrait_3_4', label: 'Portrait 3:4' },
+    { value: 'portrait_9_16', label: 'Portrait 9:16' },
+    { value: 'landscape_16_9', label: 'Landscape 16:9' }
+  ];
+  const UGC_ASPECT_LABEL_MAP = UGC_ASPECT_OPTIONS.reduce((acc, opt) => {
+    acc[opt.value] = opt.label;
+    return acc;
+  }, {});
 
   const UGC_STYLE_GROUPS = [
     {
@@ -13882,6 +14072,7 @@ body[data-theme="light"] .profile-expiry.expired {
   let ugcModelImage = null;
   let ugcItems = [];
   let ugcPollTimer = null;
+  let ugcCurrentAspectRatio = sanitizeUgcAspectRatio(ugcAspectRatioSelect ? ugcAspectRatioSelect.value : null) || 'square_1_1';
 
   function normalizeUgcReference(entry) {
     if (!entry) return null;
@@ -13893,6 +14084,49 @@ body[data-theme="light"] .profile-expiry.expired {
     }
     if (entry.url) {
       return entry.url;
+    }
+    return null;
+  }
+
+  function sanitizeUgcAspectRatio(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return UGC_ASPECT_LABEL_MAP[trimmed] ? trimmed : null;
+  }
+
+  function getUgcAspectLabel(value) {
+    return UGC_ASPECT_LABEL_MAP[value] || '';
+  }
+
+  function describeUgcAspect(value) {
+    const label = getUgcAspectLabel(value);
+    return label ? `${label} framing` : 'versatile framing';
+  }
+
+  function formatUgcStatus(status) {
+    if (!status) return 'CREATED';
+    const cleaned = String(status).replace(/_/g, ' ').trim();
+    return cleaned ? cleaned.toUpperCase() : 'CREATED';
+  }
+
+  function extractFirstGeneratedUrl(list) {
+    if (!Array.isArray(list)) return null;
+    for (const entry of list) {
+      if (!entry) continue;
+      if (typeof entry === 'string') {
+        const trimmed = entry.trim();
+        if (trimmed) return trimmed;
+        continue;
+      }
+      if (typeof entry !== 'object') continue;
+      const candidates = [entry.url, entry.image_url, entry.preview_url, entry.download_url];
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string') {
+          const trimmed = candidate.trim();
+          if (trimmed) return trimmed;
+        }
+      }
     }
     return null;
   }
@@ -13924,11 +14158,14 @@ body[data-theme="light"] .profile-expiry.expired {
     return UGC_STYLE_LIBRARY[key] || UGC_STYLE_LIBRARY[DEFAULT_UGC_STYLE_KEY];
   }
 
-  function buildUgcImagePrompt(basePrompt, styleKey, index) {
-    const style = getUgcStyle(styleKey);
+  function buildUgcImagePrompt(basePrompt, styleKey, index, aspectRatio) {
+    const style = getUgcStyle(styleKey) || {};
     const cleaned = (basePrompt || '').trim().replace(/\s+/g, ' ');
     const promptBase = cleaned || 'Product UGC photo shot';
-    return `UGC Image #${index}: ${promptBase}. Style focus: ${style.label} — ${style.prompt}. Capture in square format with authentic creator energy.`;
+    const styleLabel = style.label || 'Basic style';
+    const stylePrompt = style.prompt || 'balanced creator storytelling';
+    const aspectFragment = describeUgcAspect(aspectRatio).toLowerCase();
+    return `UGC Image #${index}: ${promptBase}. Style focus: ${styleLabel} — ${stylePrompt}. Capture in ${aspectFragment} with authentic creator energy.`;
   }
 
   function updateUgcStyleActiveState(activeKey) {
@@ -14026,18 +14263,29 @@ body[data-theme="light"] .profile-expiry.expired {
       row.className = 'ugc-row';
       row.dataset.index = item.index;
 
+      const aspectLabelText = (item.aspectLabel || '').trim();
+      const imageStatusLabel = formatUgcStatus(item.status);
+      const isImageReady = !!item.imageUrl;
+      const isImageGenerating = !isImageReady && !finalStatus(item.status);
+      const isImageErrored = finalStatus(item.status) && !isImageReady;
+      const videoPending = !!(item.videoJobId && !item.videoUrl);
+      const canGenerateVideo = !!(item.remoteUrl && finalStatus(item.status) && !videoPending);
+
       const imageCol = document.createElement('div');
       imageCol.className = 'ugc-column ugc-column-image';
 
       const imageLabel = document.createElement('div');
       imageLabel.className = 'ugc-column-label';
-      imageLabel.textContent = 'Image ' + item.index;
+      imageLabel.textContent = aspectLabelText
+        ? `Image ${item.index} (${aspectLabelText})`
+        : 'Image ' + item.index;
       imageCol.appendChild(imageLabel);
 
       const imgCard = document.createElement('div');
       imgCard.className = 'ugc-image-card';
+      imgCard.classList.toggle('is-loading', isImageGenerating);
 
-      if (item.imageUrl) {
+      if (isImageReady) {
         const img = document.createElement('img');
         img.src = item.imageUrl;
         img.alt = 'UGC Image ' + item.index;
@@ -14047,14 +14295,28 @@ body[data-theme="light"] .profile-expiry.expired {
       } else {
         const placeholder = document.createElement('div');
         placeholder.className = 'ugc-image-placeholder';
+        if (isImageGenerating) {
+          placeholder.classList.add('is-loading');
+          const spinner = document.createElement('div');
+          spinner.className = 'ugc-loading-spinner';
+          placeholder.appendChild(spinner);
+        }
         const title = document.createElement('div');
         title.className = 'ugc-placeholder-title';
         title.textContent = 'Image #' + item.index;
+        placeholder.appendChild(title);
+
         const status = document.createElement('div');
         status.className = 'ugc-placeholder-status';
-        status.textContent = 'Generating… ' + (item.status || 'CREATED');
-        placeholder.appendChild(title);
+        if (isImageGenerating) {
+          status.textContent = 'Generating… ' + imageStatusLabel;
+        } else if (isImageErrored) {
+          status.textContent = 'Status: ' + imageStatusLabel + '. Klik Generate UGC ulang.';
+        } else {
+          status.textContent = 'Menunggu hasil Gemini...';
+        }
         placeholder.appendChild(status);
+
         imgCard.appendChild(placeholder);
       }
 
@@ -14065,13 +14327,15 @@ body[data-theme="light"] .profile-expiry.expired {
 
       const videoLabel = document.createElement('div');
       videoLabel.className = 'ugc-column-label';
-      videoLabel.textContent = 'Video';
+      videoLabel.textContent = aspectLabelText ? `Video (${aspectLabelText})` : 'Video';
       videoCol.appendChild(videoLabel);
 
       const videoCard = document.createElement('div');
       videoCard.className = 'ugc-video-card';
+      videoCard.classList.toggle('is-loading', videoPending);
 
       if (item.videoUrl) {
+        videoCard.classList.remove('is-loading');
         const badge = document.createElement('div');
         badge.className = 'ugc-video-badge';
         badge.textContent = 'Video ready';
@@ -14122,22 +14386,30 @@ body[data-theme="light"] .profile-expiry.expired {
       } else {
         const placeholder = document.createElement('div');
         placeholder.className = 'ugc-video-placeholder';
+        if (videoPending) {
+          placeholder.classList.add('is-loading');
+          const spinner = document.createElement('div');
+          spinner.className = 'ugc-loading-spinner';
+          placeholder.appendChild(spinner);
+        }
         const title = document.createElement('div');
         title.className = 'ugc-placeholder-title';
-        if (item.videoJobId) {
-          title.textContent = 'Video generating…';
-        } else {
-          title.textContent = 'No video yet';
-        }
+        title.textContent = videoPending ? 'Video generating…' : 'No video yet';
+        placeholder.appendChild(title);
+
         const status = document.createElement('div');
         status.className = 'ugc-placeholder-status';
-        if (item.videoJobId) {
-          status.textContent = 'Check status di Queue';
+        if (videoPending) {
+          status.textContent = 'Seedance 1080 sedang memproses';
+        } else if (!item.remoteUrl || !finalStatus(item.status)) {
+          status.textContent = aspectLabelText
+            ? `Generate video (${aspectLabelText}) setelah gambar siap`
+            : 'Generate video setelah gambar siap';
         } else {
-          status.textContent = 'Generate video setelah gambar siap';
+          status.textContent = 'Klik Generate Video untuk mulai animasi';
         }
-        placeholder.appendChild(title);
         placeholder.appendChild(status);
+
         videoCard.appendChild(placeholder);
         videoCol.appendChild(videoCard);
       }
@@ -14154,13 +14426,15 @@ body[data-theme="light"] .profile-expiry.expired {
 
       const styleLabel = (item.styleLabel || '').trim();
       const styleDescription = (item.styleDescription || '').trim();
-      if (styleLabel || styleDescription) {
+      const metaParts = [];
+      if (styleLabel) metaParts.push(styleLabel);
+      if (styleDescription) metaParts.push(styleDescription);
+      if (aspectLabelText) metaParts.push(`${aspectLabelText} aspect`);
+
+      if (metaParts.length) {
         const meta = document.createElement('div');
         meta.className = 'ugc-result-subtitle';
-        const parts = [];
-        if (styleLabel) parts.push(styleLabel);
-        if (styleDescription) parts.push(styleDescription);
-        meta.textContent = 'Generated with ' + parts.join(' • ');
+        meta.textContent = 'Generated with ' + metaParts.join(' • ');
         header.appendChild(meta);
       }
 
@@ -14173,8 +14447,8 @@ body[data-theme="light"] .profile-expiry.expired {
       dlBtn.type = 'button';
       dlBtn.className = 'ugc-download-btn';
       dlBtn.textContent = 'Download Image';
-      dlBtn.disabled = !item.imageUrl;
-      if (item.imageUrl) {
+      dlBtn.disabled = !isImageReady;
+      if (isImageReady) {
         dlBtn.addEventListener('click', () => {
           const a = document.createElement('a');
           a.href = item.imageUrl;
@@ -14193,8 +14467,8 @@ body[data-theme="light"] .profile-expiry.expired {
       previewImgBtn.type = 'button';
       previewImgBtn.className = 'ugc-link-btn';
       previewImgBtn.textContent = 'Preview Image';
-      previewImgBtn.disabled = !item.imageUrl;
-      if (item.imageUrl) {
+      previewImgBtn.disabled = !isImageReady;
+      if (isImageReady) {
         previewImgBtn.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
       }
       secondaryActions.appendChild(previewImgBtn);
@@ -14203,8 +14477,8 @@ body[data-theme="light"] .profile-expiry.expired {
       saveImgBtn.type = 'button';
       saveImgBtn.className = 'ugc-link-btn';
       saveImgBtn.textContent = 'Simpan ke Drive';
-      saveImgBtn.disabled = !item.imageUrl;
-      if (item.imageUrl) {
+      saveImgBtn.disabled = !isImageReady;
+      if (isImageReady) {
         saveImgBtn.addEventListener('click', () => saveUgcImageToDrive(item, saveImgBtn));
       }
       secondaryActions.appendChild(saveImgBtn);
@@ -14259,8 +14533,8 @@ body[data-theme="light"] .profile-expiry.expired {
       const vidBtn = document.createElement('button');
       vidBtn.type = 'button';
       vidBtn.className = 'ugc-generate-btn';
-      vidBtn.textContent = 'Generate Video';
-      vidBtn.disabled = !item.imageUrl;
+      vidBtn.textContent = videoPending ? 'Processing…' : 'Generate Video';
+      vidBtn.disabled = !canGenerateVideo;
       vidBtn.addEventListener('click', () => ugcGenerateVideo(item));
 
       generateRow.appendChild(vidBtn);
@@ -14284,22 +14558,18 @@ body[data-theme="light"] .profile-expiry.expired {
       try {
         const { status, generated } = await fetchStatus('gemini', item.taskId);
         if (status) item.status = status;
-       if (generated && Array.isArray(generated) && generated.length && !item.imageUrl) {
-  const remote = generated[0];
-
-  // SIMPAN URL ASLI DARI FREEPIK (WAJIB)
-  item.remoteUrl = remote;
-
-  try {
-    const local = await cacheUrl(remote);
-    // imageUrl = file di server kamu (buat preview & download)
-    item.imageUrl = local || remote;
-  } catch {
-    item.imageUrl = remote;
-  }
-}
-
-
+        const remote = extractFirstGeneratedUrl(generated);
+        if (remote) {
+          item.remoteUrl = remote;
+          if (!item.imageUrl) {
+            try {
+              const local = await cacheUrl(remote);
+              item.imageUrl = local || remote;
+            } catch {
+              item.imageUrl = remote;
+            }
+          }
+        }
       } catch (e) {
         item.status = 'ERROR';
       }
@@ -14316,6 +14586,18 @@ body[data-theme="light"] .profile-expiry.expired {
   function startUgcPolling() {
     if (ugcPollTimer) clearInterval(ugcPollTimer);
     ugcPollTimer = setInterval(() => { pollUgcOnce(); }, 8000);
+  }
+
+  if (ugcAspectRatioSelect) {
+    if (!sanitizeUgcAspectRatio(ugcAspectRatioSelect.value)) {
+      ugcAspectRatioSelect.value = ugcCurrentAspectRatio;
+    }
+    ugcAspectRatioSelect.addEventListener('change', () => {
+      const selected = sanitizeUgcAspectRatio(ugcAspectRatioSelect.value);
+      if (selected) {
+        ugcCurrentAspectRatio = selected;
+      }
+    });
   }
 
   ugcProductDrop.addEventListener('click', () => ugcProductInput.click());
@@ -14398,6 +14680,10 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
 
+    const aspectRatio = sanitizeUgcAspectRatio(ugcAspectRatioSelect ? ugcAspectRatioSelect.value : ugcCurrentAspectRatio) || 'square_1_1';
+    ugcCurrentAspectRatio = aspectRatio;
+    const aspectLabel = getUgcAspectLabel(aspectRatio);
+
     ugcGenerateBtn.disabled = true;
     ugcItems = [];
     renderUgcList();
@@ -14406,69 +14692,75 @@ body[data-theme="light"] .profile-expiry.expired {
     const refs = buildUgcReferences();
     let successfulIdeas = 0;
 
-    for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
-      const prompt = buildUgcImagePrompt(brief, styleKey, i);
-      const item = {
-        index: i,
-        prompt,
-        videoPrompt: '',
-        status: 'CREATED',
-        taskId: null,
-        imageUrl: null,
-        videoJobId: null,
-        videoUrl: null,
-        styleKey,
-        styleLabel: styleMeta && styleMeta.label ? styleMeta.label : '',
-        styleDescription: styleMeta && styleMeta.description ? styleMeta.description : ''
-      };
-      ugcItems.push(item);
-      renderUgcList();
+    try {
+      for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
+        const prompt = buildUgcImagePrompt(brief, styleKey, i, aspectRatio);
+        const item = {
+          index: i,
+          prompt,
+          videoPrompt: '',
+          status: 'CREATED',
+          taskId: null,
+          imageUrl: null,
+          remoteUrl: null,
+          videoJobId: null,
+          videoUrl: null,
+          styleKey,
+          styleLabel: styleMeta && styleMeta.label ? styleMeta.label : '',
+          styleDescription: styleMeta && styleMeta.description ? styleMeta.description : '',
+          aspectRatio,
+          aspectLabel
+        };
+        ugcItems.push(item);
+        renderUgcList();
 
-      const body = {
-        prompt,
-        num_images: 1,
-        aspect_ratio: 'square_1_1'
-      };
-      if (refs.length) {
-        body.reference_images = refs.slice();
-      }
-      let success = false;
-      try {
-        const data = await callFreepik(cfg, body, 'POST');
-        if (data && data.data) {
-          item.taskId = data.data.task_id || null;
-          item.status = data.data.status || 'CREATED';
+        const body = {
+          prompt,
+          num_images: 1,
+          aspect_ratio: aspectRatio
+        };
+        if (refs.length) {
+          body.reference_images = refs.slice();
         }
-        success = true;
-      } catch (e) {
-        console.error(e);
-        item.status = 'ERROR';
-      }
-      if (success) {
-        const normalized = String(item.status || '').toUpperCase();
-        if (normalized !== 'ERROR' && normalized !== 'FAILED') {
-          successfulIdeas += 1;
-        }
-      }
-      renderUgcList();
-    }
-
-    if (ugcItems.some(s => s.taskId)) startUgcPolling();
-    const coinsToSpend = successfulIdeas * COIN_COST_UGC;
-    if (coinsToSpend > 0) {
-      try {
-        await spendCoins(coinsToSpend);
-      } catch (err) {
-        console.error('Gagal mengurangi koin UGC:', err);
-        alert('Koin tidak dapat dikurangi: ' + err.message);
+        let success = false;
         try {
-          await loadAccountState();
-        } catch (loadErr) {
-          console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+          const data = await callFreepik(cfg, body, 'POST');
+          if (data && data.data) {
+            item.taskId = data.data.task_id || null;
+            item.status = data.data.status || 'CREATED';
+          }
+          success = true;
+        } catch (e) {
+          console.error(e);
+          item.status = 'ERROR';
+        }
+        if (success) {
+          const normalized = String(item.status || '').toUpperCase();
+          if (normalized !== 'ERROR' && normalized !== 'FAILED') {
+            successfulIdeas += 1;
+          }
+        }
+        renderUgcList();
+      }
+
+      if (ugcItems.some(s => s.taskId)) startUgcPolling();
+      const coinsToSpend = successfulIdeas * COIN_COST_UGC;
+      if (coinsToSpend > 0) {
+        try {
+          await spendCoins(coinsToSpend);
+        } catch (err) {
+          console.error('Gagal mengurangi koin UGC:', err);
+          alert('Koin tidak dapat dikurangi: ' + err.message);
+          try {
+            await loadAccountState();
+          } catch (loadErr) {
+            console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+          }
         }
       }
+    } finally {
+      ugcGenerateBtn.disabled = accountRestricted();
     }
-    ugcGenerateBtn.disabled = accountRestricted();
   }
 
   ugcGenerateBtn.addEventListener('click', () => { ugcGenerate(); });
@@ -14476,6 +14768,14 @@ body[data-theme="light"] .profile-expiry.expired {
   async function ugcGenerateVideo(item) {
     if (!featureAvailableForCurrentUser('ugc')) {
       showFeatureLockedMessage('ugc');
+      return;
+    }
+    if (!finalStatus(item.status)) {
+      alert('Gambar masih diproses. Tunggu hingga status selesai sebelum membuat video.');
+      return;
+    }
+    if (item.videoJobId && !item.videoUrl) {
+      alert('Video sebelumnya masih diproses. Tunggu hingga selesai.');
       return;
     }
     // WAJIB: pakai URL asli dari Freepik, bukan path lokal
@@ -14486,10 +14786,16 @@ body[data-theme="light"] .profile-expiry.expired {
     }
 
     const cfg = MODEL_CONFIG.seedancePro1080;
+    const aspectRatio = sanitizeUgcAspectRatio(item.aspectRatio) || sanitizeUgcAspectRatio(ugcCurrentAspectRatio) || 'square_1_1';
+    if (!item.aspectRatio) {
+      item.aspectRatio = aspectRatio;
+      item.aspectLabel = getUgcAspectLabel(aspectRatio);
+    }
     const requestPayload = {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
       imageUrl: item.remoteUrl,
-      videoDuration: 10
+      videoDuration: 10,
+      aspectRatio
     };
 
     const body = typeof cfg.buildBody === 'function'
@@ -14497,7 +14803,7 @@ body[data-theme="light"] .profile-expiry.expired {
       : (() => {
           const fallback = {
             prompt: requestPayload.prompt,
-            aspect_ratio: 'auto'
+            aspect_ratio: requestPayload.aspectRatio || 'auto'
           };
           if (requestPayload.imageUrl) {
             fallback.image_url = requestPayload.imageUrl;
@@ -14510,8 +14816,9 @@ body[data-theme="light"] .profile-expiry.expired {
 
     const previousVideoUrl = item.videoUrl || null;
     const previousVideoJobId = item.videoJobId || null;
+    const tempJobId = 'ugc-video-' + Date.now();
     item.videoUrl = null;
-    item.videoJobId = null;
+    item.videoJobId = tempJobId;
     renderUgcList();
 
     try {
@@ -14620,6 +14927,7 @@ function openAssetPreview(url, type = 'image') {
   }
 
   assetPreviewModal.classList.remove('hidden');
+  assetPreviewModal.classList.add('visible');
   document.body.classList.add('modal-open');
 }
 
@@ -14630,6 +14938,7 @@ function closeAssetPreview() {
     video.pause();
   }
   assetPreviewBody.innerHTML = '';
+  assetPreviewModal.classList.remove('visible');
   assetPreviewModal.classList.add('hidden');
   document.body.classList.remove('modal-open');
   if (assetPreviewDownload) {
