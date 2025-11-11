@@ -14,10 +14,14 @@ if ($account) {
 }
 
 $username = '';
+$coinBalance = 0;
 if ($account) {
     $username = trim((string)($account['name'] ?? ''));
     if ($username === '') {
         $username = trim((string)($account['username'] ?? ''));
+    }
+    if (isset($account['coins'])) {
+        $coinBalance = (int)$account['coins'];
     }
 }
 if ($username === '') {
@@ -62,15 +66,21 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 <div>
                     <span class="film-badge">Gemini Flash 2.5</span>
                     <h1>Flash Photo Edit</h1>
-                    <p>Padukan 2-3 foto referensi kamu untuk membuat empat pose sinematik ala Filmmaker.</p>
+                    <p>Padukan 2-3 foto referensi kamu untuk membuat empat pose sinematik ala Filmmaker dengan kualitas asli dari Flash 2.5.</p>
                 </div>
                 <div class="photo-film-meta">
-                    <div class="user-chip" aria-label="Akun aktif">
-                        <span class="avatar-circle" aria-hidden="true"><?php echo htmlspecialchars(strtoupper(substr($username, 0, 2))); ?></span>
-                        <span class="user-meta">
-                            <span class="user-label">Masuk sebagai</span>
-                            <span class="user-name"><?php echo htmlspecialchars($username, ENT_QUOTES); ?></span>
-                        </span>
+                    <div class="user-stack">
+                        <div class="credit-pill" aria-live="polite">
+                            <span class="credit-label">Saldo Kredit</span>
+                            <span class="credit-value" id="creditBalance" data-balance="<?php echo (int)$coinBalance; ?>"><?php echo number_format((int)$coinBalance, 0, ',', '.'); ?></span>
+                        </div>
+                        <div class="user-chip" aria-label="Akun aktif">
+                            <span class="avatar-circle" aria-hidden="true"><?php echo htmlspecialchars(strtoupper(substr($username, 0, 2))); ?></span>
+                            <span class="user-meta">
+                                <span class="user-label">Masuk sebagai</span>
+                                <span class="user-name"><?php echo htmlspecialchars($username, ENT_QUOTES); ?></span>
+                            </span>
+                        </div>
                     </div>
                     <a href="index.php" class="btn-secondary">← Kembali ke Dashboard</a>
                 </div>
@@ -82,7 +92,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 <div class="header">
                     <div>
                         <div class="title" id="resultTitle">Hasil Generate</div>
-                        <div class="subtitle">Empat pose akan tampil di sini dengan gaya yang konsisten seperti panel Filmmaker.</div>
+                        <div class="subtitle">Empat pose akan muncul di sini, lengkap dengan status progres seperti panel Filmmaker.</div>
                     </div>
                 </div>
                 <div class="film-scenes-board">
@@ -90,7 +100,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                         <div>
                             <div class="film-empty-icon">✨</div>
                             <div class="subtitle">Belum ada hasil</div>
-                            <div class="muted" style="font-size:11px">Unggah 2-3 foto referensi dan jalankan Flash 2.5 Mode 3.</div>
+                            <div class="muted" style="font-size:11px">Unggah 2-3 foto referensi dan klik "Generate" untuk memulai.</div>
                         </div>
                     </div>
                     <div id="resultGrid" class="film-scenes-container"></div>
@@ -101,17 +111,15 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 <div class="header" style="margin-bottom:8px">
                     <div>
                         <div class="title" id="formTitle" style="font-size:16px">Setelan Photo Edit</div>
-                        <div class="subtitle">Sama seperti Filmmaker, pilih tema dan atur prompt sebelum generate.</div>
+                        <div class="subtitle">Pilih treatment gaya, atur prompt, lalu kirim 4 permintaan Gemini Flash 2.5 Mode 3.</div>
                     </div>
-                    <div id="resultGrid" class="film-scenes-container"></div>
                 </div>
-            </section>
 
                 <form id="editForm" class="film-settings-section" novalidate>
                     <div>
                         <div class="small-label">Model yang digunakan</div>
                         <div class="model-chip" role="text">Gemini Flash 2.5 · Mode 3 Multi-Reference</div>
-                        <p class="muted">Model dikunci ke Flash 2.5 agar blending referensi konsisten.</p>
+                        <p class="muted">Model dikunci ke Flash 2.5 untuk menjaga konsistensi karakter dari foto referensi.</p>
                     </div>
 
                     <div>
@@ -137,7 +145,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                             <input id="referenceInput" type="file" accept="image/*" multiple hidden>
                             <div class="film-drop-inner">
                                 <div style="margin-bottom:4px;">Tarik &amp; lepas atau <button type="button" class="link" id="browseButton">pilih dari perangkat</button></div>
-                                <span>Gunakan 2–3 foto (JPG, PNG, atau WEBP) untuk digabungkan.</span>
+                                <span>Gunakan 2–3 foto (JPG, PNG, atau WEBP) untuk menjaga konsistensi wajah.</span>
                             </div>
                         </div>
                         <div id="referencePreview" class="preview-grid"></div>
@@ -152,35 +160,35 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         </main>
     </div>
 
-    <template id="skeletonTemplate">
-        <article class="film-scene-card loading">
-            <div class="film-scene-thumb shimmer"></div>
-            <div class="film-scene-meta">
-                <div class="line w-60 shimmer"></div>
-                <div class="line w-40 shimmer"></div>
-            </div>
-        </article>
-    </template>
-
-    <template id="resultTemplate">
-        <article class="film-scene-card">
-            <div class="result-thumb-wrapper">
-                <span class="pose-badge"></span>
-                <img class="result-thumb" alt="Hasil generasi Flash 2.5">
-            </div>
-            <div class="result-meta">
-                <span class="result-style"></span>
-                <p class="result-prompt"></p>
-                <p class="result-desc"></p>
-                <div class="result-actions">
-                    <button type="button" class="btn-ghost result-download">Download</button>
-                </div>
-            </div>
-        </article>
-    </template>
-
     <script>
-    (function() {
+    (function () {
+        'use strict';
+
+        const API_ENDPOINT = 'index.php?api=freepik';
+        const CREATE_PATH = '/v1/ai/gemini-2-5-flash-image-preview';
+        const STATUS_PATH = (taskId) => `/v1/ai/gemini-2-5-flash-image-preview/${taskId}`;
+        const POLL_INTERVAL = 8000;
+        const MIN_FILES = 2;
+        const MAX_FILES = 3;
+        const VIDEO_CREATE_PATH = '/v1/ai/image-to-video/seedance-pro-1080p';
+        const VIDEO_STATUS_PATH = (taskId) => `/v1/ai/image-to-video/seedance-pro-1080p/${taskId}`;
+        const VIDEO_POLL_INTERVAL = 9000;
+        const VIDEO_DURATION_SECONDS = 5;
+        const VIDEO_RATIO_DEFAULT = 'landscape_16_9';
+        const VIDEO_RATIO_MAP = {
+            portrait_3_4: 'portrait_9_16',
+            portrait_4_5: 'portrait_9_16',
+            portrait_9_16: 'portrait_9_16',
+            portrait: 'portrait_9_16',
+            landscape_3_2: 'landscape_16_9',
+            landscape_16_9: 'landscape_16_9',
+            landscape: 'landscape_16_9',
+            square_1_1: 'square_1_1',
+            square: 'square_1_1'
+        };
+
+        const numberFormatter = new Intl.NumberFormat('id-ID');
+
         const themeSelect = document.getElementById('themeSelect');
         const themeHint = document.getElementById('themeHint');
         const promptStyleInput = document.getElementById('promptStyle');
@@ -189,75 +197,33 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         const formStatus = document.getElementById('formStatus');
         const generateButton = document.getElementById('generateButton');
         const resultGrid = document.getElementById('resultGrid');
-        const skeletonTemplate = document.getElementById('skeletonTemplate');
-        const resultTemplate = document.getElementById('resultTemplate');
         const emptyState = document.getElementById('emptyState');
         const dropzone = document.getElementById('dropzone');
         const referenceInput = document.getElementById('referenceInput');
         const browseButton = document.getElementById('browseButton');
         const previewGrid = document.getElementById('referencePreview');
-
-        const MIN_FILES = 2;
-        const MAX_FILES = 3;
-        let selectedFiles = [];
-        let promptDirty = false;
+        const creditBalanceEl = document.getElementById('creditBalance');
 
         const themeOptions = {
             romantic: {
                 label: 'Romantic Fusion',
                 description: 'Palet rose gold dengan highlight lembut ala golden hour dan kilau editorial.',
                 template: 'romantic editorial portrait blend, warm golden hour glow, pearlescent highlights, soft focus lens flare, cinematic depth, cohesive styling',
-                palette: {
-                    background: '#120a14',
-                    overlayColor: '#f8c4d8',
-                    overlayOpacity: 0.14,
-                    accent: '#fb7185',
-                    highlight: '#fde68a',
-                    filter: 'brightness(1.08) contrast(1.12) saturate(1.2)'
-                },
-                baseAlpha: 0.88
             },
             urban: {
                 label: 'Neo Urban Story',
                 description: 'Mood metropolis malam dengan kontras matte, refleksi neon cyan-magenta, dan nuansa futuristik.',
                 template: 'neo urban fashion narrative, cinematic night city, teal and magenta glow, reflective surfaces, high contrast matte finish, dramatic shadows',
-                palette: {
-                    background: '#060b12',
-                    overlayColor: '#1f2937',
-                    overlayOpacity: 0.18,
-                    accent: '#38bdf8',
-                    highlight: '#a855f7',
-                    filter: 'brightness(1.05) contrast(1.18) saturate(1.06)'
-                },
-                baseAlpha: 0.9
             },
             tropical: {
                 label: 'Tropical Journey',
                 description: 'Kombinasi warna tropis vibrant dengan kilau matahari dan ambience liburan energik.',
                 template: 'tropical travel editorial, vivid aqua and lime palette, sun-kissed skin, breezy motion, cinematic resort backdrops, lush foliage details',
-                palette: {
-                    background: '#041418',
-                    overlayColor: '#34d399',
-                    overlayOpacity: 0.12,
-                    accent: '#34d399',
-                    highlight: '#fbbf24',
-                    filter: 'brightness(1.12) contrast(1.08) saturate(1.24)'
-                },
-                baseAlpha: 0.9
             },
             heritage: {
                 label: 'Heritage Elegance',
                 description: 'Sentuhan tradisional hangat dengan tekstur kaya dan detail busana elegan.',
                 template: 'heritage ceremonial portrait, warm amber lighting, intricate textile details, soft cinematic haze, dignified poses, timeless storytelling',
-                palette: {
-                    background: '#1a1209',
-                    overlayColor: '#f97316',
-                    overlayOpacity: 0.1,
-                    accent: '#f59e0b',
-                    highlight: '#fcd34d',
-                    filter: 'brightness(1.06) contrast(1.08) saturate(1.12)'
-                },
-                baseAlpha: 0.92
             }
         };
 
@@ -266,399 +232,323 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 key: 'closeUpGlow',
                 badge: 'Pose 1',
                 title: 'Pose 1 · Siluet Harmonis',
-                fit: 0.9,
-                filter: 'brightness(1.08) contrast(1.12) saturate(1.12)',
-                overlay: { color: 'highlight', opacity: 0.12, blend: 'soft-light' },
-                gradient: {
-                    angle: -25,
-                    stops: [
-                        { offset: 0, color: 'prompt', opacity: 0.32 },
-                        { offset: 1, color: 'background', opacity: 0 }
-                    ]
-                },
-                accent: { type: 'ring', radius: 210, strokeWidth: 36, color: 'accent', opacity: 0.26, blend: 'screen' },
-                noise: { opacity: 0.05, size: 120 },
-                placements: {
-                    2: [
-                        { x: -70, y: -40, scale: 0.95, rotate: -6 },
-                        { x: 80, y: 48, scale: 0.95, rotate: 4 }
-                    ],
-                    3: [
-                        { x: -80, y: -42, scale: 0.94, rotate: -6 },
-                        { x: 88, y: 50, scale: 0.96, rotate: 4 },
-                        { x: 8, y: 20, scale: 0.88, rotate: 1 }
-                    ],
-                    default: [
-                        { x: -72, y: -40, scale: 0.94, rotate: -6 },
-                        { x: 84, y: 46, scale: 0.95, rotate: 4 },
-                        { x: 10, y: 22, scale: 0.88, rotate: 1 }
-                    ]
-                },
+                shot: 'Close-up portrait angle dengan bahu sedikit miring, tatapan lembut ke kamera, tangan menyentuh wajah secara elegan.',
+                aspectRatio: 'portrait_3_4',
                 description(theme, prompt) {
                     const base = 'Close-up harmonis menonjolkan ekspresi utama dengan highlight lembut.';
-                    return prompt ? `${base} Tema "${prompt}" dipadukan ke tekstur wajah dan pencahayaan.` : base;
+                    return prompt ? `${base} Tema "${prompt}" ditanamkan pada warna dan pencahayaan wajah.` : `${base} ${theme?.description || ''}`.trim();
                 }
             },
             {
                 key: 'dynamicMotion',
                 badge: 'Pose 2',
                 title: 'Pose 2 · Dynamic Motion',
-                fit: 0.94,
-                filter: 'brightness(1.04) contrast(1.14) saturate(1.08)',
-                overlay: { color: 'accent', opacity: 0.16, blend: 'lighten' },
-                gradient: {
-                    angle: 32,
-                    stops: [
-                        { offset: 0, color: 'accent', opacity: 0.2 },
-                        { offset: 0.65, color: 'prompt', opacity: 0.26 },
-                        { offset: 1, color: 'background', opacity: 0 }
-                    ]
-                },
-                accent: { type: 'bars', count: 3, length: 860, width: 36, spacing: 42, angle: -18, color: 'highlight', opacity:0.18, blend: 'screen' },
-                noise: { opacity: 0.06, size: 110, blend: 'soft-light' },
-                placements: {
-                    2: [
-                        { x: -92, y: 26, scale: 0.9, rotate: -5 },
-                        { x: 92, y: -18, scale: 1.02, rotate: 5 }
-                    ],
-                    3: [
-                        { x: -118, y: 12, scale: 0.88, rotate: -6 },
-                        { x: 48, y: -42, scale: 1.02, rotate: 4 },
-                        { x: 130, y: 18, scale: 0.96, rotate: 7 }
-                    ],
-                    default: [
-                        { x: -102, y: 18, scale: 0.88, rotate: -5 },
-                        { x: 64, y: -36, scale: 1.02, rotate: 4 },
-                        { x: 136, y: 24, scale: 0.96, rotate: 6 }
-                    ]
-                },
+                shot: 'Full body fashion stride dengan motion blur halus, kain bergerak dramatis, ekspresi percaya diri ke samping.',
+                aspectRatio: 'portrait_3_4',
                 description(theme, prompt) {
                     const base = 'Gerakan dramatis dengan komposisi diagonal dan aksen cahaya dinamis.';
-                    return prompt ? `${base} Tema "${prompt}" dimasukkan pada wardrobe dan motion blur.` : base;
+                    return prompt ? `${base} Tema "${prompt}" diaplikasikan pada wardrobe dan motion blur.` : `${base} ${theme?.description || ''}`.trim();
                 }
             },
             {
                 key: 'wideStory',
                 badge: 'Pose 3',
                 title: 'Pose 3 · Wide Storytelling',
-                fit: 1,
-                filter: 'brightness(1.02) contrast(1.08) saturate(1.1)',
-                overlay: { color: 'background', opacity: 0.18, blend: 'multiply' },
-                gradient: {
-                    angle: -15,
-                    stops: [
-                        { offset: 0, color: 'background', opacity: 0.22 },
-                        { offset: 0.5, color: 'accent', opacity: 0.24 },
-                        { offset: 1, color: 'prompt', opacity: 0 }
-                    ]
-                },
-                accent: { type: 'grid', size: 160, thickness: 1.6, opacity: 0.16, blend: 'soft-light' },
-                noise: { opacity: 0.05, size: 140, blend: 'overlay' },
-                placements: {
-                    2: [
-                        { x: -52, y: -8, scale: 0.92, rotate: -3 },
-                        { x: 66, y: 0, scale: 0.98, rotate: 3 }
-                    ],
-                    3: [
-                        { x: -66, y: -6, scale: 0.92, rotate: -4 },
-                        { x: 80, y: -2, scale: 0.98, rotate: 3 },
-                        { x: 4, y: -4, scale: 0.86, rotate: 0 }
-                    ],
-                    default: [
-                        { x: -66, y: -6, scale: 0.92, rotate: -4 },
-                        { x: 80, y: -2, scale: 0.98, rotate: 3 },
-                        { x: 4, y: -4, scale: 0.86, rotate: 0 }
-                    ]
-                },
+                shot: 'Wide storytelling frame yang memperlihatkan karakter berinteraksi dengan lingkungan tematik.',
+                aspectRatio: 'landscape_3_2',
                 description(theme, prompt) {
-                    const base = 'Storytelling shot yang menonjolkan kostum penuh dan suasana latar.';
-                    return prompt ? `${base} Tema "${prompt}" diterapkan pada palet warna environment.` : base;
+                    const base = 'Storytelling shot menonjolkan kostum penuh dan suasana latar.';
+                    return prompt ? `${base} Tema "${prompt}" diterapkan pada warna environment.` : `${base} ${theme?.description || ''}`.trim();
                 }
             },
             {
                 key: 'detailCinematic',
                 badge: 'Pose 4',
                 title: 'Pose 4 · Cinematic Detail',
-                fit: 0.92,
-                filter: 'brightness(1.06) contrast(1.16) saturate(1.14)',
-                overlay: { color: 'highlight', opacity: 0.14, blend: 'screen' },
-                gradient: {
-                    angle: 18,
-                    stops: [
-                        { offset: 0, color: 'highlight', opacity: 0.18 },
-                        { offset: 0.45, color: 'accent', opacity: 0.2 },
-                        { offset: 1, color: 'background', opacity: 0 }
-                    ]
-                },
-                accent: { type: 'orb', radius: 140, opacity: 0.26, blend: 'screen' },
-                noise: { opacity: 0.06, size: 120, blend: 'overlay' },
-                placements: {
-                    2: [
-                        { x: -70, y: 28, scale: 0.94, rotate: -4 },
-                        { x: 78, y: -32, scale: 0.98, rotate: 4 }
-                    ],
-                    3: [
-                        { x: -92, y: 30, scale: 0.92, rotate: -5 },
-                        { x: 36, y: -46, scale: 1, rotate: 5 },
-                        { x: 120, y: 22, scale: 0.94, rotate: 2 }
-                    ],
-                    default: [
-                        { x: -82, y: 24, scale: 0.92, rotate: -5 },
-                        { x: 32, y: -44, scale: 1, rotate: 5 },
-                        { x: 124, y: 22, scale: 0.94, rotate: 2 }
-                    ]
-                },
+                shot: 'Medium close-up fokus pada aksesori dan tekstur bahan dengan pencahayaan dramatis.',
+                aspectRatio: 'square_1_1',
                 description(theme, prompt) {
                     const base = 'Detail shot memperlihatkan aksesori dan tekstur bahan dengan dramatis.';
-                    return prompt ? `${base} Tema "${prompt}" difokuskan pada highlight detail close-up.` : base;
+                    return prompt ? `${base} Tema "${prompt}" ditekankan pada highlight detail.` : `${base} ${theme?.description || ''}`.trim();
                 }
             }
         ];
 
-        function isImageFile(file) {
-            if (!file) return false;
-            if (file.type && file.type.startsWith('image/')) {
+        let creditBalance = creditBalanceEl ? Number(creditBalanceEl.dataset.balance || 0) : 0;
+        if (!Number.isFinite(creditBalance)) {
+            creditBalance = 0;
+        }
+
+        const COIN_COST_PER_SUCCESS = 1;
+        const REQUIRED_COINS = Math.max(1, poseVariants.length * COIN_COST_PER_SUCCESS);
+        const chargedVariants = new Set();
+        let coinChargeInFlight = false;
+
+        function createVideoState() {
+            return {
+                taskId: null,
+                status: null,
+                videoUrl: null,
+                error: null,
+                prompt: '',
+                timerId: null
+            };
+        }
+
+        function ensureVideoState(task) {
+            if (!task) return createVideoState();
+            if (!task.videoState) {
+                task.videoState = createVideoState();
+            }
+            return task.videoState;
+        }
+
+        function resolveVideoAspect(task) {
+            if (!task || !task.variant) {
+                return VIDEO_RATIO_DEFAULT;
+            }
+            const key = String(task.variant.aspectRatio || '').toLowerCase();
+            return VIDEO_RATIO_MAP[key] || VIDEO_RATIO_DEFAULT;
+        }
+
+        function updateCreditDisplay() {
+            if (!creditBalanceEl) {
+                return;
+            }
+            const safeValue = Math.max(0, Math.round(Number.isFinite(creditBalance) ? creditBalance : 0));
+            creditBalanceEl.dataset.balance = String(safeValue);
+            creditBalanceEl.textContent = numberFormatter.format(safeValue);
+        }
+
+        async function refreshAccountCoins() {
+            if (!creditBalanceEl) {
+                return;
+            }
+            try {
+                const res = await fetch('index.php?api=account', { credentials: 'same-origin' });
+                if (!res.ok) {
+                    return;
+                }
+                const payload = await res.json();
+                if (!payload || !payload.ok || !payload.data) {
+                    return;
+                }
+                const coins = Number(payload.data.coins);
+                if (Number.isFinite(coins)) {
+                    creditBalance = coins;
+                    updateCreditDisplay();
+                }
+            } catch (error) {
+                console.warn('Tidak bisa memuat saldo koin:', error);
+            }
+        }
+
+        function ensureCoins(amount) {
+            if (!Number.isFinite(amount) || amount <= 0) {
                 return true;
             }
-            const name = (file.name || '').toLowerCase();
-            return /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(name);
+            return Number.isFinite(creditBalance) && creditBalance >= amount;
         }
 
-        function fileToDataUrl(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const result = typeof reader.result === 'string' ? reader.result : '';
-                    resolve({
-                        name: file?.name || 'reference',
-                        dataUrl: result
-                    });
-                };
-                reader.onerror = () => reject(new Error('Gagal membaca file referensi.'));
-                try {
-                    reader.readAsDataURL(file);
-                } catch (error) {
-                    reject(new Error('Gagal memproses file referensi.'));
+        async function spendCoins(amount) {
+            if (!amount || amount <= 0) {
+                return;
+            }
+
+            const res = await fetch('index.php?api=account-coins', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ amount })
+            });
+
+            let payload;
+            try {
+                payload = await res.json();
+            } catch (error) {
+                throw new Error('Respons saldo tidak valid.');
+            }
+
+            if (!res.ok || !payload || !payload.ok) {
+                const message = payload?.error
+                    ? (typeof payload.error === 'string' ? payload.error : JSON.stringify(payload.error))
+                    : `HTTP ${res.status}`;
+                throw new Error(message);
+            }
+
+            if (payload.data && typeof payload.data.coins !== 'undefined') {
+                const next = Number(payload.data.coins);
+                if (Number.isFinite(next)) {
+                    creditBalance = next;
+                } else {
+                    creditBalance = Math.max(0, creditBalance - amount);
                 }
-            });
+            } else {
+                creditBalance = Math.max(0, creditBalance - amount);
+            }
+
+            updateCreditDisplay();
         }
 
-        function resolvePlacement(variant, total, index) {
-            const placements = variant?.placements || {};
-            const specific = placements[total];
-            if (Array.isArray(specific) && specific.length) {
-                return specific[Math.min(index, specific.length - 1)] || specific[0];
-            }
-            const fallback = placements.default;
-            if (Array.isArray(fallback) && fallback.length) {
-                return fallback[Math.min(index, fallback.length - 1)] || fallback[0];
-            }
-            resultGrid.appendChild(fragment);
-        }
-
-        function loadImageSource(source) {
-            return new Promise((resolve, reject) => {
-                const image = new Image();
-                image.decoding = 'async';
-                image.onload = () => resolve(image);
-                image.onerror = () => reject(new Error('Gagal memuat gambar referensi.'));
-                image.src = source;
-            });
-        }
-
-        function resolveOverlayColor(token, palette, promptColor) {
-            if (!token) return promptColor;
-            if (token === 'prompt') return promptColor;
-            if (palette && palette[token]) {
-                return palette[token];
-            }
-            return token;
-        }
-
-        async function composeVariantImage(themeKey, theme, variant, sources, promptText) {
-            if (!variant) {
-                return '';
+        async function chargeCoinsForCompletedTasks() {
+            if (!tasks.length || coinChargeInFlight) {
+                return;
             }
 
-            const promptColor = extractPromptAccent(promptText || theme?.label || themeKey);
-            const images = await Promise.all(sources.map((source) => loadImageSource(source.dataUrl)));
-            if (!images.length) {
-                return '';
-            }
-
-            const width = variant.width || 720;
-            const height = variant.height || 960;
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                throw new Error('Browser tidak mendukung kanvas untuk pemrosesan gambar.');
-            }
-
-            ctx.fillStyle = theme?.palette?.background || '#0f172a';
-            ctx.fillRect(0, 0, width, height);
-
-            const total = images.length;
-            const baseFit = typeof variant.fit === 'number' ? variant.fit : 0.92;
-
-            images.forEach((image, index) => {
-                const placement = resolvePlacement(variant, total, index) || {};
-                const scaleModifier = placement.scale != null ? placement.scale : 1;
-                const rotation = placement.rotate || 0;
-                const translateX = placement.x || 0;
-                const translateY = placement.y || 0;
-                const blend = placement.blend || variant.blend || 'source-over';
-                const filter = placement.filter || variant.filter || theme?.palette?.filter || 'none';
-                const alpha = placement.alpha != null
-                    ? placement.alpha
-                    : (variant.alpha != null ? variant.alpha : (theme?.baseAlpha != null ? theme.baseAlpha : 0.9));
-
-                const fitScale = Math.min(
-                    (width * baseFit) / Math.max(image.naturalWidth, 1),
-                    (height * baseFit) / Math.max(image.naturalHeight, 1)
-                ) * scaleModifier;
-
-                const drawWidth = Math.max(image.naturalWidth * fitScale, 1);
-                const drawHeight = Math.max(image.naturalHeight * fitScale, 1);
-
-                ctx.save();
-                ctx.translate(width / 2 + translateX, height / 2 + translateY);
-                if (rotation) {
-                    ctx.rotate((rotation * Math.PI) / 180);
-                }
-                ctx.filter = filter;
-                ctx.globalAlpha = alpha;
-                ctx.globalCompositeOperation = blend;
-                ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-                ctx.restore();
+            const chargeable = tasks.filter((task) => {
+                if (!task) return false;
+                if (typeof task.index !== 'number') return false;
+                if (chargedVariants.has(task.index)) return false;
+                if (normalizeStatus(task.status) !== 'COMPLETED') return false;
+                return Boolean(task.imageUrl);
             });
 
-            previewGrid.appendChild(fragment);
-            previewGrid.style.display = 'grid';
-            dropzone.classList.add('has-files');
-        }
-
-            if (theme?.palette?.overlayColor && theme.palette.overlayOpacity) {
-                ctx.save();
-                ctx.globalCompositeOperation = 'soft-light';
-                ctx.fillStyle = convertHexToRgba(theme.palette.overlayColor, theme.palette.overlayOpacity);
-                ctx.fillRect(0, 0, width, height);
-                ctx.restore();
+            if (!chargeable.length) {
+                return;
             }
 
-            if (variant.overlay) {
-                const overlayColor = resolveOverlayColor(variant.overlay.color, theme?.palette, promptColor);
-                ctx.save();
-                ctx.globalCompositeOperation = variant.overlay.blend || 'soft-light';
-                ctx.fillStyle = convertHexToRgba(overlayColor, variant.overlay.opacity ?? 0.14);
-                ctx.fillRect(0, 0, width, height);
-                ctx.restore();
-            }
-
-            if (variant.gradient) {
-                drawGradientOverlay(ctx, variant.gradient, theme?.palette || {}, promptColor);
-            }
-
-            if (variant.accent) {
-                drawAccent(ctx, variant.accent, theme?.palette || {}, promptColor);
-            }
-
-            if (variant.noise) {
-                drawNoise(ctx, variant.noise);
-            }
-        }
-
-        function createOverlayCanvas(width, height) {
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            return canvas;
-        }
-
-        function drawGradientOverlay(ctx, config, palette, promptColor) {
-            if (!config) return;
-            const angle = (config.angle || 0) * (Math.PI / 180);
-            const radius = Math.sqrt(ctx.canvas.width ** 2 + ctx.canvas.height ** 2) / 2;
-            const centerX = ctx.canvas.width / 2;
-            const centerY = ctx.canvas.height / 2;
-            const startX = centerX + Math.cos(angle) * radius;
-            const startY = centerY + Math.sin(angle) * radius;
-            const endX = centerX - Math.cos(angle) * radius;
-            const endY = centerY - Math.sin(angle) * radius;
-            const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
-
-            config.stops.forEach((stop) => {
-                const colorKey = stop.color === 'prompt' ? promptColor : palette[stop.color] || palette.accent;
-                gradient.addColorStop(stop.offset, convertHexToRgba(colorKey, stop.opacity));
-            });
-
-            return canvas.toDataURL('image/png');
-        }
-
-        async function generateStyledImages(themeKey, promptText, files) {
-            if (!files.length) {
-                return [];
-            }
-
-            const theme = themeOptions[themeKey] || themeOptions.romantic;
-            const sources = await Promise.all(files.map((file) => fileToDataUrl(file)));
-            const promptLabel = (promptText || '').trim();
-
-            const results = [];
-            for (let index = 0; index < poseVariants.length; index += 1) {
-                const variant = poseVariants[index];
-                const imageUrl = await composeVariantImage(themeKey, theme, variant, sources, promptLabel);
-                if (!imageUrl) {
-                    throw new Error('Gagal membuat komposisi gambar dari referensi yang dipilih.');
-                }
-                results.push({
-                    imageUrl,
-                    downloadName: `${variant.key || 'result'}-${Date.now()}-${index + 1}.png`
+            const total = chargeable.length * COIN_COST_PER_SUCCESS;
+            coinChargeInFlight = true;
+            try {
+                await spendCoins(total);
+                chargeable.forEach((task) => {
+                    chargedVariants.add(task.index);
                 });
+            } catch (error) {
+                console.error('Gagal mengurangi koin:', error);
+                updateFormStatus(`Saldo tidak dapat dikurangi: ${error.message || error}`, 'error');
+            } finally {
+                coinChargeInFlight = false;
             }
-
-            return results;
         }
 
-        const gradientCache = new Map();
-
-        function createSvgElement(tag, attrs = {}) {
-            const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-            Object.entries(attrs).forEach(([key, value]) => {
-                if (value != null) {
-                    el.setAttribute(key, String(value));
-                }
-            });
-            return el;
+        function buildVideoPrompt(task) {
+            const theme = themeOptions[task.themeKey] || themeOptions.romantic;
+            const motion = (task.variant && task.variant.shot) ? task.variant.shot : 'Cinematic portrait motion with expressive movement.';
+            const custom = (task.customPrompt || '').trim();
+            const segments = [
+                motion,
+                `tema ${theme.label}`,
+                theme.description,
+                custom ? `detail tambahan: ${custom}` : '',
+                'smooth cinematic camera move, vivid lighting, 1080p high fidelity, natural motion'
+            ].filter(Boolean);
+            const promptText = segments.join(' | ').trim();
+            return promptText || 'cinematic portrait motion with expressive movement';
         }
 
-        function normalizeFileList(fileList) {
-            const files = [];
-            const seen = new Set();
-            for (let i = 0; i < fileList.length; i++) {
-                const file = fileList[i];
-                if (!file || !file.name) continue;
-                const key = `${file.name}-${file.size}-${file.lastModified}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                files.push(file);
+        function triggerDownload(url, filename) {
+            if (!url) return;
+            const link = document.createElement('a');
+            link.href = url;
+            if (filename) {
+                link.download = filename;
             }
-            return files;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        let selectedFiles = [];
+        let promptDirty = false;
+        let tasks = [];
+        let pollTimer = null;
+
+        function normalizeStatus(status) {
+            if (!status) return 'PENDING';
+            return String(status).toUpperCase();
+        }
+
+        function statusLabel(status) {
+            const value = normalizeStatus(status);
+            switch (value) {
+                case 'COMPLETED':
+                    return 'SELESAI';
+                case 'FAILED':
+                case 'ERROR':
+                    return 'GAGAL';
+                case 'PROCESSING':
+                case 'RUNNING':
+                case 'IN_PROGRESS':
+                    return 'PROSES';
+                case 'CREATED':
+                case 'PENDING':
+                case 'IN_QUEUE':
+                    return 'MENUNGGU';
+                default:
+                    return 'MENUNGGU';
+            }
+        }
+
+        function statusClass(status) {
+            const value = normalizeStatus(status);
+            if (value === 'COMPLETED') {
+                return 'status-chip status-chip--success';
+            }
+            if (value === 'FAILED' || value === 'ERROR') {
+                return 'status-chip status-chip--error';
+            }
+            if (value === 'PROCESSING' || value === 'RUNNING' || value === 'IN_PROGRESS') {
+                return 'status-chip status-chip--progress';
+            }
+            return 'status-chip status-chip--pending';
+        }
+
+        function finalStatus(status) {
+            const value = normalizeStatus(status);
+            return value === 'COMPLETED' || value === 'FAILED' || value === 'ERROR';
+        }
+
+        function stopVideoPollingForTask(task) {
+            if (!task || !task.videoState || !task.videoState.timerId) {
+                return;
+            }
+            clearInterval(task.videoState.timerId);
+            task.videoState.timerId = null;
+        }
+
+        function stopAllVideoPolling() {
+            tasks.forEach((task) => stopVideoPollingForTask(task));
+        }
+
+        function updateFormStatus(message, type = 'info') {
+            if (!formStatus) return;
+            formStatus.textContent = message || '';
+            formStatus.dataset.type = type;
+        }
+
+        function setLoadingState(isLoading) {
+            if (!generateButton) return;
+            if (isLoading) {
+                generateButton.classList.add('loading');
+                generateButton.disabled = true;
+            } else {
+                generateButton.classList.remove('loading');
+                generateButton.disabled = false;
+            }
+        }
+
+        function showEmptyState(show) {
+            if (!emptyState) return;
+            emptyState.style.display = show ? '' : 'none';
         }
 
         function renderThemeHint(themeKey) {
             const option = themeOptions[themeKey];
-            if (!option) {
+            if (option) {
+                themeHint.textContent = option.description;
+            } else {
                 themeHint.textContent = '';
-                return;
             }
-            themeHint.textContent = option.description;
         }
 
         function ensurePromptTemplate(themeKey, force = false) {
             const option = themeOptions[themeKey];
-            if (!option) return;
+            if (!option) {
+                return;
+            }
             if (force || !promptDirty || !promptStyleInput.value.trim()) {
                 promptStyleInput.value = option.template;
                 promptDirty = false;
@@ -669,42 +559,27 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             promptDirty = true;
         }
 
-        function clearResults() {
-            resultGrid.innerHTML = '';
-        }
-
-        function setLoadingState(isLoading) {
-            if (isLoading) {
-                generateButton.classList.add('loading');
-                generateButton.disabled = true;
-            } else {
-                generateButton.classList.remove('loading');
-                generateButton.disabled = false;
+        function isImageFile(file) {
+            if (!file) return false;
+            if (file.type && file.type.startsWith('image/')) {
+                return true;
             }
+            const name = (file.name || '').toLowerCase();
+            return /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(name);
         }
 
-        function updateFormStatus(message, type = 'info') {
-            if (!formStatus) return;
-            formStatus.textContent = message || '';
-            formStatus.dataset.type = type;
-        }
-
-        function showEmptyState(show) {
-            if (!emptyState) return;
-            emptyState.style.display = show ? '' : 'none';
-        }
-
-        function showSkeletons(count = 4) {
-            const fragment = document.createDocumentFragment();
-            for (let i = 0; i < count; i++) {
-                const skeleton = skeletonTemplate.content.cloneNode(true);
-                fragment.appendChild(skeleton);
+        function normalizeFileList(fileList) {
+            const files = [];
+            const seen = new Set();
+            for (let i = 0; i < fileList.length; i += 1) {
+                const file = fileList[i];
+                if (!file || !file.name) continue;
+                const key = `${file.name}-${file.size}-${file.lastModified}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                files.push(file);
             }
-            resultGrid.appendChild(fragment);
-        }
-
-        function clearSkeletons() {
-            resultGrid.querySelectorAll('.loading').forEach((node) => node.remove());
+            return files;
         }
 
         function renderPreview() {
@@ -723,6 +598,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 img.alt = `Referensi ${index + 1}`;
                 img.src = URL.createObjectURL(file);
                 img.onload = () => URL.revokeObjectURL(img.src);
+
                 const removeButton = document.createElement('button');
                 removeButton.type = 'button';
                 removeButton.className = 'preview-remove';
@@ -735,9 +611,10 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     } else if (selectedFiles.length < MIN_FILES) {
                         updateFormStatus(`Tambahkan minimal ${MIN_FILES} foto referensi.`, 'info');
                     } else {
-                        updateFormStatus('');
+                        updateFormStatus('', 'info');
                     }
                 });
+
                 item.appendChild(img);
                 item.appendChild(removeButton);
                 fragment.appendChild(item);
@@ -748,377 +625,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             dropzone.classList.add('has-files');
         }
 
-        function applyThemeToCard(card, theme, promptText) {
-            if (!theme || !card) return;
-
-            const palette = theme.palette;
-            const thumbWrapper = card.querySelector('.result-thumb-wrapper');
-            if (thumbWrapper) {
-                thumbWrapper.style.setProperty('--overlay-color', palette.overlayColor);
-                thumbWrapper.style.setProperty('--overlay-opacity', theme.baseAlpha);
-                thumbWrapper.style.setProperty('--overlay-filter', palette.filter);
-            }
-
-            const badge = card.querySelector('.pose-badge');
-            if (badge) {
-                badge.style.background = palette.accent;
-            }
-
-            const styleLabel = card.querySelector('.result-style');
-            if (styleLabel) {
-                styleLabel.textContent = theme.label;
-            }
-
-            const desc = card.querySelector('.result-desc');
-            if (desc) {
-                desc.textContent = typeof theme.description === 'function'
-                    ? theme.description(promptText)
-                    : '';
-            }
-        }
-
-        function createOverlayCanvas(width, height) {
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            return canvas;
-        }
-
-        function drawGradientOverlay(ctx, config, palette, promptColor) {
-            if (!config) return;
-            const angle = (config.angle || 0) * (Math.PI / 180);
-            const radius = Math.sqrt(ctx.canvas.width ** 2 + ctx.canvas.height ** 2) / 2;
-            const centerX = ctx.canvas.width / 2;
-            const centerY = ctx.canvas.height / 2;
-            const startX = centerX + Math.cos(angle) * radius;
-            const startY = centerY + Math.sin(angle) * radius;
-            const endX = centerX - Math.cos(angle) * radius;
-            const endY = centerY - Math.sin(angle) * radius;
-            const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
-
-            config.stops.forEach((stop) => {
-                const colorKey = stop.color === 'prompt' ? promptColor : palette[stop.color] || palette.accent;
-                gradient.addColorStop(stop.offset, convertHexToRgba(colorKey, stop.opacity));
-            });
-
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-            ctx.globalCompositeOperation = 'source-over';
-        }
-
-        function drawAccent(ctx, accent, palette, promptColor) {
-            if (!accent) return;
-            ctx.save();
-            ctx.globalCompositeOperation = accent.blend || 'lighter';
-            const color = palette[accent.color] || promptColor || palette.accent;
-
-            switch (accent.type) {
-                case 'ring':
-                    const ring = accent.radius || 200;
-                    const strokeWidth = accent.strokeWidth || 40;
-                    ctx.beginPath();
-                    ctx.arc(ctx.canvas.width / 2, ctx.canvas.height / 2, ring, 0, Math.PI * 2);
-                    ctx.lineWidth = strokeWidth;
-                    ctx.strokeStyle = convertHexToRgba(color, accent.opacity || 0.2);
-                    ctx.stroke();
-                    break;
-                case 'bars':
-                    const length = accent.length || ctx.canvas.width;
-                    const width = accent.width || 20;
-                    const spacing = accent.spacing || 36;
-                    const count = accent.count || 3;
-                    const angle = (accent.angle || 0) * (Math.PI / 180);
-                    ctx.translate(ctx.canvas.width / 2, ctx.canvas.height / 2);
-                    ctx.rotate(angle);
-                    ctx.translate(-length / 2, -(width * count + spacing * (count - 1)) / 2);
-                    for (let i = 0; i < count; i++) {
-                        ctx.fillStyle = convertHexToRgba(color, accent.opacity || 0.2);
-                        ctx.fillRect(0, i * (width + spacing), length, width);
-                    }
-                    break;
-                case 'grid':
-                    const size = accent.size || 160;
-                    const thickness = accent.thickness || 1.4;
-                    ctx.strokeStyle = convertHexToRgba(color, accent.opacity || 0.12);
-                    ctx.lineWidth = thickness;
-                    for (let x = 0; x < ctx.canvas.width; x += size) {
-                        ctx.beginPath();
-                        ctx.moveTo(x, 0);
-                        ctx.lineTo(x, ctx.canvas.height);
-                        ctx.stroke();
-                    }
-                    for (let y = 0; y < ctx.canvas.height; y += size) {
-                        ctx.beginPath();
-                        ctx.moveTo(0, y);
-                        ctx.lineTo(ctx.canvas.width, y);
-                        ctx.stroke();
-                    }
-                    break;
-                case 'orb':
-                    const radius = accent.radius || 120;
-                    const gradient = ctx.createRadialGradient(
-                        ctx.canvas.width / 2,
-                        ctx.canvas.height / 2,
-                        radius * 0.2,
-                        ctx.canvas.width / 2,
-                        ctx.canvas.height / 2,
-                        radius
-                    );
-                    gradient.addColorStop(0, convertHexToRgba(color, accent.opacity || 0.22));
-                    gradient.addColorStop(1, convertHexToRgba(color, 0));
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-                    break;
-                default:
-                    break;
-            }
-            ctx.restore();
-        }
-
-        function drawNoise(ctx, noise) {
-            if (!noise) return;
-            const { opacity = 0.04, size = 120, blend = 'soft-light' } = noise;
-            const patternCanvas = document.createElement('canvas');
-            patternCanvas.width = size;
-            patternCanvas.height = size;
-            const patternCtx = patternCanvas.getContext('2d');
-            const imageData = patternCtx.createImageData(size, size);
-            for (let i = 0; i < imageData.data.length; i += 4) {
-                const value = Math.random() * 255;
-                imageData.data[i] = value;
-                imageData.data[i + 1] = value;
-                imageData.data[i + 2] = value;
-                imageData.data[i + 3] = opacity * 255;
-            }
-            patternCtx.putImageData(imageData, 0, 0);
-            const pattern = ctx.createPattern(patternCanvas, 'repeat');
-            if (!pattern) return;
-            ctx.save();
-            ctx.globalCompositeOperation = blend;
-            ctx.fillStyle = pattern;
-            ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-            ctx.restore();
-        }
-
-        function convertHexToRgba(input, alpha = 1) {
-            if (!input) {
-                return `rgba(255, 255, 255, ${alpha})`;
-            }
-
-            const value = String(input).trim();
-
-            if (value.startsWith('#')) {
-                let normalized = value.slice(1);
-                if (normalized.length === 3) {
-                    normalized = normalized.split('').map((c) => c + c).join('');
-                }
-                if (normalized.length !== 6) {
-                    return `rgba(255, 255, 255, ${alpha})`;
-                }
-                const bigint = parseInt(normalized, 16);
-                const r = (bigint >> 16) & 255;
-                const g = (bigint >> 8) & 255;
-                const b = bigint & 255;
-                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-            }
-
-            if (value.startsWith('rgba')) {
-                return value;
-            }
-
-            if (value.startsWith('rgb')) {
-                return value.replace('rgb', 'rgba').replace(')', `, ${alpha})`);
-            }
-
-            if (value.startsWith('hsla')) {
-                return value;
-            }
-
-            if (value.startsWith('hsl')) {
-                return value.replace('hsl', 'hsla').replace(')', `, ${alpha})`);
-            }
-
-            return `rgba(255, 255, 255, ${alpha})`;
-        }
-
-        function extractPromptAccent(prompt) {
-            if (!prompt) return '#6366f1';
-            const hash = Array.from(prompt).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-            const hue = (hash * 37) % 360;
-            return `hsl(${hue}, 75%, 62%)`;
-        }
-
-        function createOverlayImage(config, theme, promptText) {
-            const cacheKey = `${config.key}-${theme.label}-${promptText}`;
-            if (gradientCache.has(cacheKey)) {
-                return gradientCache.get(cacheKey).cloneNode(true);
-            }
-
-            const canvas = createOverlayCanvas(720, 960);
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return document.createElement('canvas');
-
-            const palette = theme.palette;
-            const promptColor = extractPromptAccent(promptText);
-
-            drawGradientOverlay(ctx, config.gradient, palette, promptColor);
-            drawAccent(ctx, config.accent, palette, promptColor);
-            drawNoise(ctx, config.noise);
-
-            const img = new Image();
-            img.src = canvas.toDataURL('image/png');
-            gradientCache.set(cacheKey, img);
-            return img.cloneNode(true);
-        }
-
-        function applyPlacements(wrapper, placements) {
-            const previews = wrapper.querySelectorAll('.result-preview');
-            if (!placements || !previews.length) return;
-            previews.forEach((preview, index) => {
-                const config = placements[index] || placements.default?.[index];
-                if (!config) return;
-                preview.style.setProperty('--translate-x', `${config.x}px`);
-                preview.style.setProperty('--translate-y', `${config.y}px`);
-                preview.style.setProperty('--scale', config.scale);
-                preview.style.setProperty('--rotate', `${config.rotate}deg`);
-            });
-        }
-
-        function createResultCard(themeKey, variant, promptText, poseIndex) {
-            const card = resultTemplate.content.firstElementChild.cloneNode(true);
-            const theme = themeOptions[themeKey];
-            const palette = theme?.palette;
-            const promptColor = extractPromptAccent(promptText);
-
-            const poseBadge = card.querySelector('.pose-badge');
-            if (poseBadge) {
-                poseBadge.textContent = variant.badge;
-                poseBadge.style.background = palette?.accent;
-            }
-
-            const overlayImage = createOverlayImage(variant, theme, promptText);
-            overlayImage.className = 'result-overlay';
-
-            const wrapper = card.querySelector('.result-thumb-wrapper');
-            if (wrapper) {
-                wrapper.appendChild(overlayImage);
-                wrapper.style.setProperty('--prompt-color', promptColor);
-                wrapper.dataset.pose = variant.title;
-            }
-
-            const styleLabel = card.querySelector('.result-style');
-            if (styleLabel) {
-                styleLabel.textContent = variant.title;
-            }
-
-            const promptLabel = card.querySelector('.result-prompt');
-            if (promptLabel) {
-                promptLabel.textContent = promptText;
-            }
-
-            const desc = card.querySelector('.result-desc');
-            if (desc) {
-                desc.textContent = variant.description(theme, promptText);
-            }
-
-            card.dataset.poseIndex = poseIndex;
-            return card;
-        }
-
-        function updateResults(data, themeKey, promptText) {
-            clearResults();
-            showEmptyState(false);
-
-            if (!Array.isArray(data) || !data.length) {
-                updateFormStatus('Tidak ada hasil dari server.', 'error');
-                showEmptyState(true);
-                return;
-            }
-
-            const fragment = document.createDocumentFragment();
-            data.forEach((item, index) => {
-                const variant = poseVariants[index] || poseVariants[index % poseVariants.length];
-                const card = createResultCard(themeKey, variant, promptText, index);
-                const image = card.querySelector('.result-thumb');
-                const imageUrl = item?.imageUrl || item?.url || '';
-                if (image && imageUrl) {
-                    image.src = imageUrl;
-                }
-                const downloadButton = card.querySelector('.result-download');
-                if (downloadButton) {
-                    downloadButton.addEventListener('click', () => {
-                        if (!imageUrl) return;
-                        const link = document.createElement('a');
-                        link.href = imageUrl;
-                        link.download = item?.downloadName || `${variant.key || 'result'}-${Date.now()}.png`;
-                        link.click();
-                    });
-                }
-                fragment.appendChild(card);
-            });
-
-            resultGrid.appendChild(fragment);
-        }
-
-        function validateFiles(files) {
-            if (files.length < MIN_FILES) {
-                updateFormStatus(`Tambahkan minimal ${MIN_FILES} foto referensi.`, 'error');
-                return false;
-            }
-            if (files.length > MAX_FILES) {
-                updateFormStatus(`Maksimal ${MAX_FILES} foto yang bisa diunggah.`, 'error');
-                return false;
-            }
-            return true;
-        }
-
-        async function submitForm(event) {
-            event.preventDefault();
-            updateFormStatus('Menyiapkan sesi...', 'info');
-
-            const themeKey = themeSelect.value;
-            const promptText = promptStyleInput.value.trim();
-
-            if (!validateFiles(selectedFiles)) {
-                return;
-            }
-
-            const imageFiles = selectedFiles.filter((file) => isImageFile(file));
-            if (imageFiles.length < MIN_FILES) {
-                updateFormStatus(`Tambahkan minimal ${MIN_FILES} foto referensi.`, 'error');
-                return;
-            }
-
-            const usableFiles = imageFiles.slice(0, MAX_FILES);
-
-            setLoadingState(true);
-            showEmptyState(false);
-            clearResults();
-            showSkeletons(4);
-
-            try {
-                const results = await generateStyledImages(themeKey, promptText, usableFiles);
-                if (!results.length) {
-                    throw new Error('Tidak dapat membuat komposisi dari foto yang dipilih.');
-                }
-
-                updateResults(results, themeKey, promptText);
-                const themeName = themeOptions[themeKey]?.label || themeKey;
-                const promptLabel = promptText ? `bertema "${promptText}"` : `dengan tema ${themeName}`;
-                updateFormStatus(`Selesai! 4 pose multi-reference ${promptLabel} siap diunduh.`, 'success');
-            } catch (error) {
-                console.error(error);
-                updateFormStatus(error.message || 'Terjadi kesalahan saat generate.', 'error');
-                showEmptyState(true);
-            } finally {
-                clearSkeletons();
-                setLoadingState(false);
-            }
-        }
-
-        function handleFiles(files) {
-            const normalized = normalizeFileList(files);
+        function handleFiles(fileList) {
+            const normalized = normalizeFileList(fileList);
             if (!normalized.length) return;
 
             const imageFiles = normalized.filter((file) => isImageFile(file));
@@ -1138,18 +646,541 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             selectedFiles = imageFiles.slice(0, MAX_FILES);
             renderPreview();
 
-            if (selectedFiles.length && selectedFiles.length < MIN_FILES) {
-                messages.push(`Tambahkan minimal ${MIN_FILES} foto referensi.`);
-            }
-
             if (!selectedFiles.length) {
                 messages.push('Unggah minimal dua foto referensi terlebih dahulu.');
+            } else if (selectedFiles.length < MIN_FILES) {
+                messages.push(`Tambahkan minimal ${MIN_FILES} foto referensi.`);
             }
 
             if (messages.length) {
                 updateFormStatus(messages.join(' '), 'info');
             } else {
-                updateFormStatus('');
+                updateFormStatus('', 'info');
+            }
+        }
+
+        function validateFiles(files) {
+            if (!files.length) {
+                updateFormStatus('Unggah minimal dua foto referensi terlebih dahulu.', 'error');
+                return false;
+            }
+            if (files.length < MIN_FILES) {
+                updateFormStatus(`Tambahkan minimal ${MIN_FILES} foto referensi.`, 'error');
+                return false;
+            }
+            return true;
+        }
+
+        function readFileAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    if (typeof reader.result === 'string') {
+                        resolve(reader.result);
+                    } else {
+                        reject(new Error('Gagal membaca file referensi.'));
+                    }
+                };
+                reader.onerror = () => reject(new Error('Gagal membaca file referensi.'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function convertFilesToBase64(files) {
+            const dataUrls = await Promise.all(files.map((file) => readFileAsDataURL(file)));
+            return dataUrls
+                .map((url) => {
+                    const parts = url.split(',');
+                    return parts.length > 1 ? parts[1] : '';
+                })
+                .filter((value) => value && value.trim() !== '');
+        }
+
+        function buildVariantPrompt(theme, variant, customPrompt) {
+            const accent = customPrompt && customPrompt.trim() !== '' ? customPrompt.trim() : theme.template;
+            const segments = [
+                '[MultiReference Blend] Gabungkan semua foto referensi, pertahankan wajah, rambut, dan kostum yang konsisten.',
+                `[Theme Treatment] ${theme.label}. ${theme.description}`,
+                `[Pose Direction] ${variant.shot}`,
+                `[Styling Motif] ${accent}`,
+                '[Camera & Lighting] cinematic lighting, editorial photography, high dynamic range, rich texture, 8k detail.',
+                '[Quality] sharp focus, clean background, no watermark, no text overlay.'
+            ];
+            return segments.join(' ');
+        }
+
+        function prepareVariantRequest(themeKey, variant, customPrompt, referencesBase64) {
+            const theme = themeOptions[themeKey] || themeOptions.romantic;
+            const prompt = buildVariantPrompt(theme, variant, customPrompt);
+            const body = {
+                prompt,
+                num_images: 1,
+                reference_images: referencesBase64,
+                aspect_ratio: variant.aspectRatio || 'portrait_3_4'
+            };
+            return { prompt, theme, body };
+        }
+
+        async function callFreepik({ path, method = 'POST', body, contentType = 'json' } = {}) {
+            if (!path) {
+                throw new Error('Endpoint Freepik tidak valid.');
+            }
+
+            const payload = { path, method, contentType };
+            if (method !== 'GET' && typeof body !== 'undefined') {
+                payload.body = body;
+            }
+
+            const res = await fetch(API_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const text = await res.text();
+            let json;
+            try {
+                json = JSON.parse(text);
+            } catch (error) {
+                throw new Error('Respon dari server tidak valid.');
+            }
+
+            if (!json.ok) {
+                const message = (json.data && json.data.message) || json.error || `HTTP ${json.status || res.status}`;
+                throw new Error(message);
+            }
+
+            return json.data;
+        }
+
+        async function createGeminiTask(body) {
+            const data = await callFreepik({ path: CREATE_PATH, method: 'POST', body });
+            const response = data?.data || {};
+            return {
+                taskId: response.task_id || null,
+                status: response.status || 'CREATED',
+                generated: Array.isArray(response.generated) ? response.generated : []
+            };
+        }
+
+        async function fetchGeminiStatus(taskId) {
+            if (!taskId) {
+                throw new Error('Task ID tidak ditemukan.');
+            }
+            const data = await callFreepik({ path: STATUS_PATH(taskId), method: 'GET' });
+            const response = data?.data || {};
+            const generated = Array.isArray(response.generated) ? response.generated : [];
+            return {
+                status: response.status || null,
+                generated
+            };
+        }
+
+        async function pollVideoOnce(task) {
+            const videoState = ensureVideoState(task);
+            if (!videoState.taskId || finalStatus(videoState.status)) {
+                stopVideoPollingForTask(task);
+                return;
+            }
+
+            try {
+                const data = await callFreepik({ path: VIDEO_STATUS_PATH(videoState.taskId), method: 'GET' });
+                const response = data?.data || {};
+                if (response.status) {
+                    videoState.status = response.status;
+                }
+                const generated = Array.isArray(response.generated) ? response.generated : [];
+                if (generated.length) {
+                    videoState.videoUrl = generated[0];
+                }
+            } catch (error) {
+                videoState.status = 'ERROR';
+                videoState.error = error.message || 'Gagal mengambil status video.';
+            }
+
+            renderResults();
+
+            if (finalStatus(videoState.status)) {
+                stopVideoPollingForTask(task);
+                if (normalizeStatus(videoState.status) === 'COMPLETED' && !videoState.videoUrl && !videoState.error) {
+                    videoState.error = 'Video selesai tetapi URL tidak ditemukan.';
+                } else if (normalizeStatus(videoState.status) !== 'COMPLETED' && !videoState.error) {
+                    videoState.error = 'Video gagal diproses. Coba generate ulang.';
+                }
+            }
+        }
+
+        function startVideoPollingForTask(task) {
+            const videoState = ensureVideoState(task);
+            stopVideoPollingForTask(task);
+            pollVideoOnce(task);
+            videoState.timerId = setInterval(() => pollVideoOnce(task), VIDEO_POLL_INTERVAL);
+        }
+
+        async function handleGenerateVideo(task) {
+            if (!task || !task.imageUrl) {
+                updateFormStatus('Gambar pose belum tersedia untuk membuat video.', 'error');
+                return;
+            }
+
+            const videoState = ensureVideoState(task);
+            if (videoState.status && !finalStatus(videoState.status)) {
+                return;
+            }
+
+            stopVideoPollingForTask(task);
+
+            const prompt = buildVideoPrompt(task) || 'cinematic portrait motion';
+            videoState.prompt = prompt;
+            videoState.taskId = null;
+            videoState.videoUrl = null;
+            videoState.error = null;
+            videoState.status = 'PROCESSING';
+            renderResults();
+
+            try {
+                const body = {
+                    prompt,
+                    motion_prompt: prompt,
+                    image: task.imageUrl,
+                    duration: VIDEO_DURATION_SECONDS,
+                    aspect_ratio: resolveVideoAspect(task)
+                };
+                const data = await callFreepik({ path: VIDEO_CREATE_PATH, method: 'POST', body });
+                const response = data?.data || {};
+
+                videoState.taskId = response.task_id || null;
+                videoState.status = response.status || 'CREATED';
+
+                const generated = Array.isArray(response.generated) ? response.generated : [];
+                if (generated.length) {
+                    videoState.videoUrl = generated[0];
+                }
+
+                renderResults();
+
+                if (!videoState.taskId) {
+                    videoState.status = 'ERROR';
+                    videoState.error = 'Server tidak mengembalikan task ID video.';
+                    renderResults();
+                    return;
+                }
+
+                if (finalStatus(videoState.status)) {
+                    if (normalizeStatus(videoState.status) !== 'COMPLETED' && !videoState.error) {
+                        videoState.error = 'Video gagal diproses. Coba lagi.';
+                    }
+                    renderResults();
+                    return;
+                }
+
+                startVideoPollingForTask(task);
+            } catch (error) {
+                videoState.status = 'ERROR';
+                videoState.error = error.message || 'Gagal mengirim permintaan video.';
+                renderResults();
+            }
+        }
+
+        function renderResults() {
+            resultGrid.innerHTML = '';
+            if (!tasks.length) {
+                showEmptyState(true);
+                return;
+            }
+
+            showEmptyState(false);
+            const fragment = document.createDocumentFragment();
+
+            tasks.forEach((task) => {
+                const card = document.createElement('article');
+                card.className = 'film-scene-card pose-card';
+
+                const media = document.createElement('div');
+                media.className = 'pose-media';
+
+                const videoState = ensureVideoState(task);
+
+                if (task.imageUrl) {
+                    const img = document.createElement('img');
+                    img.className = 'pose-image';
+                    img.src = task.imageUrl;
+                    img.alt = task.variant.title;
+                    media.appendChild(img);
+                } else {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'pose-placeholder';
+                    const label = document.createElement('span');
+                    label.textContent = finalStatus(task.status) ? 'Belum ada gambar' : 'Menunggu hasil…';
+                    placeholder.appendChild(label);
+                    if (!finalStatus(task.status)) {
+                        const spinner = document.createElement('span');
+                        spinner.className = 'pose-spinner';
+                        placeholder.appendChild(spinner);
+                    }
+                    media.appendChild(placeholder);
+                }
+
+                const overlay = document.createElement('div');
+                overlay.className = 'pose-overlay';
+
+                const infoRow = document.createElement('div');
+                infoRow.className = 'pose-overlay-info';
+
+                const titleLabel = document.createElement('span');
+                titleLabel.className = 'pose-overlay-label';
+                titleLabel.textContent = task.variant.title;
+                infoRow.appendChild(titleLabel);
+
+                const statusChipEl = document.createElement('span');
+                statusChipEl.className = statusClass(task.status);
+                statusChipEl.textContent = statusLabel(task.status);
+                infoRow.appendChild(statusChipEl);
+
+                overlay.appendChild(infoRow);
+
+                const actionsRow = document.createElement('div');
+                actionsRow.className = 'pose-overlay-actions';
+
+                if (task.imageUrl) {
+                    const previewLink = document.createElement('a');
+                    previewLink.href = task.imageUrl;
+                    previewLink.target = '_blank';
+                    previewLink.rel = 'noopener';
+                    previewLink.className = 'pose-mini-btn';
+                    previewLink.textContent = 'Preview';
+                    actionsRow.appendChild(previewLink);
+
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = task.imageUrl;
+                    const baseKey = task.variant.key || `pose-${(task.index ?? 0) + 1}`;
+                    const token = task.downloadToken || Date.now();
+                    if (!task.downloadToken) {
+                        task.downloadToken = token;
+                    }
+                    downloadLink.download = `${baseKey}-${token}.png`;
+                    downloadLink.className = 'pose-mini-btn';
+                    downloadLink.textContent = 'Download';
+                    actionsRow.appendChild(downloadLink);
+
+                    const videoButton = document.createElement('button');
+                    videoButton.type = 'button';
+                    videoButton.className = 'pose-mini-btn primary';
+
+                    const videoStatusValue = normalizeStatus(videoState.status);
+                    let videoLabel = 'Video';
+                    let videoDisabled = false;
+                    let videoHandler = () => handleGenerateVideo(task);
+
+                    if (videoState.videoUrl && videoStatusValue === 'COMPLETED') {
+                        videoLabel = 'Unduh Video';
+                        videoHandler = () => triggerDownload(videoState.videoUrl, `${baseKey}-seedance-1080.mp4`);
+                    } else if (videoState.status && !finalStatus(videoState.status)) {
+                        videoLabel = 'Memproses…';
+                        videoDisabled = true;
+                        videoHandler = null;
+                    } else if (videoState.status && finalStatus(videoState.status) && videoStatusValue !== 'COMPLETED') {
+                        videoLabel = 'Ulangi Video';
+                    }
+
+                    videoButton.textContent = videoLabel;
+                    if (videoDisabled) {
+                        videoButton.disabled = true;
+                    }
+                    if (videoHandler) {
+                        videoButton.addEventListener('click', videoHandler);
+                    }
+
+                    actionsRow.appendChild(videoButton);
+                } else {
+                    const hint = document.createElement('span');
+                    hint.className = 'pose-overlay-hint';
+                    hint.textContent = finalStatus(task.status) ? 'Tidak ada gambar' : 'Menunggu hasil…';
+                    actionsRow.appendChild(hint);
+                }
+
+                overlay.appendChild(actionsRow);
+                media.appendChild(overlay);
+                card.appendChild(media);
+
+                if (task.error) {
+                    const errorBlock = document.createElement('div');
+                    errorBlock.className = 'pose-error';
+                    errorBlock.textContent = task.error;
+                    card.appendChild(errorBlock);
+                }
+
+                if (videoState.error) {
+                    const videoError = document.createElement('div');
+                    videoError.className = 'pose-video-error';
+                    videoError.textContent = videoState.error;
+                    card.appendChild(videoError);
+                }
+
+                fragment.appendChild(card);
+            });
+
+            resultGrid.appendChild(fragment);
+        }
+
+        function stopPolling() {
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+        }
+
+        async function pollOnce() {
+            const active = tasks.filter((task) => task.taskId && !finalStatus(task.status));
+
+            if (active.length) {
+                for (const task of active) {
+                    try {
+                        const { status, generated } = await fetchGeminiStatus(task.taskId);
+                        if (status) {
+                            task.status = status;
+                        }
+                        if (generated && generated.length) {
+                            task.imageUrl = generated[0];
+                            if (!task.downloadToken) {
+                                task.downloadToken = Date.now();
+                            }
+                        }
+                    } catch (error) {
+                        task.status = 'ERROR';
+                        task.error = error.message || 'Gagal mengambil status generasi.';
+                    }
+                }
+            }
+
+            await chargeCoinsForCompletedTasks();
+            renderResults();
+
+            const completed = tasks.filter((task) => finalStatus(task.status)).length;
+            const successCount = tasks.filter((task) => normalizeStatus(task.status) === 'COMPLETED' && task.imageUrl).length;
+
+            if (completed === tasks.length) {
+                stopPolling();
+                if (successCount === tasks.length) {
+                    updateFormStatus('Selesai! Semua pose berhasil dibuat.', 'success');
+                } else if (successCount > 0) {
+                    updateFormStatus(`${successCount} pose berhasil. Periksa pose lain yang gagal.`, 'error');
+                } else {
+                    updateFormStatus('Semua pose gagal diproses. Coba lagi.', 'error');
+                }
+                return;
+            }
+
+            if (completed > 0 && completed < tasks.length) {
+                updateFormStatus(`Progress: ${completed}/${tasks.length} pose selesai.`, 'info');
+            }
+        }
+
+        function startPolling() {
+            stopPolling();
+            pollOnce();
+            pollTimer = setInterval(pollOnce, POLL_INTERVAL);
+        }
+
+        async function submitForm(event) {
+            event.preventDefault();
+
+            if (!validateFiles(selectedFiles)) {
+                return;
+            }
+
+            setLoadingState(true);
+            updateFormStatus('Memeriksa saldo koin…', 'info');
+            await refreshAccountCoins();
+            if (!ensureCoins(REQUIRED_COINS)) {
+                setLoadingState(false);
+                updateFormStatus(`Saldo koin tidak cukup. Minimal ${REQUIRED_COINS} koin dibutuhkan.`, 'error');
+                return;
+            }
+
+            updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
+            stopPolling();
+            stopAllVideoPolling();
+            tasks = [];
+            chargedVariants.clear();
+            coinChargeInFlight = false;
+            renderResults();
+
+            let base64Images;
+            try {
+                base64Images = await convertFilesToBase64(selectedFiles);
+            } catch (error) {
+                setLoadingState(false);
+                updateFormStatus(error.message || 'Gagal memproses file referensi.', 'error');
+                return;
+            }
+
+            if (base64Images.length < MIN_FILES) {
+                setLoadingState(false);
+                updateFormStatus(`Tambahkan minimal ${MIN_FILES} foto referensi.`, 'error');
+                return;
+            }
+
+            const themeKey = themeSelect.value || 'romantic';
+            const customPrompt = promptStyleInput.value.trim();
+
+            tasks = poseVariants.map((variant, index) => ({
+                index,
+                variant,
+                themeKey,
+                customPrompt,
+                prompt: '',
+                taskId: null,
+                status: 'PENDING',
+                imageUrl: null,
+                error: null,
+                downloadToken: null,
+                videoState: createVideoState()
+            }));
+            renderResults();
+
+            let successCount = 0;
+            let failureCount = 0;
+
+            for (const task of tasks) {
+                try {
+                    const { prompt, body } = prepareVariantRequest(themeKey, task.variant, customPrompt, base64Images);
+                    task.prompt = prompt;
+                    const { taskId, status, generated } = await createGeminiTask(body);
+                    task.taskId = taskId;
+                    task.status = status || 'CREATED';
+                    if (generated && generated.length) {
+                        task.imageUrl = generated[0];
+                        if (!task.downloadToken) {
+                            task.downloadToken = Date.now();
+                        }
+                    }
+                    if (!taskId) {
+                        task.error = 'Server tidak mengembalikan task ID.';
+                        task.status = 'ERROR';
+                        failureCount += 1;
+                    } else {
+                        successCount += 1;
+                    }
+                } catch (error) {
+                    task.status = 'ERROR';
+                    task.error = error.message || 'Gagal mengirim permintaan ke Flash 2.5.';
+                    failureCount += 1;
+                }
+                renderResults();
+            }
+
+            await chargeCoinsForCompletedTasks();
+            setLoadingState(false);
+
+            if (successCount > 0) {
+                const message = failureCount > 0
+                    ? `${successCount} pose dikirim. ${failureCount} permintaan gagal diajukan. Menunggu hasil…`
+                    : 'Semua pose berhasil dikirim. Menunggu hasil dari Flash 2.5…';
+                updateFormStatus(message, 'info');
+                startPolling();
+            } else {
+                updateFormStatus('Tidak ada pose yang berhasil dikirim. Periksa koneksi dan coba lagi.', 'error');
             }
         }
 
@@ -1204,6 +1235,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
 
         form.addEventListener('submit', submitForm);
 
+        updateCreditDisplay();
+        refreshAccountCoins();
         renderThemeHint(themeSelect.value);
         ensurePromptTemplate(themeSelect.value, true);
         renderPreview();
