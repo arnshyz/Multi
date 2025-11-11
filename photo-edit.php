@@ -103,7 +103,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                         <div class="title" id="formTitle" style="font-size:16px">Setelan Photo Edit</div>
                         <div class="subtitle">Sama seperti Filmmaker, pilih tema dan atur prompt sebelum generate.</div>
                     </div>
+                    <div id="resultGrid" class="film-scenes-container"></div>
                 </div>
+            </section>
 
                 <form id="editForm" class="film-settings-section" novalidate>
                     <div>
@@ -451,7 +453,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             if (Array.isArray(fallback) && fallback.length) {
                 return fallback[Math.min(index, fallback.length - 1)] || fallback[0];
             }
-            return { x: 0, y: 0, scale: 1, rotate: 0 };
+            resultGrid.appendChild(fragment);
         }
 
         function loadImageSource(source) {
@@ -532,9 +534,10 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 ctx.restore();
             });
 
-            ctx.filter = 'none';
-            ctx.globalAlpha = 1;
-            ctx.globalCompositeOperation = 'source-over';
+            previewGrid.appendChild(fragment);
+            previewGrid.style.display = 'grid';
+            dropzone.classList.add('has-files');
+        }
 
             if (theme?.palette?.overlayColor && theme.palette.overlayOpacity) {
                 ctx.save();
@@ -564,6 +567,31 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             if (variant.noise) {
                 drawNoise(ctx, variant.noise);
             }
+        }
+
+        function createOverlayCanvas(width, height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            return canvas;
+        }
+
+        function drawGradientOverlay(ctx, config, palette, promptColor) {
+            if (!config) return;
+            const angle = (config.angle || 0) * (Math.PI / 180);
+            const radius = Math.sqrt(ctx.canvas.width ** 2 + ctx.canvas.height ** 2) / 2;
+            const centerX = ctx.canvas.width / 2;
+            const centerY = ctx.canvas.height / 2;
+            const startX = centerX + Math.cos(angle) * radius;
+            const startY = centerY + Math.sin(angle) * radius;
+            const endX = centerX - Math.cos(angle) * radius;
+            const endY = centerY - Math.sin(angle) * radius;
+            const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+
+            config.stops.forEach((stop) => {
+                const colorKey = stop.color === 'prompt' ? promptColor : palette[stop.color] || palette.accent;
+                gradient.addColorStop(stop.offset, convertHexToRgba(colorKey, stop.opacity));
+            });
 
             return canvas.toDataURL('image/png');
         }
