@@ -28,6 +28,39 @@ if ($username === '') {
 $coinBalance = $accountPayload['coins'] ?? 0;
 $coinBalanceFormatted = number_format((int)$coinBalance, 0, ',', '.');
 
+$themeOptions = [
+    'romantic' => [
+        'label' => 'Romantic Fusion',
+        'description' => 'Palet rose gold dengan highlight lembut ala golden hour dan kilau editorial.',
+        'template' => 'Gabungkan kedua foto menjadi potret editorial pernikahan yang romantis. Pastikan ada cahaya keemasan hangat dari golden hour, dengan highlight pearlescent yang lembut dan flare lensa soft focus yang artistik. Ciptakan kedalaman sinematik pada komposisi, dan pastikan gaya keseluruhan menyatu dengan sempurna, seolah-olah ini adalah satu sesi pemotretan yang direncanakan dengan indah.'
+    ],
+    'urban' => [
+        'label' => 'Neo Urban Story',
+        'description' => 'Mood metropolis malam dengan kontras matte, refleksi neon cyan-magenta, dan nuansa futuristik.',
+        'template' => 'Gabungkan kedua foto ini dalam sebuah narasi fashion neo-urban. Latar belakangnya adalah kota di malam hari yang sinematik, didominasi oleh cahaya neon teal dan magenta yang memantul di permukaan. Berikan sentuhan akhir matte dengan kontras tinggi dan bayangan dramatis untuk menciptakan suasana yang intens dan bergaya.'
+    ],
+    'tropical' => [
+        'label' => 'Tropical Journey',
+        'description' => 'Kombinasi warna tropis vibrant dengan kilau matahari dan ambience liburan energik.',
+        'template' => 'Gabungkan kedua foto ini menjadi satu gambar editorial perjalanan tropis. Pastikan palet warna didominasi oleh aqua dan lime yang cerah, menonjolkan kulit yang terpapar matahari dan nuansa gerakan yang ringan dan berangin. Latar belakang harus menampilkan pemandangan resor sinematik yang indah dengan detail dedaunan tropis yang rimbun.'
+    ],
+    'heritage' => [
+        'label' => 'Heritage Elegance',
+        'description' => 'Sentuhan tradisional hangat dengan tekstur kaya dan detail busana elegan.',
+        'template' => 'Gabungkan kedua foto ini menjadi sebuah potret upacara warisan yang berkesan. Gunakan pencahayaan ambar yang hangat dan lembut untuk menciptakan suasana yang syahdu. Pastikan detail tekstil yang rumit pada pakaian atau latar belakang terlihat jelas. Tambahkan efek kabut sinematik yang lembut untuk sentuhan dramatis. Kedua subjek harus berpose dengan anggun dan bermartabat, seolah sedang menceritakan kisah abadi dari masa lalu.'
+    ],
+    'holiday' => [
+        'label' => 'Liburan',
+        'description' => 'Suasana pantai cerah dengan pasir putih luas, air laut biru jernih, serta deretan pohon kelapa yang melengkung.',
+        'template' => 'Gabungkan foto ini ke dalam suasana liburan di pantai Indonesia yang cerah dan indah. Pastikan ada elemen khas pantai seperti pasir putih, air laut biru jernih, dan pohon kelapa. Pancarkan suasana relaksasi dan kebahagiaan saat berlibur.'
+    ]
+];
+
+$defaultThemeKey = 'romantic';
+$defaultTheme = $themeOptions[$defaultThemeKey];
+$defaultPromptTemplate = $defaultTheme['template'];
+$defaultThemeDescription = $defaultTheme['description'];
+
 $platform = auth_platform_public_view();
 $flashFeature = $platform['generators']['flashPhotoEdit'] ?? null;
 $isFlashEnabled = $flashFeature && !empty($flashFeature['enabled']);
@@ -125,18 +158,16 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     <div>
                         <label for="themeSelect">Tema dasar</label>
                         <select id="themeSelect" aria-describedby="themeHint">
-                            <option value="romantic">Romantic Fusion</option>
-                            <option value="urban">Neo Urban Story</option>
-                            <option value="tropical">Tropical Journey</option>
-                            <option value="heritage">Heritage Elegance</option>
-							<option value="holiday">Liburan</option>
+<?php foreach ($themeOptions as $key => $option): ?>
+                            <option value="<?php echo htmlspecialchars($key, ENT_QUOTES); ?>"<?php echo $key === $defaultThemeKey ? ' selected' : ''; ?>><?php echo htmlspecialchars($option['label'], ENT_QUOTES); ?></option>
+<?php endforeach; ?>
                         </select>
-                        <p id="themeHint" class="muted"></p>
+                        <p id="themeHint" class="muted"><?php echo htmlspecialchars($defaultThemeDescription, ENT_QUOTES); ?></p>
                     </div>
 
                     <div>
                         <label for="promptStyle">Prompt style / Tema penggabungan</label>
-                        <textarea id="promptStyle" rows="4" placeholder="contoh: dreamy editorial portrait blending our references with golden hour glow"></textarea>
+                        <textarea id="promptStyle" rows="4" placeholder="contoh: dreamy editorial portrait blending our references with golden hour glow"><?php echo htmlspecialchars($defaultPromptTemplate, ENT_QUOTES); ?></textarea>
                         <p class="muted">Tambahkan detail suasana atau warna. <button type="button" class="link" id="resetPromptButton">Gunakan template tema</button></p>
                     </div>
 
@@ -279,105 +310,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             /* noop */
         });
 
-        let currentAccount = initialAccount;
-        let coinsDebitedForRun = false;
-
-        const creditValueEl = document.getElementById('creditValue');
-        const creditPillEl = document.getElementById('creditPill');
-
-        function formatCoins(value) {
-            const number = Number.isFinite(Number(value)) ? Number(value) : 0;
-            return number.toLocaleString('id-ID');
-        }
-
-        function updateCreditDisplay() {
-            if (!creditValueEl) {
-                return;
-            }
-            const balance = currentAccount && Number.isFinite(Number(currentAccount.coins))
-                ? Number(currentAccount.coins)
-                : 0;
-            creditValueEl.textContent = formatCoins(balance);
-            if (creditPillEl) {
-                creditPillEl.dataset.balance = String(balance);
-            }
-        }
-
-        async function fetchAccountState() {
-            const res = await fetch(ACCOUNT_ENDPOINT, {
-                credentials: 'same-origin',
-            });
-            const payload = await res.json();
-            if (!res.ok || !payload.ok) {
-                throw new Error((payload && payload.error) || 'Gagal memuat akun.');
-            }
-            return payload.data || null;
-        }
-
-        async function refreshAccountState() {
-            try {
-                const account = await fetchAccountState();
-                currentAccount = account;
-                updateCreditDisplay();
-                return account;
-            } catch (error) {
-                console.warn('Tidak dapat memperbarui akun:', error);
-                throw error;
-            }
-        }
-
-        function ensureCoins(amount) {
-            if (!currentAccount) {
-                return false;
-            }
-            const balance = Number.isFinite(Number(currentAccount.coins))
-                ? Number(currentAccount.coins)
-                : 0;
-            return balance >= amount;
-        }
-
-        async function spendCoins(amount) {
-            if (!amount || amount <= 0) {
-                return;
-            }
-            const res = await fetch(ACCOUNT_COINS_ENDPOINT, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ amount }),
-            });
-            const payload = await res.json();
-            if (!res.ok || !payload.ok) {
-                const message = (payload && payload.error) || 'Saldo koin gagal diperbarui.';
-                throw new Error(typeof message === 'string' ? message : 'Saldo koin gagal diperbarui.');
-            }
-            const data = payload.data || {};
-            if (!currentAccount) {
-                currentAccount = {};
-            }
-            if (typeof data.coins !== 'undefined') {
-                currentAccount.coins = data.coins;
-            }
-            updateCreditDisplay();
-        }
-
-        async function deductCoinsForSuccess(successCount) {
-            if (coinsDebitedForRun || !successCount) {
-                return;
-            }
-            const totalCost = successCount * COIN_COST_PER_POSE;
-            if (!totalCost) {
-                return;
-            }
-            await spendCoins(totalCost);
-            coinsDebitedForRun = true;
-        }
-
-        updateCreditDisplay();
-        refreshAccountState().catch(() => {
-            /* noop */
-        });
-
         const themeSelect = document.getElementById('themeSelect');
         const themeHint = document.getElementById('themeHint');
         const promptStyleInput = document.getElementById('promptStyle');
@@ -392,33 +324,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         const browseButton = document.getElementById('browseButton');
         const previewGrid = document.getElementById('referencePreview');
 
-        const themeOptions = {
-            romantic: {
-                label: 'Romantic Fusion',
-                description: 'Palet rose gold dengan highlight lembut ala golden hour dan kilau editorial.',
-                template: 'Gabungkan kedua foto menjadi potret editorial pernikahan yang romantis. Pastikan ada cahaya keemasan hangat dari golden hour, dengan highlight pearlescent yang lembut dan flare lensa soft focus yang artistik. Ciptakan kedalaman sinematik pada komposisi, dan pastikan gaya keseluruhan menyatu dengan sempurna, seolah-olah ini adalah satu sesi pemotretan yang direncanakan dengan indah.',
-            },
-            urban: {
-                label: 'Neo Urban Story',
-                description: 'Mood metropolis malam dengan kontras matte, refleksi neon cyan-magenta, dan nuansa futuristik.',
-                template: 'Gabungkan kedua foto ini dalam sebuah narasi fashion neo-urban. Latar belakangnya adalah kota di malam hari yang sinematik, didominasi oleh cahaya neon teal dan magenta yang memantul di permukaan. Berikan sentuhan akhir matte dengan kontras tinggi dan bayangan dramatis untuk menciptakan suasana yang intens dan bergaya.',
-            },
-            tropical: {
-                label: 'Tropical Journey',
-                description: 'Kombinasi warna tropis vibrant dengan kilau matahari dan ambience liburan energik.',
-                template: 'Gabungkan kedua foto ini menjadi satu gambar editorial perjalanan tropis. Pastikan palet warna didominasi oleh aqua dan lime yang cerah, menonjolkan kulit yang terpapar matahari dan nuansa gerakan yang ringan dan berangin. Latar belakang harus menampilkan pemandangan resor sinematik yang indah dengan detail dedaunan tropis yang rimbun.',
-            },
-            heritage: {
-                label: 'Heritage Elegance',
-                description: 'Sentuhan tradisional hangat dengan tekstur kaya dan detail busana elegan.',
-                template: 'Gabungkan kedua foto ini menjadi sebuah potret upacara warisan yang berkesan. Gunakan pencahayaan ambar yang hangat dan lembut untuk menciptakan suasana yang syahdu. Pastikan detail tekstil yang rumit pada pakaian atau latar belakang terlihat jelas. Tambahkan efek kabut sinematik yang lembut untuk sentuhan dramatis. Kedua subjek harus berpose dengan anggun dan bermartabat, seolah sedang menceritakan kisah abadi dari masa lalu.',
-            },
-            holiday: {
-                label: 'Holiday',
-                description: 'Pada gambar tersebut, Anda terlihat mengenakan bikini massive brust luar biasa besar dengan senyum tipis, rambut hitam tergerai, berlatar belakang pantai dengan pasir putih yang luas, air laut biru jernih, dan deretan pohon kelapa melengkung di kejauhan. Langit biru cerah dengan sedikit awan menambah kesan suasana liburan yang indah.',
-                template: 'Gabungkan foto ini ke dalam suasana liburan di pantai Indonesia yang cerah dan indah. Pastikan ada elemen khas pantai seperti pasir putih, air laut biru jernih, dan pohon kelapa. Pancarkan suasana relaksasi dan kebahagiaan saat berlibur.',
-            }
-        };
+        const themeOptions = <?php echo json_encode($themeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        const DEFAULT_THEME_KEY = <?php echo json_encode($defaultThemeKey, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
         const poseVariants = [
             {
@@ -429,7 +336,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 aspectRatio: 'portrait_3_4',
                 description(theme, prompt) {
                     const base = 'Close-up harmonis menonjolkan ekspresi utama dengan highlight lembut.';
-                    return prompt ? `${base} Tema "${prompt}" ditanamkan pada warna dan pencahayaan wajah.` : `${base} ${theme?.description || ''}`.trim();
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" ditanamkan pada warna dan pencahayaan wajah.`;
+                    }
+                    const themeDescription = theme && theme.description ? theme.description : '';
+                    return `${base} ${themeDescription}`.trim();
                 }
             },
             {
@@ -440,7 +351,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 aspectRatio: 'portrait_3_4',
                 description(theme, prompt) {
                     const base = 'Gerakan dramatis dengan komposisi diagonal dan aksen cahaya dinamis.';
-                    return prompt ? `${base} Tema "${prompt}" diaplikasikan pada wardrobe dan motion blur.` : `${base} ${theme?.description || ''}`.trim();
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" diaplikasikan pada wardrobe dan motion blur.`;
+                    }
+                    const themeDescription = theme && theme.description ? theme.description : '';
+                    return `${base} ${themeDescription}`.trim();
                 }
             },
             {
@@ -451,7 +366,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 aspectRatio: 'landscape_3_2',
                 description(theme, prompt) {
                     const base = 'Storytelling shot menonjolkan kostum penuh dan suasana latar.';
-                    return prompt ? `${base} Tema "${prompt}" diterapkan pada warna environment.` : `${base} ${theme?.description || ''}`.trim();
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" diterapkan pada warna environment.`;
+                    }
+                    const themeDescription = theme && theme.description ? theme.description : '';
+                    return `${base} ${themeDescription}`.trim();
                 }
             },
             {
@@ -462,7 +381,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 aspectRatio: 'square_1_1',
                 description(theme, prompt) {
                     const base = 'Detail shot memperlihatkan aksesori dan tekstur bahan dengan dramatis.';
-                    return prompt ? `${base} Tema "${prompt}" ditekankan pada highlight detail.` : `${base} ${theme?.description || ''}`.trim();
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" ditekankan pada highlight detail.`;
+                    }
+                    const themeDescription = theme && theme.description ? theme.description : '';
+                    return `${base} ${themeDescription}`.trim();
                 }
             }
         ];
@@ -540,8 +463,12 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function renderThemeHint(themeKey) {
-            const option = themeOptions[themeKey];
-            if (option) {
+            if (!themeHint) {
+                return;
+            }
+            const key = themeOptions[themeKey] ? themeKey : DEFAULT_THEME_KEY;
+            const option = themeOptions[key];
+            if (option && option.description) {
                 themeHint.textContent = option.description;
             } else {
                 themeHint.textContent = '';
@@ -549,8 +476,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function ensurePromptTemplate(themeKey, force = false) {
-            const option = themeOptions[themeKey];
-            if (!option) {
+            const key = themeOptions[themeKey] ? themeKey : DEFAULT_THEME_KEY;
+            const option = themeOptions[key];
+            if (!option || !promptStyleInput) {
                 return;
             }
             if (force || !promptDirty || !promptStyleInput.value.trim()) {
@@ -560,6 +488,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function setPromptDirty() {
+            if (!promptStyleInput) {
+                return;
+            }
             promptDirty = true;
         }
 
@@ -598,7 +529,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
 
         async function uploadReferenceFile(file) {
             const formData = new FormData();
-            formData.append('file', file, file?.name || 'reference.jpg');
+            const fileName = file && file.name ? file.name : 'reference.jpg';
+            formData.append('file', file, fileName);
 
             const res = await fetch(UPLOAD_ENDPOINT, {
                 method: 'POST',
@@ -681,6 +613,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function renderPreview() {
+            if (!previewGrid || !dropzone) {
+                return;
+            }
             previewGrid.innerHTML = '';
             if (!selectedFiles.length) {
                 previewGrid.style.display = 'none';
@@ -742,6 +677,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
 
             selectedFiles = imageFiles.slice(0, MAX_FILES);
+            if (referenceInput) {
+                referenceInput.value = '';
+            }
             renderPreview();
 
             ensureAllReferenceUploads(selectedFiles).catch((error) => {
@@ -800,10 +738,10 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function buildVariantPrompt(theme, variant, customPrompt) {
-            const accent = customPrompt && customPrompt.trim() !== '' ? customPrompt.trim() : theme.template;
+            const accent = customPrompt && customPrompt.trim() !== '' ? customPrompt.trim() : (theme.template || '');
             const segments = [
                 '[MultiReference Blend] Gabungkan semua foto referensi, pertahankan wajah, rambut, dan kostum yang konsisten.',
-                `[Theme Treatment] ${theme.label}. ${theme.description}`,
+                `[Theme Treatment] ${theme.label || ''}. ${theme.description || ''}`,
                 `[Pose Direction] ${variant.shot}`,
                 `[Styling Motif] ${accent}`,
                 '[Camera & Lighting] cinematic lighting, editorial photography, high dynamic range, rich texture, 8k detail.',
@@ -813,7 +751,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function prepareVariantRequest(themeKey, variant, customPrompt, referencesBase64) {
-            const theme = themeOptions[themeKey] || themeOptions.romantic;
+            const fallbackTheme = themeOptions[DEFAULT_THEME_KEY] || {};
+            const theme = themeOptions[themeKey] || fallbackTheme;
             const prompt = buildVariantPrompt(theme, variant, customPrompt);
             const body = {
                 prompt,
@@ -858,7 +797,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
 
         async function createGeminiTask(body) {
             const data = await callFreepik({ path: CREATE_PATH, method: 'POST', body });
-            const response = data?.data || {};
+            const response = data && data.data ? data.data : {};
             return {
                 taskId: response.task_id || null,
                 status: response.status || 'CREATED'
@@ -870,7 +809,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 throw new Error('Task ID tidak ditemukan.');
             }
             const data = await callFreepik({ path: STATUS_PATH(taskId), method: 'GET' });
-            const response = data?.data || {};
+            const response = data && data.data ? data.data : {};
             const generated = Array.isArray(response.generated) ? response.generated : [];
             return {
                 status: response.status || null,
@@ -879,6 +818,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function renderResults() {
+            if (!resultGrid) {
+                return;
+            }
             resultGrid.innerHTML = '';
             if (!tasks.length) {
                 showEmptyState(true);
@@ -1166,59 +1108,77 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
         }
 
-        dropzone.addEventListener('click', () => {
-            referenceInput.click();
-        });
-
-        dropzone.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
+        if (dropzone && referenceInput) {
+            dropzone.addEventListener('click', () => {
                 referenceInput.click();
-            }
-        });
+            });
 
-        dropzone.addEventListener('dragover', (event) => {
-            event.preventDefault();
-            dropzone.classList.add('is-dragover');
-        });
+            dropzone.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    referenceInput.click();
+                }
+            });
 
-        dropzone.addEventListener('dragleave', () => {
-            dropzone.classList.remove('is-dragover');
-        });
+            dropzone.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                dropzone.classList.add('is-dragover');
+            });
 
-        dropzone.addEventListener('drop', (event) => {
-            event.preventDefault();
-            dropzone.classList.remove('is-dragover');
-            if (event.dataTransfer?.files?.length) {
-                handleFiles(event.dataTransfer.files);
-            }
-        });
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('is-dragover');
+            });
 
-        browseButton.addEventListener('click', () => {
-            referenceInput.click();
-        });
+            dropzone.addEventListener('drop', (event) => {
+                event.preventDefault();
+                dropzone.classList.remove('is-dragover');
+                if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length) {
+                    handleFiles(event.dataTransfer.files);
+                }
+            });
+        }
 
-        referenceInput.addEventListener('change', () => {
-            if (referenceInput.files?.length) {
-                handleFiles(referenceInput.files);
-            }
-        });
+        if (browseButton && referenceInput) {
+            browseButton.addEventListener('click', () => {
+                referenceInput.click();
+            });
+        }
 
-        themeSelect.addEventListener('change', () => {
-            const themeKey = themeSelect.value;
-            renderThemeHint(themeKey);
-            ensurePromptTemplate(themeKey);
-        });
+        if (referenceInput) {
+            referenceInput.addEventListener('change', () => {
+                if (referenceInput.files && referenceInput.files.length) {
+                    handleFiles(referenceInput.files);
+                }
+            });
+        }
 
-        promptStyleInput.addEventListener('input', setPromptDirty);
-        resetPromptButton.addEventListener('click', () => {
+        if (themeSelect) {
+            themeSelect.addEventListener('change', () => {
+                const themeKey = themeSelect.value;
+                renderThemeHint(themeKey);
+                ensurePromptTemplate(themeKey);
+            });
+        }
+
+        if (promptStyleInput) {
+            promptStyleInput.addEventListener('input', setPromptDirty);
+        }
+
+        if (resetPromptButton && themeSelect) {
+            resetPromptButton.addEventListener('click', () => {
+                ensurePromptTemplate(themeSelect.value, true);
+            });
+        }
+
+        if (form) {
+            form.addEventListener('submit', submitForm);
+        }
+
+        if (themeSelect) {
+            renderThemeHint(themeSelect.value);
             ensurePromptTemplate(themeSelect.value, true);
-        });
+        }
 
-        form.addEventListener('submit', submitForm);
-
-        renderThemeHint(themeSelect.value);
-        ensurePromptTemplate(themeSelect.value, true);
         renderPreview();
         showEmptyState(true);
     })();
