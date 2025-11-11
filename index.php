@@ -92,8 +92,9 @@ function drive_item_type_from_extension(string $extension): string
 
 function drive_merge_items_with_filesystem(array $account, array $items): array
 {
-    $info = auth_drive_storage_info($account);
-    $dir = $info['absolute'];
+    $info = auth_drive_ensure_storage_directory($account);
+    $dir = $info['absolute_generate'] ?? ($info['absolute'] ?? null);
+    $allowedPrefix = $info['relative_generate'] ?? ($info['relative'] ?? '');
 
     $normalizedItems = [];
     foreach ($items as $entry) {
@@ -103,7 +104,24 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
 
         if (isset($entry['storage_path'])) {
             $normalizedPath = auth_drive_normalize_storage_path($entry['storage_path']);
-            if ($normalizedPath) {
+            $uploadsPrefix = $info['relative_uploads'] ?? null;
+            if ($normalizedPath && $uploadsPrefix && strpos($normalizedPath, $uploadsPrefix) === 0) {
+                $normalizedPath = null;
+            } elseif ($normalizedPath && $allowedPrefix !== '' && strpos($normalizedPath, $allowedPrefix) !== 0) {
+                $legacyAbsolute = __DIR__ . '/' . $normalizedPath;
+                $targetDir = $info['absolute_generate'] ?? null;
+                $targetRelative = $info['relative_generate'] ?? null;
+                if ($targetDir && $targetRelative && is_file($legacyAbsolute)) {
+                    $basename = basename($normalizedPath);
+                    $newRelative = rtrim($targetRelative, '/') . '/' . $basename;
+                    $newAbsolute = __DIR__ . '/' . $newRelative;
+                    if (@rename($legacyAbsolute, $newAbsolute)) {
+                        $normalizedPath = $newRelative;
+                    }
+                }
+            }
+
+            if ($normalizedPath && ($allowedPrefix === '' || strpos($normalizedPath, $allowedPrefix) === 0)) {
                 $absolute = __DIR__ . '/' . $normalizedPath;
                 if (is_file($absolute)) {
                     $entry['storage_path'] = $normalizedPath;
@@ -113,7 +131,13 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
                         $entry['thumbnail_url'] = $localUrl;
                     }
                 }
+            } else {
+                unset($entry['storage_path']);
+                continue;
             }
+        } elseif (isset($entry['model']) && $entry['model'] === 'upload') {
+            // Skip manual uploads from appearing in Creative Drive view
+            continue;
         }
 
         $normalizedItems[] = $entry;
@@ -123,7 +147,7 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
         $items = $normalizedItems;
     }
 
-    if (!is_dir($dir)) {
+    if (!$dir || !is_dir($dir)) {
         return $items;
     }
 
@@ -153,7 +177,11 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
             continue;
         }
         $basename = basename($file);
-        $relative = $info['relative'] . '/' . $basename;
+        if ($allowedPrefix !== '' && strpos($file, ($info['absolute_generate'] ?? $dir)) !== 0) {
+            continue;
+        }
+
+        $relative = ($info['relative_generate'] ?? $info['relative']) . '/' . $basename;
         $url = app_public_url($relative);
 
         if (isset($existingByUrl[$url]) || isset($existingByStorage[$relative])) {
@@ -1152,20 +1180,26 @@ if ($requestedApi === 'drive-delete') {
         $payload = $_POST;
     }
 
-    $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
-    $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
-    $storagePath = isset($payload['storage_path']) ? trim((string)$payload['storage_path']) : '';
-
-    if ($itemId === '' && $itemUrl === '' && $storagePath === '') {
-        auth_json_response([
-            'ok' => false,
-            'status' => 422,
-            'error' => 'ID atau URL item wajib diisi.'
-        ], 422);
-    }
+    $bulkItems = isset($payload['items']) && is_array($payload['items']) ? $payload['items'] : [];
 
     $errors = [];
-    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $storagePath !== '' ? $storagePath : null, $errors);
+    if ($bulkItems) {
+        $items = auth_drive_delete_items($account['id'], $bulkItems, $errors);
+    } else {
+        $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
+        $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
+        $storagePath = isset($payload['storage_path']) ? trim((string)$payload['storage_path']) : '';
+
+        if ($itemId === '' && $itemUrl === '' && $storagePath === '') {
+            auth_json_response([
+                'ok' => false,
+                'status' => 422,
+                'error' => 'ID atau URL item wajib diisi.'
+            ], 422);
+        }
+
+        $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $storagePath !== '' ? $storagePath : null, $errors);
+    }
     if ($items === null) {
         $status = isset($errors['general']) ? 500 : 404;
         auth_json_response([
@@ -1582,7 +1616,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     }
 
     $storageInfo = auth_drive_ensure_storage_directory($account);
-    $dir = $storageInfo['absolute'];
+    $dir = $storageInfo['absolute_uploads'] ?? ($storageInfo['absolute'] ?? null);
+    if (!$dir) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Folder penyimpanan belum tersedia'
+        ]);
+        exit;
+    }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $allowed = [
@@ -1627,7 +1669,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         exit;
     }
 
-    $publicPath = $storageInfo['relative'] . '/' . $filename;
+    $relativeBase = $storageInfo['relative_uploads'] ?? ($storageInfo['relative'] ?? null);
+    if (!$relativeBase) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Folder penyimpanan belum tersedia'
+        ]);
+        exit;
+    }
+
+    $publicPath = $relativeBase . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -1678,7 +1730,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     }
 
     $storageInfo = auth_drive_ensure_storage_directory($account);
-    $dir = $storageInfo['absolute'];
+    $dir = $storageInfo['absolute_generate'] ?? ($storageInfo['absolute'] ?? null);
+    if (!$dir) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Folder penyimpanan belum tersedia'
+        ]);
+        exit;
+    }
 
     $pathPart = parse_url($url, PHP_URL_PATH);
     $ext = pathinfo($pathPart ?? '', PATHINFO_EXTENSION);
@@ -1720,7 +1780,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         exit;
     }
 
-    $publicPath = $storageInfo['relative'] . '/' . $filename;
+    $relativeBase = $storageInfo['relative_generate'] ?? ($storageInfo['relative'] ?? null);
+    if (!$relativeBase) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Folder penyimpanan belum tersedia'
+        ]);
+        exit;
+    }
+
+    $publicPath = $relativeBase . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -3534,6 +3604,62 @@ body[data-theme="light"] {
   flex-direction: column;
   gap: 18px;
 }
+.drive-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 18px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
+}
+.drive-selection-group {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.drive-select-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.drive-select-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.drive-selection-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+.drive-delete-selected {
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.14);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fee2e2;
+  padding: 8px 16px;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.drive-delete-selected:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.drive-delete-selected:not(:disabled):hover {
+  background: rgba(248, 113, 113, 0.22);
+  border-color: rgba(248, 113, 113, 0.5);
+  box-shadow: 0 16px 28px rgba(248, 113, 113, 0.32);
+  transform: translateY(-1px);
+}
 .drive-empty {
   padding: 48px 24px;
   border: 1px dashed var(--border);
@@ -3581,6 +3707,18 @@ body[data-theme="light"] {
   justify-content: center;
   cursor: zoom-in;
 }
+.drive-card--selected {
+  border-color: rgba(99, 102, 241, 0.85);
+  box-shadow: 0 22px 42px rgba(99, 102, 241, 0.28);
+}
+.drive-card--selected .drive-thumb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.22), rgba(59, 130, 246, 0.12));
+  opacity: 0.85;
+  pointer-events: none;
+}
 .drive-thumb img,
 .drive-thumb video {
   width: 100%;
@@ -3622,6 +3760,31 @@ body[data-theme="light"] {
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
   z-index: 6;
 }
+.drive-select-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(6px);
+  z-index: 8;
+}
+.drive-select-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.drive-select-toggle span {
+  pointer-events: none;
+}
 .drive-card-footer {
   display: flex;
   flex-direction: column;
@@ -3636,38 +3799,65 @@ body[data-theme="light"] {
   color: var(--muted);
 }
 .drive-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
 }
-.drive-actions button,
-.drive-actions a {
-  flex: 1 1 calc(50% - 8px);
-  min-width: 120px;
-  border-radius: 10px;
-  border: 1px solid rgba(99, 102, 241, 0.4);
-  background: rgba(99, 102, 241, 0.12);
+.drive-action-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  background: rgba(99, 102, 241, 0.14);
   color: var(--text);
-  padding: 6px 8px;
+  padding: 8px 10px;
   font-size: 11px;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
-.drive-actions button:hover,
-.drive-actions a:hover {
+.drive-action-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(99, 102, 241, 0.65);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
   background: rgba(99, 102, 241, 0.2);
-  border-color: rgba(129, 140, 248, 0.7);
 }
-.drive-actions .danger {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.45);
-  color: var(--danger);
+.drive-action-btn.danger {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.14);
+  color: #fee2e2;
 }
-.drive-actions .danger:hover {
+.drive-action-btn.danger:hover {
   background: rgba(239, 68, 68, 0.22);
-  border-color: rgba(239, 68, 68, 0.65);
+  border-color: rgba(239, 68, 68, 0.75);
+  box-shadow: 0 16px 32px rgba(239, 68, 68, 0.32);
+}
+.drive-download-btn {
+  color: #f8fafc;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.92), rgba(59, 130, 246, 0.92));
+  border: none;
+  overflow: hidden;
+  box-shadow: 0 16px 32px rgba(59, 130, 246, 0.35);
+}
+.drive-download-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.6) 50%, transparent 100%);
+  transform: translateX(-100%);
+  transition: transform 0.45s ease;
+}
+.drive-download-btn:hover::after {
+  transform: translateX(100%);
+}
+.drive-download-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 40px rgba(59, 130, 246, 0.45);
 }
 .drive-clear-date {
   margin-left: auto;
@@ -4898,8 +5088,7 @@ body[data-theme="light"] .profile-expiry.expired {
     gap: 16px;
     min-height: 0;
   }
-  .film-scenes-board,
-  .ugc-list-card {
+  .film-scenes-board {
     padding: 16px;
   }
   .film-scenes-container {
@@ -4947,13 +5136,19 @@ body[data-theme="light"] .profile-expiry.expired {
     width: 100%;
     text-align: center;
   }
-  .preview-btn-group,
-  .ugc-video-actions {
+  .preview-btn-group {
     flex-direction: column;
     align-items: stretch;
   }
-  .preview-btn-group > *,
-  .ugc-video-actions > * {
+  .preview-btn-group > * {
+    width: 100%;
+  }
+  .ugc-video-actions {
+    justify-content: flex-start;
+    gap: 10px;
+  }
+  .ugc-download-btn,
+  .ugc-generate-btn {
     width: 100%;
   }
   .film-slider-row {
@@ -6131,13 +6326,12 @@ body[data-theme="light"] .profile-expiry.expired {
       .ugc-app { grid-template-columns: 1fr; }
     }
     .ugc-list-card {
-      background: linear-gradient(135deg, rgba(37,99,235,0.14), rgba(14,165,233,0.1));
-      border-radius: 12px;
-      border: 1px dashed rgba(75,85,99,0.8);
-      padding: 12px 14px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 18px;
+      padding: 0;
+      background: transparent;
+      border: none;
     }
     .ugc-empty {
       flex: 1;
@@ -6145,91 +6339,357 @@ body[data-theme="light"] .profile-expiry.expired {
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 32px 10px;
+      padding: 36px 12px;
       font-size: 12px;
       color: var(--muted);
+      border-radius: 16px;
+      border: 1px dashed rgba(148,163,184,0.3);
+      background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(14,165,233,0.06));
     }
     .ugc-row {
       background: var(--card);
-      border-radius: 12px;
-      border: 1px solid var(--border);
+      border-radius: 18px;
+      border: 1px solid rgba(148,163,184,0.22);
+      box-shadow: 0 24px 44px rgba(15,23,42,0.22);
       display: grid;
-      grid-template-columns: 210px 1fr;
-      gap: 12px;
-      padding: 10px;
+      grid-template-columns: minmax(0, 240px) minmax(0, 220px) minmax(0, 1fr);
+      gap: 20px;
+      padding: 22px;
+      align-items: stretch;
     }
     @media (max-width: 900px) {
-      .ugc-row { grid-template-columns: 1fr; }
+      .ugc-row {
+        grid-template-columns: 1fr;
+        padding: 18px;
+      }
     }
-    .ugc-media-block {
+    .ugc-column {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .ugc-column-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.95);
+    }
+    .ugc-image-card {
+      position: relative;
+      border-radius: 16px;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: linear-gradient(145deg, rgba(37,99,235,0.18), rgba(14,165,233,0.12));
+      min-height: 240px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
+    }
+    .ugc-image-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .ugc-image-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      color: rgba(148,163,184,0.85);
+      text-align: center;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 14px;
+    }
+    .ugc-placeholder-title {
+      font-weight: 600;
+      color: rgba(226,232,240,0.95);
+    }
+    .ugc-placeholder-status {
+      font-size: 11px;
+      color: rgba(148,163,184,0.7);
+    }
+    .ugc-video-card {
+      border-radius: 16px;
+      border: 1px solid rgba(30,41,59,0.45);
+      background: radial-gradient(circle at top, rgba(17,24,39,0.88), rgba(2,6,23,0.92));
+      min-height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
+    }
+    .ugc-video-card video {
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+      object-fit: cover;
+      background: #000;
+    }
+    .ugc-video-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-align: center;
+      color: rgba(203,213,225,0.9);
+      font-size: 12px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 14px;
+    }
+    .ugc-video-placeholder .ugc-placeholder-status {
+      color: rgba(148,163,184,0.7);
+    }
+    .ugc-image-placeholder.is-loading::before,
+    .ugc-video-placeholder.is-loading::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(148,163,184,0.05) 0%, rgba(148,163,184,0.18) 45%, rgba(148,163,184,0.05) 100%);
+      animation: ugcShimmer 1.6s linear infinite;
+      opacity: 0.85;
+    }
+    .ugc-image-placeholder.is-loading > *,
+    .ugc-video-placeholder.is-loading > * {
+      position: relative;
+      z-index: 1;
+    }
+    .ugc-loading-spinner {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 3px solid rgba(148,163,184,0.28);
+      border-top-color: rgba(96,165,250,0.9);
+      animation: ugcSpin 0.9s linear infinite;
+    }
+    .ugc-image-card.is-loading,
+    .ugc-video-card.is-loading {
+      box-shadow: 0 14px 28px rgba(15,23,42,0.28);
+      transform: translateY(1px);
+    }
+    .ugc-video-badge {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(34,197,94,0.18);
+      color: rgba(187,247,208,0.95);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(34,197,94,0.35);
+    }
+    .ugc-video-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .ugc-result-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ugc-result-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .ugc-result-subtitle {
+      font-size: 13px;
+      color: rgba(148,163,184,0.92);
+    }
+    .ugc-download-group {
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
-    .ugc-media-card {
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: linear-gradient(180deg,#7c3aed,#0f172a);
-      padding: 10px 8px;
-      color: #e5e7eb;
-      font-size: 11px;
-      text-align: center;
-      min-height: 160px;
-      display: flex;
+    .ugc-download-btn {
+      display: inline-flex;
       align-items: center;
       justify-content: center;
+      padding: 10px 22px;
+      border-radius: 999px;
+      border: none;
+      background: linear-gradient(135deg, rgba(59,130,246,0.92), rgba(14,165,233,0.86));
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      background-size: 220% 220%;
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
     }
-    .ugc-media-card img {
-      width: 100%;
-      aspect-ratio: 9 / 16;
-      border-radius: 12px;
-      object-fit: cover;
-      background:#000;
+    .ugc-download-btn:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 18px 34px rgba(14,165,233,0.26);
+      background-position: 100% 0;
     }
-    .ugc-media-title {
-      font-size: 11px;
-      font-weight: 500;
-      margin-bottom: 2px;
+    .ugc-download-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      transform: none;
+      box-shadow: none;
+      background-position: 0 0;
     }
-    .ugc-media-status {
-      font-size: 10px;
-      opacity: .8;
-    }
-    .ugc-video-card {
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.12));
-      padding: 10px;
-      font-size: 11px;
-      text-align: center;
-      min-height: 80px;
-      display:flex;
-      flex-direction: column;
-      gap: 6px;
-      align-items:center;
-      justify-content:center;
-    }
-    .ugc-video-card video {
-      width: 100%;
-      aspect-ratio: 9 / 16;
-      border-radius: 12px;
-      background: #000;
-      object-fit: cover;
-    }
-    .ugc-video-actions {
+    .ugc-secondary-actions {
       display: flex;
-      gap: 6px;
-      justify-content: center;
       flex-wrap: wrap;
+      gap: 14px;
     }
-    .ugc-right {
+    .ugc-link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      color: rgba(96,165,250,0.95);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    .ugc-link-btn:hover {
+      color: rgba(129,212,250,0.95);
+    }
+    .ugc-link-btn:disabled {
+      color: rgba(148,163,184,0.6);
+      cursor: not-allowed;
+    }
+    .ugc-form-group {
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
-    .ugc-prompt-label {
-      font-size: 11px;
-      color: var(--muted);
+    .ugc-field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(148,163,184,0.92);
+    }
+    textarea.ugc-textarea {
+      width: 100%;
+      min-height: 90px;
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: rgba(15,23,42,0.45);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 13px;
+      resize: vertical;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    textarea.ugc-textarea:focus {
+      outline: none;
+      border-color: rgba(96,165,250,0.65);
+      box-shadow: 0 0 0 2px rgba(96,165,250,0.25);
+    }
+    textarea.ugc-textarea:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    .ugc-generate-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ugc-generate-btn {
+      align-self: flex-start;
+      border-radius: 999px;
+      border: none;
+      padding: 10px 22px;
+      background: linear-gradient(135deg, rgba(139,92,246,0.92), rgba(14,165,233,0.86));
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      background-size: 220% 220%;
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
+    }
+    .ugc-generate-btn:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 18px 32px rgba(139,92,246,0.3);
+      background-position: 100% 0;
+    }
+    .ugc-generate-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      transform: none;
+      box-shadow: none;
+      background-position: 0 0;
+    }
+    .ugc-primary-btn {
+      width: 100%;
+      margin-top: 4px;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      background: linear-gradient(135deg, rgba(37,99,235,0.95), rgba(14,165,233,0.9));
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      background-size: 220% 220%;
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
+    }
+    .ugc-primary-btn:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 20px 38px rgba(14,165,233,0.26);
+      background-position: 100% 0;
+    }
+    .ugc-primary-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+      background-position: 0 0;
+    }
+    .ugc-download-btn::before,
+    .ugc-generate-btn::before,
+    .ugc-primary-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(255,255,255,0.4), rgba(255,255,255,0));
+      transform: translateX(-120%);
+      opacity: 0;
+      transition: transform 0.45s ease, opacity 0.45s ease;
+      pointer-events: none;
+    }
+    .ugc-download-btn:hover::before,
+    .ugc-generate-btn:hover::before,
+    .ugc-primary-btn:hover::before {
+      transform: translateX(120%);
+      opacity: 0.35;
+    }
+    .ugc-aspect-select select {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid rgba(148,163,184,0.28);
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 13px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .ugc-aspect-select select:focus {
+      outline: none;
+      border-color: rgba(96,165,250,0.65);
+      box-shadow: 0 0 0 2px rgba(96,165,250,0.25);
     }
     .ugc-product-preview {
       display:flex;
@@ -6393,6 +6853,9 @@ body[data-theme="light"] .profile-expiry.expired {
       z-index: 2000;
     }
     .asset-preview.hidden { display: none; }
+    .asset-preview.visible {
+      animation: ugcOverlayFade 0.28s ease forwards;
+    }
     .asset-preview-inner {
       background: var(--card);
       border-radius: 14px;
@@ -6406,6 +6869,9 @@ body[data-theme="light"] .profile-expiry.expired {
       gap: 12px;
       box-shadow: 0 18px 55px rgba(15,23,42,0.8);
       position: relative;
+    }
+    .asset-preview.visible .asset-preview-inner {
+      animation: ugcModalPop 0.34s cubic-bezier(0.22,0.61,0.36,1) forwards;
     }
     .asset-preview-close {
       position: absolute;
@@ -6761,6 +7227,23 @@ body[data-theme="light"] .profile-expiry.expired {
       color: var(--muted);
       text-align: center;
     }
+    @keyframes ugcSpin {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes ugcShimmer {
+      0% { transform: translateX(-80%); }
+      50% { transform: translateX(0); }
+      100% { transform: translateX(80%); }
+    }
+    @keyframes ugcOverlayFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes ugcModalPop {
+      0% { transform: translateY(24px) scale(0.92); opacity: 0; }
+      60% { transform: translateY(-6px) scale(1.01); opacity: 1; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
     @keyframes maintenanceGlow {
       0% { transform: rotate(0deg) scale(1); opacity: 0.45; }
       50% { transform: rotate(180deg) scale(1.04); opacity: 0.6; }
@@ -7060,6 +7543,17 @@ body[data-theme="light"] .profile-expiry.expired {
           </select>
         </div>
         <button type="button" class="small secondary drive-clear-date" id="driveClearDate">Reset tanggal</button>
+      </section>
+
+      <section class="drive-selection-bar" id="driveSelectionBar" hidden>
+        <div class="drive-selection-group">
+          <label class="drive-select-checkbox">
+            <input type="checkbox" id="driveSelectAll">
+            <span>Pilih semua</span>
+          </label>
+          <span class="drive-selection-count" id="driveSelectionCount">Tidak ada file dipilih</span>
+        </div>
+        <button type="button" class="small danger drive-delete-selected" id="driveDeleteSelected" disabled>Hapus terpilih</button>
       </section>
 
       <section class="drive-content">
@@ -7688,23 +8182,29 @@ body[data-theme="light"] .profile-expiry.expired {
       </div>
 
       <div>
+        <div class="small-label">Aspect Ratio</div>
+        <div class="ugc-aspect-select">
+          <select id="ugcAspectRatio">
+            <option value="square_1_1">Square 1:1</option>
+            <option value="portrait_3_4">Portrait 3:4</option>
+            <option value="portrait_9_16">Portrait 9:16</option>
+            <option value="landscape_16_9">Landscape 16:9</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
         <div class="small-label">Product Brief (Optional)</div>
         <textarea id="ugcBrief" placeholder="Contoh: Mempromosikan botol air berkelanjutan untuk penggemar kebugaran, menekankan gaya hidup ramah lingkungan dan aktivitas luar ruangan"></textarea>
       </div>
 
       <div>
-        <button type="button" id="ugcGenerateBtn" style="width:100%;margin-top:4px;">
+        <button type="button" id="ugcGenerateBtn" class="ugc-primary-btn">
           Generate UGC
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
           Sistem akan membuat 5 ide UGC beserta gambar dari Gemini Flash 2.5.
-          Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
-        </div>
-        <div class="progress-inline" id="ugcProgress">
-          <div class="progress-label"><span>Progress</span><span id="ugcProgressValue">0%</span></div>
-          <div class="progress-bar">
-            <div class="progress-fill" id="ugcProgressFill"></div>
-          </div>
+          Tiap baris punya prompt video + tombol Generate Video (Seedance 1080) &amp; Download.
         </div>
       </div>
     </div>
@@ -7860,6 +8360,10 @@ body[data-theme="light"] .profile-expiry.expired {
   const driveSortFilter = document.getElementById('driveSortFilter');
   const driveDateFilter = document.getElementById('driveDateFilter');
   const driveClearDateBtn = document.getElementById('driveClearDate');
+  const driveSelectionBar = document.getElementById('driveSelectionBar');
+  const driveSelectAllCheckbox = document.getElementById('driveSelectAll');
+  const driveDeleteSelectedBtn = document.getElementById('driveDeleteSelected');
+  const driveSelectionCountEl = document.getElementById('driveSelectionCount');
   const driveTotalCountEl = document.getElementById('driveTotalCount');
   const driveTypeSummaryEl = document.getElementById('driveTypeSummary');
   const watermarkNotice = document.getElementById('watermarkNotice');
@@ -8098,6 +8602,9 @@ body[data-theme="light"] .profile-expiry.expired {
   let driveItems = [];
   let driveLoaded = false;
   let driveLoading = false;
+  const driveSelection = new Map();
+  const driveItemIndex = new Map();
+  let driveFilteredItems = [];
 
   function defaultPlatformState() {
     return {
@@ -8782,6 +9289,91 @@ body[data-theme="light"] .profile-expiry.expired {
     return String(modelId).toUpperCase();
   }
 
+  function driveItemKey(item) {
+    if (!item || typeof item !== 'object') return null;
+    if (item.id) return `id:${item.id}`;
+    const storage = item.storage_path || item.storagePath;
+    if (storage) return `storage:${storage}`;
+    if (item.url) return `url:${item.url}`;
+    return null;
+  }
+
+  function driveSelectionTarget(item) {
+    if (!item || typeof item !== 'object') return null;
+    const target = {};
+    if (item.id) target.id = String(item.id);
+    const storage = item.storage_path || item.storagePath;
+    if (storage) target.storage_path = String(storage);
+    if (item.url) target.url = String(item.url);
+    return Object.keys(target).length ? target : null;
+  }
+
+  function refreshDriveItemIndex() {
+    driveItemIndex.clear();
+    if (!Array.isArray(driveItems)) return;
+    driveItems.forEach(item => {
+      const key = driveItemKey(item);
+      if (key) {
+        driveItemIndex.set(key, item);
+      }
+    });
+  }
+
+  function pruneDriveSelection() {
+    let changed = false;
+    driveSelection.forEach((value, key) => {
+      if (!driveItemIndex.has(key)) {
+        driveSelection.delete(key);
+        changed = true;
+        return;
+      }
+      const latest = driveItemIndex.get(key);
+      const target = driveSelectionTarget(latest);
+      if (target) {
+        driveSelection.set(key, target);
+      }
+    });
+    updateDriveSelectionBar();
+  }
+
+  function updateDriveSelectionBar() {
+    if (!driveSelectionBar) return;
+
+    const selectedCount = driveSelection.size;
+    const visibleCount = Array.isArray(driveFilteredItems) ? driveFilteredItems.length : 0;
+    const showBar = selectedCount > 0 || visibleCount > 0;
+    driveSelectionBar.hidden = !showBar;
+
+    if (driveSelectionCountEl) {
+      driveSelectionCountEl.textContent = selectedCount
+        ? `${selectedCount} dipilih`
+        : 'Tidak ada file dipilih';
+    }
+
+    if (driveDeleteSelectedBtn) {
+      driveDeleteSelectedBtn.disabled = selectedCount === 0;
+    }
+
+    if (driveSelectAllCheckbox) {
+      if (!visibleCount) {
+        driveSelectAllCheckbox.checked = false;
+        driveSelectAllCheckbox.indeterminate = false;
+        driveSelectAllCheckbox.disabled = true;
+      } else {
+        let visibleSelected = 0;
+        driveFilteredItems.forEach(item => {
+          const key = driveItemKey(item);
+          if (key && driveSelection.has(key)) {
+            visibleSelected += 1;
+          }
+        });
+        driveSelectAllCheckbox.disabled = false;
+        driveSelectAllCheckbox.checked = visibleSelected > 0 && visibleSelected === visibleCount;
+        driveSelectAllCheckbox.indeterminate = visibleSelected > 0 && visibleSelected < visibleCount;
+      }
+    }
+  }
+
   function formatDriveDate(iso) {
     if (!iso) return '-';
     const date = new Date(iso);
@@ -8832,6 +9424,7 @@ body[data-theme="light"] .profile-expiry.expired {
       return bTime - aTime;
     });
 
+    driveFilteredItems = items.slice();
     driveEmpty.style.display = items.length ? 'none' : 'block';
     driveGrid.innerHTML = '';
 
@@ -8839,6 +9432,17 @@ body[data-theme="light"] .profile-expiry.expired {
       if (!item || !item.url) return;
       const card = document.createElement('div');
       card.className = 'drive-card';
+      const key = driveItemKey(item);
+      const isSelected = key ? driveSelection.has(key) : false;
+      if (key && isSelected) {
+        const refreshedTarget = driveSelectionTarget(item);
+        if (refreshedTarget) {
+          driveSelection.set(key, refreshedTarget);
+        }
+      }
+      if (isSelected) {
+        card.classList.add('drive-card--selected');
+      }
 
       const thumb = document.createElement('div');
       thumb.className = 'drive-thumb';
@@ -8872,6 +9476,42 @@ body[data-theme="light"] .profile-expiry.expired {
         openAssetPreview(item.url, type);
       });
 
+      if (key) {
+        const selectToggle = document.createElement('label');
+        selectToggle.className = 'drive-select-toggle';
+        selectToggle.addEventListener('click', evt => evt.stopPropagation());
+
+        const selectInput = document.createElement('input');
+        selectInput.type = 'checkbox';
+        selectInput.checked = isSelected;
+        selectInput.addEventListener('click', evt => evt.stopPropagation());
+
+        const selectText = document.createElement('span');
+        const refreshSelectText = () => {
+          selectText.textContent = selectInput.checked ? 'Dipilih' : 'Pilih';
+        };
+        refreshSelectText();
+
+        selectInput.addEventListener('change', () => {
+          if (!key) return;
+          if (selectInput.checked) {
+            const target = driveSelectionTarget(item);
+            if (target) {
+              driveSelection.set(key, target);
+            }
+          } else {
+            driveSelection.delete(key);
+          }
+          card.classList.toggle('drive-card--selected', selectInput.checked);
+          refreshSelectText();
+          updateDriveSelectionBar();
+        });
+
+        selectToggle.appendChild(selectInput);
+        selectToggle.appendChild(selectText);
+        card.appendChild(selectToggle);
+      }
+
       const footer = document.createElement('div');
       footer.className = 'drive-card-footer';
 
@@ -8895,12 +9535,14 @@ body[data-theme="light"] .profile-expiry.expired {
       const previewBtn = document.createElement('button');
       previewBtn.type = 'button';
       previewBtn.textContent = 'Preview';
+      previewBtn.className = 'drive-action-btn';
       previewBtn.addEventListener('click', () => openAssetPreview(item.url, type));
       actions.appendChild(previewBtn);
 
       const copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.textContent = 'Copy Link';
+      copyBtn.className = 'drive-action-btn';
       copyBtn.addEventListener('click', () => copyDriveLink(item, copyBtn));
       actions.appendChild(copyBtn);
 
@@ -8910,11 +9552,12 @@ body[data-theme="light"] .profile-expiry.expired {
       downloadLink.rel = 'noopener';
       downloadLink.textContent = 'Download';
       downloadLink.setAttribute('download', '');
+      downloadLink.className = 'drive-action-btn drive-download-btn';
       actions.appendChild(downloadLink);
 
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
-      deleteBtn.className = 'danger';
+      deleteBtn.className = 'drive-action-btn danger';
       deleteBtn.textContent = 'Hapus';
       deleteBtn.addEventListener('click', () => deleteDriveEntry(item, deleteBtn));
       actions.appendChild(deleteBtn);
@@ -8926,6 +9569,7 @@ body[data-theme="light"] .profile-expiry.expired {
     });
 
     updateDriveSummary();
+    updateDriveSelectionBar();
   }
 
   async function loadDriveItems(force = false) {
@@ -8947,6 +9591,8 @@ body[data-theme="light"] .profile-expiry.expired {
         throw new Error((data && data.error) || 'Gagal memuat drive.');
       }
       driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      refreshDriveItemIndex();
+      pruneDriveSelection();
       driveLoaded = true;
       renderDriveItems();
     } catch (err) {
@@ -8973,6 +9619,8 @@ body[data-theme="light"] .profile-expiry.expired {
     }
 
     driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+    refreshDriveItemIndex();
+    pruneDriveSelection();
     driveLoaded = true;
     renderDriveItems();
     return driveItems;
@@ -9117,7 +9765,8 @@ body[data-theme="light"] .profile-expiry.expired {
     const payload = {};
     if (item.id) payload.id = item.id;
     if (item.url) payload.url = item.url;
-    if (item.storage_path) payload.storage_path = item.storage_path;
+    const storagePath = item.storage_path || item.storagePath;
+    if (storagePath) payload.storage_path = storagePath;
     if (!payload.id && !payload.url && !payload.storage_path) {
       alert('Item drive tidak valid.');
       return;
@@ -9140,6 +9789,8 @@ body[data-theme="light"] .profile-expiry.expired {
         throw new Error(pickErrorMessage(data && data.error));
       }
       driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      refreshDriveItemIndex();
+      pruneDriveSelection();
       driveLoaded = true;
       renderDriveItems();
     } catch (err) {
@@ -9148,6 +9799,65 @@ body[data-theme="light"] .profile-expiry.expired {
       if (button) {
         button.disabled = false;
         button.textContent = 'Hapus';
+      }
+    }
+  }
+
+  async function deleteSelectedDriveEntries(button) {
+    if (!driveSelection.size) {
+      alert('Tidak ada file yang dipilih.');
+      return;
+    }
+
+    const payloadItems = Array.from(driveSelection.values())
+      .map(target => {
+        if (!target || typeof target !== 'object') return null;
+        const entry = {};
+        if (target.id) entry.id = target.id;
+        if (target.url) entry.url = target.url;
+        if (target.storage_path) entry.storage_path = target.storage_path;
+        return Object.keys(entry).length ? entry : null;
+      })
+      .filter(Boolean);
+
+    if (!payloadItems.length) {
+      alert('Tidak ada file yang valid untuk dihapus.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Hapus ${payloadItems.length} file terpilih?`);
+    if (!confirmed) {
+      return;
+    }
+
+    const originalText = button ? button.textContent : '';
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menghapus…';
+    }
+
+    try {
+      const res = await fetch(DRIVE_DELETE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ items: payloadItems })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(pickErrorMessage(data && data.error));
+      }
+      driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      refreshDriveItemIndex();
+      driveSelection.clear();
+      driveLoaded = true;
+      renderDriveItems();
+    } catch (err) {
+      alert('Gagal menghapus file terpilih: ' + (err.message || err));
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText || 'Hapus terpilih';
       }
     }
   }
@@ -9788,7 +10498,14 @@ body[data-theme="light"] .profile-expiry.expired {
     if (typeof duration === 'number' && !Number.isNaN(duration) && duration > 0) {
       payload.duration = duration;
     }
-    const ratio = mapVideoAspect(formData.videoLayout);
+    let ratio = null;
+    if (typeof formData.aspectRatio === 'string' && formData.aspectRatio.trim()) {
+      ratio = formData.aspectRatio.trim();
+    } else if (typeof formData.aspect_ratio === 'string' && formData.aspect_ratio.trim()) {
+      ratio = formData.aspect_ratio.trim();
+    } else {
+      ratio = mapVideoAspect(formData.videoLayout);
+    }
     if (ratio && (ratio !== 'auto' || !payload.aspect_ratio)) {
       payload.aspect_ratio = ratio;
     } else if (!payload.aspect_ratio) {
@@ -10362,6 +11079,7 @@ body[data-theme="light"] .profile-expiry.expired {
   const ugcStyleLabelEl    = document.getElementById('ugcStyleLabel');
   const ugcStyleDescEl     = document.getElementById('ugcStyleDescription');
   const ugcStyleIconEl     = document.getElementById('ugcStyleIcon');
+  const ugcAspectRatioSelect = document.getElementById('ugcAspectRatio');
   const ugcBriefInput      = document.getElementById('ugcBrief');
   const ugcGenerateBtn     = document.getElementById('ugcGenerateBtn');
 
@@ -12409,6 +13127,38 @@ body[data-theme="light"] .profile-expiry.expired {
     });
   }
 
+  if (driveSelectAllCheckbox) {
+    driveSelectAllCheckbox.addEventListener('change', () => {
+      if (!driveFilteredItems.length) {
+        driveSelectAllCheckbox.checked = false;
+        driveSelectAllCheckbox.indeterminate = false;
+        return;
+      }
+
+      const shouldSelect = driveSelectAllCheckbox.checked;
+      driveSelectAllCheckbox.indeterminate = false;
+
+      driveFilteredItems.forEach(item => {
+        const key = driveItemKey(item);
+        if (!key) return;
+        if (shouldSelect) {
+          const target = driveSelectionTarget(item);
+          if (target) {
+            driveSelection.set(key, target);
+          }
+        } else {
+          driveSelection.delete(key);
+        }
+      });
+
+      renderDriveItems();
+    });
+  }
+
+  if (driveDeleteSelectedBtn) {
+    driveDeleteSelectedBtn.addEventListener('click', () => deleteSelectedDriveEntries(driveDeleteSelectedBtn));
+  }
+
   navButtons = Array.from(document.querySelectorAll('.sidebar-link[data-target], .js-dashboard-nav[data-target]'));
   viewDashboardSection = document.getElementById('viewDashboard');
   viewDriveSection = document.getElementById('viewDrive');
@@ -13191,6 +13941,16 @@ body[data-theme="light"] .profile-expiry.expired {
   });
 
   const UGC_IDEA_COUNT = 5;
+  const UGC_ASPECT_OPTIONS = [
+    { value: 'square_1_1', label: 'Square 1:1' },
+    { value: 'portrait_3_4', label: 'Portrait 3:4' },
+    { value: 'portrait_9_16', label: 'Portrait 9:16' },
+    { value: 'landscape_16_9', label: 'Landscape 16:9' }
+  ];
+  const UGC_ASPECT_LABEL_MAP = UGC_ASPECT_OPTIONS.reduce((acc, opt) => {
+    acc[opt.value] = opt.label;
+    return acc;
+  }, {});
 
   const UGC_STYLE_GROUPS = [
     {
@@ -13282,6 +14042,7 @@ body[data-theme="light"] .profile-expiry.expired {
   let ugcModelImage = null;
   let ugcItems = [];
   let ugcPollTimer = null;
+  let ugcCurrentAspectRatio = sanitizeUgcAspectRatio(ugcAspectRatioSelect ? ugcAspectRatioSelect.value : null) || 'square_1_1';
 
   function normalizeUgcReference(entry) {
     if (!entry) return null;
@@ -13293,6 +14054,49 @@ body[data-theme="light"] .profile-expiry.expired {
     }
     if (entry.url) {
       return entry.url;
+    }
+    return null;
+  }
+
+  function sanitizeUgcAspectRatio(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return UGC_ASPECT_LABEL_MAP[trimmed] ? trimmed : null;
+  }
+
+  function getUgcAspectLabel(value) {
+    return UGC_ASPECT_LABEL_MAP[value] || '';
+  }
+
+  function describeUgcAspect(value) {
+    const label = getUgcAspectLabel(value);
+    return label ? `${label} framing` : 'versatile framing';
+  }
+
+  function formatUgcStatus(status) {
+    if (!status) return 'CREATED';
+    const cleaned = String(status).replace(/_/g, ' ').trim();
+    return cleaned ? cleaned.toUpperCase() : 'CREATED';
+  }
+
+  function extractFirstGeneratedUrl(list) {
+    if (!Array.isArray(list)) return null;
+    for (const entry of list) {
+      if (!entry) continue;
+      if (typeof entry === 'string') {
+        const trimmed = entry.trim();
+        if (trimmed) return trimmed;
+        continue;
+      }
+      if (typeof entry !== 'object') continue;
+      const candidates = [entry.url, entry.image_url, entry.preview_url, entry.download_url];
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string') {
+          const trimmed = candidate.trim();
+          if (trimmed) return trimmed;
+        }
+      }
     }
     return null;
   }
@@ -13324,11 +14128,14 @@ body[data-theme="light"] .profile-expiry.expired {
     return UGC_STYLE_LIBRARY[key] || UGC_STYLE_LIBRARY[DEFAULT_UGC_STYLE_KEY];
   }
 
-  function buildUgcImagePrompt(basePrompt, styleKey, index) {
-    const style = getUgcStyle(styleKey);
+  function buildUgcImagePrompt(basePrompt, styleKey, index, aspectRatio) {
+    const style = getUgcStyle(styleKey) || {};
     const cleaned = (basePrompt || '').trim().replace(/\s+/g, ' ');
     const promptBase = cleaned || 'Product UGC photo shot';
-    return `UGC Image #${index}: ${promptBase}. Style focus: ${style.label} — ${style.prompt}. Capture in square format with authentic creator energy.`;
+    const styleLabel = style.label || 'Basic style';
+    const stylePrompt = style.prompt || 'balanced creator storytelling';
+    const aspectFragment = describeUgcAspect(aspectRatio).toLowerCase();
+    return `UGC Image #${index}: ${promptBase}. Style focus: ${styleLabel} — ${stylePrompt}. Capture in ${aspectFragment} with authentic creator energy.`;
   }
 
   function updateUgcStyleActiveState(activeKey) {
@@ -13426,32 +14233,82 @@ body[data-theme="light"] .profile-expiry.expired {
       row.className = 'ugc-row';
       row.dataset.index = item.index;
 
-      const left = document.createElement('div');
-      left.className = 'ugc-media-block';
+      const aspectLabelText = (item.aspectLabel || '').trim();
+      const imageStatusLabel = formatUgcStatus(item.status);
+      const isImageReady = !!item.imageUrl;
+      const isImageGenerating = !isImageReady && !finalStatus(item.status);
+      const isImageErrored = finalStatus(item.status) && !isImageReady;
+      const videoPending = !!(item.videoJobId && !item.videoUrl);
+      const canGenerateVideo = !!(item.remoteUrl && finalStatus(item.status) && !videoPending);
+
+      const imageCol = document.createElement('div');
+      imageCol.className = 'ugc-column ugc-column-image';
+
+      const imageLabel = document.createElement('div');
+      imageLabel.className = 'ugc-column-label';
+      imageLabel.textContent = aspectLabelText
+        ? `Image ${item.index} (${aspectLabelText})`
+        : 'Image ' + item.index;
+      imageCol.appendChild(imageLabel);
 
       const imgCard = document.createElement('div');
-      imgCard.className = 'ugc-media-card';
+      imgCard.className = 'ugc-image-card';
+      imgCard.classList.toggle('is-loading', isImageGenerating);
 
-      if (item.imageUrl) {
+      if (isImageReady) {
         const img = document.createElement('img');
         img.src = item.imageUrl;
         img.alt = 'UGC Image ' + item.index;
         img.classList.add('clickable-media');
         img.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
-        imgCard.innerHTML = '';
         imgCard.appendChild(img);
       } else {
-        imgCard.innerHTML = '<div><div class=\"ugc-media-title\">Image #' + item.index +
-          '</div><div class=\"ugc-media-status\">Generating... ' + (item.status || 'CREATED') + '</div></div>';
+        const placeholder = document.createElement('div');
+        placeholder.className = 'ugc-image-placeholder';
+        if (isImageGenerating) {
+          placeholder.classList.add('is-loading');
+          const spinner = document.createElement('div');
+          spinner.className = 'ugc-loading-spinner';
+          placeholder.appendChild(spinner);
+        }
+        const title = document.createElement('div');
+        title.className = 'ugc-placeholder-title';
+        title.textContent = 'Image #' + item.index;
+        placeholder.appendChild(title);
+
+        const status = document.createElement('div');
+        status.className = 'ugc-placeholder-status';
+        if (isImageGenerating) {
+          status.textContent = 'Generating… ' + imageStatusLabel;
+        } else if (isImageErrored) {
+          status.textContent = 'Status: ' + imageStatusLabel + '. Klik Generate UGC ulang.';
+        } else {
+          status.textContent = 'Menunggu hasil Gemini...';
+        }
+        placeholder.appendChild(status);
+
+        imgCard.appendChild(placeholder);
       }
+
+      imageCol.appendChild(imgCard);
+
+      const videoCol = document.createElement('div');
+      videoCol.className = 'ugc-column ugc-column-video';
+
+      const videoLabel = document.createElement('div');
+      videoLabel.className = 'ugc-column-label';
+      videoLabel.textContent = aspectLabelText ? `Video (${aspectLabelText})` : 'Video';
+      videoCol.appendChild(videoLabel);
 
       const videoCard = document.createElement('div');
       videoCard.className = 'ugc-video-card';
+      videoCard.classList.toggle('is-loading', videoPending);
+
       if (item.videoUrl) {
-        videoCard.innerHTML = '';
-        const title = document.createElement('div');
-        title.className = 'ugc-media-title';
-        title.textContent = 'Video ready';
+        videoCard.classList.remove('is-loading');
+        const badge = document.createElement('div');
+        badge.className = 'ugc-video-badge';
+        badge.textContent = 'Video ready';
 
         const video = document.createElement('video');
         video.src = item.videoUrl;
@@ -13460,90 +14317,108 @@ body[data-theme="light"] .profile-expiry.expired {
         video.muted = true;
         video.playsInline = true;
 
+        videoCard.appendChild(badge);
+        videoCard.appendChild(video);
+        videoCol.appendChild(videoCard);
+
         const actions = document.createElement('div');
         actions.className = 'ugc-video-actions';
 
         const previewVideoBtn = document.createElement('button');
         previewVideoBtn.type = 'button';
-        previewVideoBtn.className = 'small secondary';
+        previewVideoBtn.className = 'ugc-link-btn';
         previewVideoBtn.textContent = 'Preview Video';
         previewVideoBtn.addEventListener('click', () => openAssetPreview(item.videoUrl, 'video'));
         actions.appendChild(previewVideoBtn);
 
-        const videoDownloadLink = document.createElement('a');
-        videoDownloadLink.href = item.videoUrl;
-        videoDownloadLink.target = '_blank';
-        videoDownloadLink.download = '';
-        videoDownloadLink.className = 'download-link';
-
         const videoDownloadBtn = document.createElement('button');
         videoDownloadBtn.type = 'button';
-        videoDownloadBtn.className = 'small';
-        videoDownloadBtn.textContent = 'Download';
-        videoDownloadLink.appendChild(videoDownloadBtn);
-        actions.appendChild(videoDownloadLink);
+        videoDownloadBtn.className = 'ugc-link-btn';
+        videoDownloadBtn.textContent = 'Download Video';
+        videoDownloadBtn.addEventListener('click', () => {
+          const a = document.createElement('a');
+          a.href = item.videoUrl;
+          a.download = '';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        });
+        actions.appendChild(videoDownloadBtn);
 
         const videoSaveBtn = document.createElement('button');
         videoSaveBtn.type = 'button';
-        videoSaveBtn.className = 'small secondary';
+        videoSaveBtn.className = 'ugc-link-btn';
         videoSaveBtn.textContent = 'Simpan Video';
         videoSaveBtn.addEventListener('click', () => saveUgcVideoToDrive(item, videoSaveBtn));
         actions.appendChild(videoSaveBtn);
 
-        videoCard.appendChild(title);
-        videoCard.appendChild(video);
-        videoCard.appendChild(actions);
-      } else if (item.videoJobId) {
-        videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video generating...</div><div class=\"ugc-media-status\">Check status di Queue</div></div>';
+        videoCol.appendChild(actions);
       } else {
-        videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video</div><div class=\"ugc-media-status\">No video yet</div></div>';
+        const placeholder = document.createElement('div');
+        placeholder.className = 'ugc-video-placeholder';
+        if (videoPending) {
+          placeholder.classList.add('is-loading');
+          const spinner = document.createElement('div');
+          spinner.className = 'ugc-loading-spinner';
+          placeholder.appendChild(spinner);
+        }
+        const title = document.createElement('div');
+        title.className = 'ugc-placeholder-title';
+        title.textContent = videoPending ? 'Video generating…' : 'No video yet';
+        placeholder.appendChild(title);
+
+        const status = document.createElement('div');
+        status.className = 'ugc-placeholder-status';
+        if (videoPending) {
+          status.textContent = 'Seedance 1080 sedang memproses';
+        } else if (!item.remoteUrl || !finalStatus(item.status)) {
+          status.textContent = aspectLabelText
+            ? `Generate video (${aspectLabelText}) setelah gambar siap`
+            : 'Generate video setelah gambar siap';
+        } else {
+          status.textContent = 'Klik Generate Video untuk mulai animasi';
+        }
+        placeholder.appendChild(status);
+
+        videoCard.appendChild(placeholder);
+        videoCol.appendChild(videoCard);
       }
 
-      left.appendChild(imgCard);
-      left.appendChild(videoCard);
+      const detailCol = document.createElement('div');
+      detailCol.className = 'ugc-column ugc-column-details';
 
-      const right = document.createElement('div');
-      right.className = 'ugc-right';
+      const header = document.createElement('div');
+      header.className = 'ugc-result-header';
+      const title = document.createElement('div');
+      title.className = 'ugc-result-title';
+      title.textContent = 'UGC Image #' + item.index;
+      header.appendChild(title);
 
-      const pLabel = document.createElement('div');
-      pLabel.className = 'ugc-prompt-label';
-      pLabel.textContent = 'UGC Prompt #' + item.index;
-      const pText = document.createElement('textarea');
-      pText.value = item.prompt || '';
-      pText.rows = 3;
-      pText.addEventListener('input', () => {
-        item.prompt = pText.value;
-      });
+      const styleLabel = (item.styleLabel || '').trim();
+      const styleDescription = (item.styleDescription || '').trim();
+      const metaParts = [];
+      if (styleLabel) metaParts.push(styleLabel);
+      if (styleDescription) metaParts.push(styleDescription);
+      if (aspectLabelText) metaParts.push(`${aspectLabelText} aspect`);
 
-      const vLabel = document.createElement('div');
-      vLabel.className = 'ugc-prompt-label';
-      vLabel.textContent = 'Video Animation Prompt';
-      const vText = document.createElement('textarea');
-      vText.placeholder = 'contoh: model showing the product with a smile';
-      vText.value = item.videoPrompt || '';
-      vText.rows = 2;
-      vText.addEventListener('input', () => {
-        item.videoPrompt = vText.value;
-      });
-
-      const btnRow = document.createElement('div');
-      btnRow.className = 'btn-group';
-
-      const previewImgBtn = document.createElement('button');
-      previewImgBtn.type = 'button';
-      previewImgBtn.className = 'secondary small';
-      previewImgBtn.textContent = 'Preview Image';
-      previewImgBtn.disabled = !item.imageUrl;
-      if (item.imageUrl) {
-        previewImgBtn.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
+      if (metaParts.length) {
+        const meta = document.createElement('div');
+        meta.className = 'ugc-result-subtitle';
+        meta.textContent = 'Generated with ' + metaParts.join(' • ');
+        header.appendChild(meta);
       }
+
+      detailCol.appendChild(header);
+
+      const downloadGroup = document.createElement('div');
+      downloadGroup.className = 'ugc-download-group';
 
       const dlBtn = document.createElement('button');
       dlBtn.type = 'button';
-      dlBtn.className = 'small';
+      dlBtn.className = 'ugc-download-btn';
       dlBtn.textContent = 'Download Image';
-      dlBtn.disabled = !item.imageUrl;
-      if (item.imageUrl) {
+      dlBtn.disabled = !isImageReady;
+      if (isImageReady) {
         dlBtn.addEventListener('click', () => {
           const a = document.createElement('a');
           a.href = item.imageUrl;
@@ -13553,36 +14428,91 @@ body[data-theme="light"] .profile-expiry.expired {
           document.body.removeChild(a);
         });
       }
+      downloadGroup.appendChild(dlBtn);
+
+      const secondaryActions = document.createElement('div');
+      secondaryActions.className = 'ugc-secondary-actions';
+
+      const previewImgBtn = document.createElement('button');
+      previewImgBtn.type = 'button';
+      previewImgBtn.className = 'ugc-link-btn';
+      previewImgBtn.textContent = 'Preview Image';
+      previewImgBtn.disabled = !isImageReady;
+      if (isImageReady) {
+        previewImgBtn.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
+      }
+      secondaryActions.appendChild(previewImgBtn);
 
       const saveImgBtn = document.createElement('button');
       saveImgBtn.type = 'button';
-      saveImgBtn.className = 'small secondary';
+      saveImgBtn.className = 'ugc-link-btn';
       saveImgBtn.textContent = 'Simpan ke Drive';
-      saveImgBtn.disabled = !item.imageUrl;
-      if (item.imageUrl) {
+      saveImgBtn.disabled = !isImageReady;
+      if (isImageReady) {
         saveImgBtn.addEventListener('click', () => saveUgcImageToDrive(item, saveImgBtn));
       }
+      secondaryActions.appendChild(saveImgBtn);
+
+      downloadGroup.appendChild(secondaryActions);
+      detailCol.appendChild(downloadGroup);
+
+      const promptGroup = document.createElement('div');
+      promptGroup.className = 'ugc-form-group';
+
+      const pLabel = document.createElement('label');
+      pLabel.className = 'ugc-field-label';
+      pLabel.textContent = 'UGC Prompt #' + item.index;
+      pLabel.setAttribute('for', 'ugcPrompt' + item.index);
+      const pText = document.createElement('textarea');
+      pText.className = 'ugc-textarea';
+      pText.id = 'ugcPrompt' + item.index;
+      pText.value = item.prompt || '';
+      pText.rows = 3;
+      pText.addEventListener('input', () => {
+        item.prompt = pText.value;
+      });
+
+      promptGroup.appendChild(pLabel);
+      promptGroup.appendChild(pText);
+      detailCol.appendChild(promptGroup);
+
+      const videoPromptGroup = document.createElement('div');
+      videoPromptGroup.className = 'ugc-form-group';
+
+      const vLabel = document.createElement('label');
+      vLabel.className = 'ugc-field-label';
+      vLabel.textContent = 'Video Animation Prompt';
+      vLabel.setAttribute('for', 'ugcVideoPrompt' + item.index);
+      const vText = document.createElement('textarea');
+      vText.className = 'ugc-textarea';
+      vText.id = 'ugcVideoPrompt' + item.index;
+      vText.placeholder = 'contoh: model showing the product with a smile';
+      vText.value = item.videoPrompt || '';
+      vText.rows = 2;
+      vText.addEventListener('input', () => {
+        item.videoPrompt = vText.value;
+      });
+
+      videoPromptGroup.appendChild(vLabel);
+      videoPromptGroup.appendChild(vText);
+      detailCol.appendChild(videoPromptGroup);
+
+      const generateRow = document.createElement('div');
+      generateRow.className = 'ugc-generate-row';
 
       const vidBtn = document.createElement('button');
       vidBtn.type = 'button';
-      vidBtn.className = 'small';
-      vidBtn.textContent = 'Generate Video';
-      vidBtn.disabled = !item.imageUrl;
+      vidBtn.className = 'ugc-generate-btn';
+      vidBtn.textContent = videoPending ? 'Processing…' : 'Generate Video';
+      vidBtn.disabled = !canGenerateVideo;
       vidBtn.addEventListener('click', () => ugcGenerateVideo(item));
 
-      btnRow.appendChild(previewImgBtn);
-      btnRow.appendChild(dlBtn);
-      btnRow.appendChild(saveImgBtn);
-      btnRow.appendChild(vidBtn);
+      generateRow.appendChild(vidBtn);
+      detailCol.appendChild(generateRow);
 
-      right.appendChild(pLabel);
-      right.appendChild(pText);
-      right.appendChild(vLabel);
-      right.appendChild(vText);
-      right.appendChild(btnRow);
-
-      row.appendChild(left);
-      row.appendChild(right);
+      row.appendChild(imageCol);
+      row.appendChild(videoCol);
+      row.appendChild(detailCol);
 
       ugcList.appendChild(row);
     });
@@ -13598,22 +14528,18 @@ body[data-theme="light"] .profile-expiry.expired {
       try {
         const { status, generated } = await fetchStatus('gemini', item.taskId);
         if (status) item.status = status;
-       if (generated && Array.isArray(generated) && generated.length && !item.imageUrl) {
-  const remote = generated[0];
-
-  // SIMPAN URL ASLI DARI FREEPIK (WAJIB)
-  item.remoteUrl = remote;
-
-  try {
-    const local = await cacheUrl(remote);
-    // imageUrl = file di server kamu (buat preview & download)
-    item.imageUrl = local || remote;
-  } catch {
-    item.imageUrl = remote;
-  }
-}
-
-
+        const remote = extractFirstGeneratedUrl(generated);
+        if (remote) {
+          item.remoteUrl = remote;
+          if (!item.imageUrl) {
+            try {
+              const local = await cacheUrl(remote);
+              item.imageUrl = local || remote;
+            } catch {
+              item.imageUrl = remote;
+            }
+          }
+        }
       } catch (e) {
         item.status = 'ERROR';
       }
@@ -13630,6 +14556,18 @@ body[data-theme="light"] .profile-expiry.expired {
   function startUgcPolling() {
     if (ugcPollTimer) clearInterval(ugcPollTimer);
     ugcPollTimer = setInterval(() => { pollUgcOnce(); }, 8000);
+  }
+
+  if (ugcAspectRatioSelect) {
+    if (!sanitizeUgcAspectRatio(ugcAspectRatioSelect.value)) {
+      ugcAspectRatioSelect.value = ugcCurrentAspectRatio;
+    }
+    ugcAspectRatioSelect.addEventListener('change', () => {
+      const selected = sanitizeUgcAspectRatio(ugcAspectRatioSelect.value);
+      if (selected) {
+        ugcCurrentAspectRatio = selected;
+      }
+    });
   }
 
   ugcProductDrop.addEventListener('click', () => ugcProductInput.click());
@@ -13704,12 +14642,17 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
     const styleKey = (ugcStyleValueInput && ugcStyleValueInput.value) || DEFAULT_UGC_STYLE_KEY;
+    const styleMeta = getUgcStyle(styleKey);
     const brief = ugcBriefInput.value.trim() || 'Product UGC photo shot';
     const requiredCoins = Math.max(1, UGC_IDEA_COUNT * COIN_COST_UGC);
     if (!ensureCoins(requiredCoins)) {
       alert('Koin kamu tidak cukup untuk generate UGC.');
       return;
     }
+
+    const aspectRatio = sanitizeUgcAspectRatio(ugcAspectRatioSelect ? ugcAspectRatioSelect.value : ugcCurrentAspectRatio) || 'square_1_1';
+    ugcCurrentAspectRatio = aspectRatio;
+    const aspectLabel = getUgcAspectLabel(aspectRatio);
 
     ugcGenerateBtn.disabled = true;
     ugcItems = [];
@@ -13719,66 +14662,75 @@ body[data-theme="light"] .profile-expiry.expired {
     const refs = buildUgcReferences();
     let successfulIdeas = 0;
 
-    for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
-      const prompt = buildUgcImagePrompt(brief, styleKey, i);
-      const item = {
-        index: i,
-        prompt,
-        videoPrompt: '',
-        status: 'CREATED',
-        taskId: null,
-        imageUrl: null,
-        videoJobId: null,
-        videoUrl: null
-      };
-      ugcItems.push(item);
-      renderUgcList();
+    try {
+      for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
+        const prompt = buildUgcImagePrompt(brief, styleKey, i, aspectRatio);
+        const item = {
+          index: i,
+          prompt,
+          videoPrompt: '',
+          status: 'CREATED',
+          taskId: null,
+          imageUrl: null,
+          remoteUrl: null,
+          videoJobId: null,
+          videoUrl: null,
+          styleKey,
+          styleLabel: styleMeta && styleMeta.label ? styleMeta.label : '',
+          styleDescription: styleMeta && styleMeta.description ? styleMeta.description : '',
+          aspectRatio,
+          aspectLabel
+        };
+        ugcItems.push(item);
+        renderUgcList();
 
-      const body = {
-        prompt,
-        num_images: 1,
-        aspect_ratio: 'square_1_1'
-      };
-      if (refs.length) {
-        body.reference_images = refs.slice();
-      }
-      let success = false;
-      try {
-        const data = await callFreepik(cfg, body, 'POST');
-        if (data && data.data) {
-          item.taskId = data.data.task_id || null;
-          item.status = data.data.status || 'CREATED';
+        const body = {
+          prompt,
+          num_images: 1,
+          aspect_ratio: aspectRatio
+        };
+        if (refs.length) {
+          body.reference_images = refs.slice();
         }
-        success = true;
-      } catch (e) {
-        console.error(e);
-        item.status = 'ERROR';
-      }
-      if (success) {
-        const normalized = String(item.status || '').toUpperCase();
-        if (normalized !== 'ERROR' && normalized !== 'FAILED') {
-          successfulIdeas += 1;
-        }
-      }
-      renderUgcList();
-    }
-
-    if (ugcItems.some(s => s.taskId)) startUgcPolling();
-    const coinsToSpend = successfulIdeas * COIN_COST_UGC;
-    if (coinsToSpend > 0) {
-      try {
-        await spendCoins(coinsToSpend);
-      } catch (err) {
-        console.error('Gagal mengurangi koin UGC:', err);
-        alert('Koin tidak dapat dikurangi: ' + err.message);
+        let success = false;
         try {
-          await loadAccountState();
-        } catch (loadErr) {
-          console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+          const data = await callFreepik(cfg, body, 'POST');
+          if (data && data.data) {
+            item.taskId = data.data.task_id || null;
+            item.status = data.data.status || 'CREATED';
+          }
+          success = true;
+        } catch (e) {
+          console.error(e);
+          item.status = 'ERROR';
+        }
+        if (success) {
+          const normalized = String(item.status || '').toUpperCase();
+          if (normalized !== 'ERROR' && normalized !== 'FAILED') {
+            successfulIdeas += 1;
+          }
+        }
+        renderUgcList();
+      }
+
+      if (ugcItems.some(s => s.taskId)) startUgcPolling();
+      const coinsToSpend = successfulIdeas * COIN_COST_UGC;
+      if (coinsToSpend > 0) {
+        try {
+          await spendCoins(coinsToSpend);
+        } catch (err) {
+          console.error('Gagal mengurangi koin UGC:', err);
+          alert('Koin tidak dapat dikurangi: ' + err.message);
+          try {
+            await loadAccountState();
+          } catch (loadErr) {
+            console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+          }
         }
       }
+    } finally {
+      ugcGenerateBtn.disabled = accountRestricted();
     }
-    ugcGenerateBtn.disabled = accountRestricted();
   }
 
   ugcGenerateBtn.addEventListener('click', () => { ugcGenerate(); });
@@ -13788,6 +14740,14 @@ body[data-theme="light"] .profile-expiry.expired {
       showFeatureLockedMessage('ugc');
       return;
     }
+    if (!finalStatus(item.status)) {
+      alert('Gambar masih diproses. Tunggu hingga status selesai sebelum membuat video.');
+      return;
+    }
+    if (item.videoJobId && !item.videoUrl) {
+      alert('Video sebelumnya masih diproses. Tunggu hingga selesai.');
+      return;
+    }
     // WAJIB: pakai URL asli dari Freepik, bukan path lokal
     if (!item.remoteUrl || !item.remoteUrl.startsWith('http')) {
       alert('URL gambar untuk video belum valid.\n' +
@@ -13795,13 +14755,41 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
 
-    const cfg = MODEL_CONFIG.wan720;
-    const body = {
+    const cfg = MODEL_CONFIG.seedancePro1080;
+    const aspectRatio = sanitizeUgcAspectRatio(item.aspectRatio) || sanitizeUgcAspectRatio(ugcCurrentAspectRatio) || 'square_1_1';
+    if (!item.aspectRatio) {
+      item.aspectRatio = aspectRatio;
+      item.aspectLabel = getUgcAspectLabel(aspectRatio);
+    }
+    const requestPayload = {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
-      image: item.remoteUrl,   // <-- PENTING
-      duration: 5,
-      aspect_ratio: 'auto'
+      imageUrl: item.remoteUrl,
+      videoDuration: 10,
+      aspectRatio
     };
+
+    const body = typeof cfg.buildBody === 'function'
+      ? cfg.buildBody(requestPayload)
+      : (() => {
+          const fallback = {
+            prompt: requestPayload.prompt,
+            aspect_ratio: requestPayload.aspectRatio || 'auto'
+          };
+          if (requestPayload.imageUrl) {
+            fallback.image_url = requestPayload.imageUrl;
+          }
+          if (typeof requestPayload.videoDuration === 'number' && !Number.isNaN(requestPayload.videoDuration)) {
+            fallback.duration = requestPayload.videoDuration;
+          }
+          return fallback;
+        })();
+
+    const previousVideoUrl = item.videoUrl || null;
+    const previousVideoJobId = item.videoJobId || null;
+    const tempJobId = 'ugc-video-' + Date.now();
+    item.videoUrl = null;
+    item.videoJobId = tempJobId;
+    renderUgcList();
 
     try {
       const data = await callFreepik(cfg, body, 'POST');
@@ -13818,7 +14806,7 @@ body[data-theme="light"] .profile-expiry.expired {
       const jobId = uuid();
       const job = {
         id: jobId,
-        modelId: 'wan720',
+        modelId: 'seedancePro1080',
         type: 'video',
         taskId,
         createdAt: nowIso(),
@@ -13840,12 +14828,30 @@ body[data-theme="light"] .profile-expiry.expired {
           await ensureLocalFiles(job);
         }
         await syncJobToDrive(job);
+        const immediateUrl = (job.localUrls && job.localUrls[0]) ||
+                              (job.generated && job.generated[0]) ||
+                              job.extraUrl || null;
+        if (immediateUrl) {
+          item.videoUrl = immediateUrl;
+          renderUgcList();
+        }
+      }
+
+      if (!finalStatus(status) && generated && Array.isArray(generated) && generated.length) {
+        const generatedUrl = generated.find(u => typeof u === 'string' && u.trim() !== '');
+        if (generatedUrl) {
+          item.videoUrl = generatedUrl;
+          renderUgcList();
+        }
       }
 
       item.videoJobId = jobId;
       renderUgcList();
     } catch (e) {
       console.error(e);
+      item.videoUrl = previousVideoUrl;
+      item.videoJobId = previousVideoJobId;
+      renderUgcList();
       alert('Gagal membuat video: ' + e.message);
     }
   }
@@ -13891,6 +14897,7 @@ function openAssetPreview(url, type = 'image') {
   }
 
   assetPreviewModal.classList.remove('hidden');
+  assetPreviewModal.classList.add('visible');
   document.body.classList.add('modal-open');
 }
 
@@ -13901,6 +14908,7 @@ function closeAssetPreview() {
     video.pause();
   }
   assetPreviewBody.innerHTML = '';
+  assetPreviewModal.classList.remove('visible');
   assetPreviewModal.classList.add('hidden');
   document.body.classList.remove('modal-open');
   if (assetPreviewDownload) {
