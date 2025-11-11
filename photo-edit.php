@@ -368,6 +368,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             } catch (error) {
                 throw new Error('Respons saldo tidak valid.');
             }
+            return 'status-chip status-chip--pending';
+        }
 
             if (!res.ok || !payload || !payload.ok) {
                 const message = payload?.error
@@ -1085,7 +1087,15 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         async function submitForm(event) {
             event.preventDefault();
 
-            if (!validateFiles(selectedFiles)) {
+            if (completed === tasks.length) {
+                stopPolling();
+                if (successCount === tasks.length) {
+                    updateFormStatus('Selesai! Semua pose berhasil dibuat.', 'success');
+                } else if (successCount > 0) {
+                    updateFormStatus(`${successCount} pose berhasil. Periksa pose lain yang gagal.`, 'error');
+                } else {
+                    updateFormStatus('Semua pose gagal diproses. Coba lagi.', 'error');
+                }
                 return;
             }
 
@@ -1097,6 +1107,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 updateFormStatus(`Saldo koin tidak cukup. Minimal ${REQUIRED_COINS} koin dibutuhkan.`, 'error');
                 return;
             }
+        }
 
             updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
             stopPolling();
