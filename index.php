@@ -6383,6 +6383,31 @@ body[data-theme="light"] .profile-expiry.expired {
       min-height: 240px;
       overflow: hidden;
       display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .ugc-result-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ugc-result-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .ugc-result-subtitle {
+      font-size: 13px;
+      color: rgba(148,163,184,0.92);
+    }
+    .ugc-download-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ugc-download-btn {
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       transition: box-shadow 0.3s ease, transform 0.3s ease;
@@ -6427,7 +6452,12 @@ body[data-theme="light"] .profile-expiry.expired {
       overflow: hidden;
       transition: box-shadow 0.3s ease, transform 0.3s ease;
     }
-    .ugc-video-card video {
+    .ugc-field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(148,163,184,0.92);
+    }
+    textarea.ugc-textarea {
       width: 100%;
       height: 100%;
       border-radius: 14px;
