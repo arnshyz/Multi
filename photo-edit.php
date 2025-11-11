@@ -142,7 +142,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     <div>
                         <div class="small-label">Foto referensi</div>
                         <div id="dropzone" class="film-dropzone" tabindex="0">
-                            <input id="referenceInput" type="file" accept="image/*" multiple hidden>
+                            <input id="referenceInput" class="film-file-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
                             <div class="film-drop-inner">
                                 <div style="margin-bottom:4px;">Tarik &amp; lepas atau <button type="button" class="link" id="browseButton">pilih dari perangkat</button></div>
                                 <span>Gunakan 2–3 foto (JPG, PNG, atau WEBP) untuk menjaga konsistensi wajah.</span>
@@ -530,8 +530,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 generateButton.classList.remove('loading');
                 generateButton.disabled = false;
             }
-            const name = (file.name || '').toLowerCase();
-            return /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(name);
         }
 
         function showEmptyState(show) {
@@ -1089,12 +1087,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         async function submitForm(event) {
             event.preventDefault();
 
-            renderResults();
-
-            const completed = tasks.filter((task) => finalStatus(task.status)).length;
             if (completed === tasks.length) {
                 stopPolling();
-                const successCount = tasks.filter((task) => normalizeStatus(task.status) === 'COMPLETED' && task.imageUrl).length;
                 if (successCount === tasks.length) {
                     updateFormStatus('Selesai! Semua pose berhasil dibuat.', 'success');
                 } else if (successCount > 0) {
@@ -1113,12 +1107,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 updateFormStatus(`Saldo koin tidak cukup. Minimal ${REQUIRED_COINS} koin dibutuhkan.`, 'error');
                 return;
             }
-        }
-
-        function startPolling() {
-            stopPolling();
-            pollOnce();
-            pollTimer = setInterval(pollOnce, POLL_INTERVAL);
         }
 
             updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
