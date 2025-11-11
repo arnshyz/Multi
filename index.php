@@ -13988,7 +13988,7 @@ body[data-theme="light"] .profile-expiry.expired {
   const UGC_IDEA_COUNT = 5;
   const UGC_DEFAULT_FRAMING_TEXT = 'versatile framing';
   const UGC_DEFAULT_IMAGE_ASPECT_RATIO = 'auto';
-  const UGC_DEFAULT_VIDEO_ASPECT_RATIO = 'landscape_16_9'; // Seedance Pro 1080p expects 16:9 per Freepik docs
+  const UGC_DEFAULT_VIDEO_ASPECT_RATIO = 'auto'; // Wan models default to automatic framing
 
   const UGC_STYLE_GROUPS = [
     {
@@ -14752,7 +14752,7 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
 
-    const cfg = MODEL_CONFIG.seedancePro1080;
+    const cfg = MODEL_CONFIG.wan720;
     const requestPayload = {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
       imageUrl: item.remoteUrl,
@@ -14798,7 +14798,7 @@ body[data-theme="light"] .profile-expiry.expired {
       const jobId = uuid();
       const job = {
         id: jobId,
-        modelId: 'seedancePro1080',
+        modelId: 'wan720',
         type: 'video',
         taskId,
         createdAt: nowIso(),
