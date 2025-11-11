@@ -486,6 +486,12 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             if (imageFiles.length > MAX_FILES) {
                 messages.push(`Hanya ${MAX_FILES} foto pertama yang digunakan untuk blending.`);
             }
+            if (imageFiles.length > MAX_FILES) {
+                messages.push(`Hanya ${MAX_FILES} foto pertama yang digunakan untuk blending.`);
+            }
+
+            selectedFiles = imageFiles.slice(0, MAX_FILES);
+            renderPreview();
 
             selectedFiles = imageFiles.slice(0, MAX_FILES);
             renderPreview();
