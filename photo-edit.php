@@ -160,6 +160,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         const POLL_INTERVAL = 8000;
         const MIN_FILES = 2;
         const MAX_FILES = 3;
+        const VIDEO_CREATE_PATH = '/v1/ai/image-to-video/seedance-pro-1080p';
+        const VIDEO_STATUS_PATH = (taskId) => `/v1/ai/image-to-video/seedance-pro-1080p/${taskId}`;
+        const VIDEO_POLL_INTERVAL = 9000;
 
         const themeSelect = document.getElementById('themeSelect');
         const themeHint = document.getElementById('themeHint');
@@ -245,6 +248,53 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
         ];
 
+        function createVideoState() {
+            return {
+                taskId: null,
+                status: null,
+                videoUrl: null,
+                error: null,
+                prompt: '',
+                timerId: null
+            };
+        }
+
+        function ensureVideoState(task) {
+            if (!task) return createVideoState();
+            if (!task.videoState) {
+                task.videoState = createVideoState();
+            }
+            return task.videoState;
+        }
+
+        function buildVideoPrompt(task) {
+            const theme = themeOptions[task.themeKey] || themeOptions.romantic;
+            const motion = (task.variant && task.variant.shot) ? task.variant.shot : 'Cinematic portrait motion with expressive movement.';
+            const custom = (task.customPrompt || '').trim();
+            const segments = [
+                motion,
+                `tema ${theme.label}`,
+                theme.description,
+                custom ? `detail tambahan: ${custom}` : '',
+                'smooth cinematic camera move, vivid lighting, 1080p high fidelity, natural motion'
+            ].filter(Boolean);
+            return segments.join(' | ');
+        }
+
+        function triggerDownload(url, filename) {
+            if (!url) return;
+            const link = document.createElement('a');
+            link.href = url;
+            if (filename) {
+                link.download = filename;
+            }
+            link.target = '_blank';
+            link.rel = 'noopener';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
         let selectedFiles = [];
         let promptDirty = false;
         let tasks = [];
@@ -293,6 +343,18 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         function finalStatus(status) {
             const value = normalizeStatus(status);
             return value === 'COMPLETED' || value === 'FAILED' || value === 'ERROR';
+        }
+
+        function stopVideoPollingForTask(task) {
+            if (!task || !task.videoState || !task.videoState.timerId) {
+                return;
+            }
+            clearInterval(task.videoState.timerId);
+            task.videoState.timerId = null;
+        }
+
+        function stopAllVideoPolling() {
+            tasks.forEach((task) => stopVideoPollingForTask(task));
         }
 
         function updateFormStatus(message, type = 'info') {
@@ -424,6 +486,12 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             if (imageFiles.length > MAX_FILES) {
                 messages.push(`Hanya ${MAX_FILES} foto pertama yang digunakan untuk blending.`);
             }
+            if (imageFiles.length > MAX_FILES) {
+                messages.push(`Hanya ${MAX_FILES} foto pertama yang digunakan untuk blending.`);
+            }
+
+            selectedFiles = imageFiles.slice(0, MAX_FILES);
+            renderPreview();
 
             selectedFiles = imageFiles.slice(0, MAX_FILES);
             renderPreview();
@@ -557,6 +625,111 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             };
         }
 
+        async function pollVideoOnce(task) {
+            const videoState = ensureVideoState(task);
+            if (!videoState.taskId || finalStatus(videoState.status)) {
+                stopVideoPollingForTask(task);
+                return;
+            }
+
+            try {
+                const data = await callFreepik({ path: VIDEO_STATUS_PATH(videoState.taskId), method: 'GET' });
+                const response = data?.data || {};
+                if (response.status) {
+                    videoState.status = response.status;
+                }
+                const generated = Array.isArray(response.generated) ? response.generated : [];
+                if (generated.length) {
+                    videoState.videoUrl = generated[0];
+                }
+            } catch (error) {
+                videoState.status = 'ERROR';
+                videoState.error = error.message || 'Gagal mengambil status video.';
+            }
+
+            renderResults();
+
+            if (finalStatus(videoState.status)) {
+                stopVideoPollingForTask(task);
+                if (normalizeStatus(videoState.status) === 'COMPLETED' && !videoState.videoUrl && !videoState.error) {
+                    videoState.error = 'Video selesai tetapi URL tidak ditemukan.';
+                } else if (normalizeStatus(videoState.status) !== 'COMPLETED' && !videoState.error) {
+                    videoState.error = 'Video gagal diproses. Coba generate ulang.';
+                }
+            }
+        }
+
+        function startVideoPollingForTask(task) {
+            const videoState = ensureVideoState(task);
+            stopVideoPollingForTask(task);
+            pollVideoOnce(task);
+            videoState.timerId = setInterval(() => pollVideoOnce(task), VIDEO_POLL_INTERVAL);
+        }
+
+        async function handleGenerateVideo(task) {
+            if (!task || !task.imageUrl) {
+                updateFormStatus('Gambar pose belum tersedia untuk membuat video.', 'error');
+                return;
+            }
+
+            const videoState = ensureVideoState(task);
+            if (videoState.status && !finalStatus(videoState.status)) {
+                return;
+            }
+
+            stopVideoPollingForTask(task);
+
+            const prompt = buildVideoPrompt(task);
+            videoState.prompt = prompt;
+            videoState.taskId = null;
+            videoState.videoUrl = null;
+            videoState.error = null;
+            videoState.status = 'PROCESSING';
+            renderResults();
+
+            try {
+                const body = {
+                    prompt,
+                    image: task.imageUrl,
+                    duration: 5,
+                    aspect_ratio: 'auto'
+                };
+                const data = await callFreepik({ path: VIDEO_CREATE_PATH, method: 'POST', body });
+                const response = data?.data || {};
+
+                videoState.taskId = response.task_id || null;
+                videoState.status = response.status || 'CREATED';
+
+                const generated = Array.isArray(response.generated) ? response.generated : [];
+                if (generated.length) {
+                    videoState.videoUrl = generated[0];
+                }
+
+                renderResults();
+
+                if (!videoState.taskId) {
+                    videoState.status = 'ERROR';
+                    videoState.error = 'Server tidak mengembalikan task ID video.';
+                    renderResults();
+                    return;
+                }
+
+                if (finalStatus(videoState.status)) {
+                    if (normalizeStatus(videoState.status) !== 'COMPLETED' && !videoState.error) {
+                        videoState.error = 'Video gagal diproses. Coba lagi.';
+                    }
+                    renderResults();
+                    return;
+                }
+
+                startVideoPollingForTask(task);
+            } catch (error) {
+                videoState.status = 'ERROR';
+                videoState.error = error.message || 'Gagal mengirim permintaan video.';
+                renderResults();
+            }
+        }
+
         function renderResults() {
             resultGrid.innerHTML = '';
             if (!tasks.length) {
@@ -595,6 +768,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 header.appendChild(status);
                 card.appendChild(header);
 
+                const videoState = ensureVideoState(task);
+
                 if (task.imageUrl) {
                     const img = document.createElement('img');
                     img.className = 'result-thumb';
@@ -615,19 +790,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     card.appendChild(placeholder);
                 }
 
-                const theme = themeOptions[task.themeKey] || themeOptions.romantic;
-                const description = document.createElement('p');
-                description.className = 'pose-description';
-                description.textContent = task.variant.description(theme, task.customPrompt || '');
-                card.appendChild(description);
-
-                if (task.prompt) {
-                    const promptBlock = document.createElement('div');
-                    promptBlock.className = 'pose-prompt';
-                    promptBlock.textContent = task.prompt;
-                    card.appendChild(promptBlock);
-                }
-
                 if (task.error) {
                     const errorBlock = document.createElement('div');
                     errorBlock.className = 'pose-error';
@@ -639,14 +801,6 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     const actions = document.createElement('div');
                     actions.className = 'pose-actions';
 
-                    const openLink = document.createElement('a');
-                    openLink.href = task.imageUrl;
-                    openLink.target = '_blank';
-                    openLink.rel = 'noopener';
-                    openLink.className = 'pose-action-btn secondary';
-                    openLink.textContent = 'Buka di Tab Baru';
-                    actions.appendChild(openLink);
-
                     const downloadLink = document.createElement('a');
                     downloadLink.href = task.imageUrl;
                     downloadLink.download = `${task.variant.key || 'pose'}-${Date.now()}.png`;
@@ -654,7 +808,43 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     downloadLink.textContent = 'Download';
                     actions.appendChild(downloadLink);
 
+                    const videoButton = document.createElement('button');
+                    videoButton.type = 'button';
+                    videoButton.className = 'pose-action-btn secondary';
+
+                    const videoStatusValue = normalizeStatus(videoState.status);
+                    let videoLabel = 'Generate Video Seedance 1080';
+                    let videoDisabled = false;
+                    let videoHandler = () => handleGenerateVideo(task);
+
+                    if (videoState.videoUrl && videoStatusValue === 'COMPLETED') {
+                        videoLabel = 'Download Video Seedance 1080';
+                        videoHandler = () => triggerDownload(videoState.videoUrl, `${task.variant.key || 'pose'}-seedance-1080.mp4`);
+                    } else if (videoState.status && !finalStatus(videoState.status)) {
+                        videoLabel = 'Memproses Video…';
+                        videoDisabled = true;
+                        videoHandler = null;
+                    } else if (videoState.status && finalStatus(videoState.status) && videoStatusValue !== 'COMPLETED') {
+                        videoLabel = 'Generate Ulang Video Seedance 1080';
+                        videoHandler = () => handleGenerateVideo(task);
+                    }
+
+                    videoButton.textContent = videoLabel;
+                    videoButton.disabled = videoDisabled;
+                    if (videoHandler) {
+                        videoButton.addEventListener('click', videoHandler);
+                    }
+
+                    actions.appendChild(videoButton);
+
                     card.appendChild(actions);
+                }
+
+                if (videoState.error) {
+                    const videoError = document.createElement('div');
+                    videoError.className = 'pose-video-error';
+                    videoError.textContent = videoState.error;
+                    card.appendChild(videoError);
                 }
 
                 fragment.appendChild(card);
@@ -729,6 +919,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             setLoadingState(true);
             updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
             stopPolling();
+            stopAllVideoPolling();
             tasks = [];
             renderResults();
 
@@ -758,7 +949,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 taskId: null,
                 status: 'PENDING',
                 imageUrl: null,
-                error: null
+                error: null,
+                videoState: createVideoState()
             }));
             renderResults();
 
