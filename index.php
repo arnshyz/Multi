@@ -7861,7 +7861,7 @@ body[data-theme="light"] .profile-expiry.expired {
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
           Sistem akan membuat 5 ide UGC beserta gambar dari Gemini Flash 2.5.
-          Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
+          Tiap baris punya prompt video + tombol Generate Video (Seedance 1080) &amp; Download.
         </div>
       </div>
     </div>
@@ -14042,11 +14042,11 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
 
-    const cfg = MODEL_CONFIG.wan720;
+    const cfg = MODEL_CONFIG.seedancePro1080;
     const body = {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
       image: item.remoteUrl,   // <-- PENTING
-      duration: 5,
+      duration: 10,
       aspect_ratio: 'auto'
     };
 
@@ -14065,7 +14065,7 @@ body[data-theme="light"] .profile-expiry.expired {
       const jobId = uuid();
       const job = {
         id: jobId,
-        modelId: 'wan720',
+        modelId: 'seedancePro1080',
         type: 'video',
         taskId,
         createdAt: nowIso(),
@@ -14087,6 +14087,21 @@ body[data-theme="light"] .profile-expiry.expired {
           await ensureLocalFiles(job);
         }
         await syncJobToDrive(job);
+        const immediateUrl = (job.localUrls && job.localUrls[0]) ||
+                              (job.generated && job.generated[0]) ||
+                              job.extraUrl || null;
+        if (immediateUrl) {
+          item.videoUrl = immediateUrl;
+          renderUgcList();
+        }
+      }
+
+      if (!finalStatus(status) && generated && Array.isArray(generated) && generated.length) {
+        const generatedUrl = generated.find(u => typeof u === 'string' && u.trim() !== '');
+        if (generatedUrl) {
+          item.videoUrl = generatedUrl;
+          renderUgcList();
+        }
       }
 
       item.videoJobId = jobId;
