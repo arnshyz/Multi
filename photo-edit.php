@@ -13,6 +13,7 @@ if ($account) {
     $account = auth_normalize_account($account);
 }
 
+$accountPayload = $account ? auth_account_public_payload($account) : null;
 $username = '';
 if ($account) {
     $username = trim((string)($account['name'] ?? ''));
@@ -23,6 +24,42 @@ if ($account) {
 if ($username === '') {
     $username = 'Pengguna';
 }
+
+$coinBalance = $accountPayload['coins'] ?? 0;
+$coinBalanceFormatted = number_format((int)$coinBalance, 0, ',', '.');
+
+$themeOptions = [
+    'romantic' => [
+        'label' => 'Romantic Fusion',
+        'description' => 'Palet rose gold dengan highlight lembut ala golden hour dan kilau editorial.',
+        'template' => 'Gabungkan kedua foto menjadi potret editorial pernikahan yang romantis. Pastikan ada cahaya keemasan hangat dari golden hour, dengan highlight pearlescent yang lembut dan flare lensa soft focus yang artistik. Ciptakan kedalaman sinematik pada komposisi, dan pastikan gaya keseluruhan menyatu dengan sempurna, seolah-olah ini adalah satu sesi pemotretan yang direncanakan dengan indah.'
+    ],
+    'urban' => [
+        'label' => 'Neo Urban Story',
+        'description' => 'Mood metropolis malam dengan kontras matte, refleksi neon cyan-magenta, dan nuansa futuristik.',
+        'template' => 'Gabungkan kedua foto ini dalam sebuah narasi fashion neo-urban. Latar belakangnya adalah kota di malam hari yang sinematik, didominasi oleh cahaya neon teal dan magenta yang memantul di permukaan. Berikan sentuhan akhir matte dengan kontras tinggi dan bayangan dramatis untuk menciptakan suasana yang intens dan bergaya.'
+    ],
+    'tropical' => [
+        'label' => 'Tropical Journey',
+        'description' => 'Kombinasi warna tropis vibrant dengan kilau matahari dan ambience liburan energik.',
+        'template' => 'Gabungkan kedua foto ini menjadi satu gambar editorial perjalanan tropis. Pastikan palet warna didominasi oleh aqua dan lime yang cerah, menonjolkan kulit yang terpapar matahari dan nuansa gerakan yang ringan dan berangin. Latar belakang harus menampilkan pemandangan resor sinematik yang indah dengan detail dedaunan tropis yang rimbun.'
+    ],
+    'heritage' => [
+        'label' => 'Heritage Elegance',
+        'description' => 'Sentuhan tradisional hangat dengan tekstur kaya dan detail busana elegan.',
+        'template' => 'Gabungkan kedua foto ini menjadi sebuah potret upacara warisan yang berkesan. Gunakan pencahayaan ambar yang hangat dan lembut untuk menciptakan suasana yang syahdu. Pastikan detail tekstil yang rumit pada pakaian atau latar belakang terlihat jelas. Tambahkan efek kabut sinematik yang lembut untuk sentuhan dramatis. Kedua subjek harus berpose dengan anggun dan bermartabat, seolah sedang menceritakan kisah abadi dari masa lalu.'
+    ],
+    'holiday' => [
+        'label' => 'Liburan',
+        'description' => 'Suasana pantai cerah dengan pasir putih luas, air laut biru jernih, serta deretan pohon kelapa yang melengkung.',
+        'template' => 'Gabungkan foto ini ke dalam suasana liburan di pantai Indonesia yang cerah dan indah. Pastikan ada elemen khas pantai seperti pasir putih, air laut biru jernih, dan pohon kelapa. Pancarkan suasana relaksasi dan kebahagiaan saat berlibur.'
+    ]
+];
+
+$defaultThemeKey = 'romantic';
+$defaultTheme = $themeOptions[$defaultThemeKey];
+$defaultPromptTemplate = $defaultTheme['template'];
+$defaultThemeDescription = $defaultTheme['description'];
 
 $platform = auth_platform_public_view();
 $flashFeature = $platform['generators']['flashPhotoEdit'] ?? null;
@@ -65,12 +102,18 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     <p>Padukan 2-3 foto referensi kamu untuk membuat empat pose sinematik ala Filmmaker dengan kualitas asli dari Flash 2.5.</p>
                 </div>
                 <div class="photo-film-meta">
-                    <div class="user-chip" aria-label="Akun aktif">
-                        <span class="avatar-circle" aria-hidden="true"><?php echo htmlspecialchars(strtoupper(substr($username, 0, 2))); ?></span>
-                        <span class="user-meta">
-                            <span class="user-label">Masuk sebagai</span>
-                            <span class="user-name"><?php echo htmlspecialchars($username, ENT_QUOTES); ?></span>
-                        </span>
+                    <div class="user-stack">
+                        <div class="credit-pill" id="creditPill" role="status" aria-live="polite">
+                            <span class="credit-label">Saldo Kredit</span>
+                            <span class="credit-value" id="creditValue"><?php echo htmlspecialchars($coinBalanceFormatted, ENT_QUOTES); ?></span>
+                        </div>
+                        <div class="user-chip" aria-label="Akun aktif">
+                            <span class="avatar-circle" aria-hidden="true"><?php echo htmlspecialchars(strtoupper(substr($username, 0, 2))); ?></span>
+                            <span class="user-meta">
+                                <span class="user-label">Masuk sebagai</span>
+                                <span class="user-name"><?php echo htmlspecialchars($username, ENT_QUOTES); ?></span>
+                            </span>
+                        </div>
                     </div>
                     <a href="index.php" class="btn-secondary">← Kembali ke Dashboard</a>
                 </div>
@@ -115,18 +158,16 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     <div>
                         <label for="themeSelect">Tema dasar</label>
                         <select id="themeSelect" aria-describedby="themeHint">
-                            <option value="romantic">Romantic Fusion</option>
-                            <option value="urban">Neo Urban Story</option>
-                            <option value="tropical">Tropical Journey</option>
-                            <option value="heritage">Heritage Elegance</option>
-							<option value="holiday">Liburan</option>
+<?php foreach ($themeOptions as $key => $option): ?>
+                            <option value="<?php echo htmlspecialchars($key, ENT_QUOTES); ?>"<?php echo $key === $defaultThemeKey ? ' selected' : ''; ?>><?php echo htmlspecialchars($option['label'], ENT_QUOTES); ?></option>
+<?php endforeach; ?>
                         </select>
-                        <p id="themeHint" class="muted"></p>
+                        <p id="themeHint" class="muted"><?php echo htmlspecialchars($defaultThemeDescription, ENT_QUOTES); ?></p>
                     </div>
 
                     <div>
                         <label for="promptStyle">Prompt style / Tema penggabungan</label>
-                        <textarea id="promptStyle" rows="4" placeholder="contoh: dreamy editorial portrait blending our references with golden hour glow"></textarea>
+                        <textarea id="promptStyle" rows="4" placeholder="contoh: dreamy editorial portrait blending our references with golden hour glow"><?php echo htmlspecialchars($defaultPromptTemplate, ENT_QUOTES); ?></textarea>
                         <p class="muted">Tambahkan detail suasana atau warna. <button type="button" class="link" id="resetPromptButton">Gunakan template tema</button></p>
                     </div>
 
@@ -155,12 +196,119 @@ if (!auth_is_admin() && !$isFlashEnabled) {
     (function () {
         'use strict';
 
+        const initialAccount = <?php echo json_encode($accountPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        const ACCOUNT_ENDPOINT = 'index.php?api=account';
+        const ACCOUNT_COINS_ENDPOINT = 'index.php?api=account-coins';
+        const COIN_COST_PER_POSE = 1;
         const API_ENDPOINT = 'index.php?api=freepik';
         const CREATE_PATH = '/v1/ai/gemini-2-5-flash-image-preview';
         const STATUS_PATH = (taskId) => `/v1/ai/gemini-2-5-flash-image-preview/${taskId}`;
         const POLL_INTERVAL = 8000;
         const MIN_FILES = 2;
         const MAX_FILES = 3;
+        const UPLOAD_ENDPOINT = 'index.php?api=upload';
+        const CACHE_ENDPOINT = 'index.php?api=cache';
+
+        let currentAccount = initialAccount;
+        let coinsDebitedForRun = false;
+        const referenceUploadMap = new Map();
+        const cachedImageMap = new Map();
+
+        const creditValueEl = document.getElementById('creditValue');
+        const creditPillEl = document.getElementById('creditPill');
+
+        function formatCoins(value) {
+            const number = Number.isFinite(Number(value)) ? Number(value) : 0;
+            return number.toLocaleString('id-ID');
+        }
+
+        function updateCreditDisplay() {
+            if (!creditValueEl) {
+                return;
+            }
+            const balance = currentAccount && Number.isFinite(Number(currentAccount.coins))
+                ? Number(currentAccount.coins)
+                : 0;
+            creditValueEl.textContent = formatCoins(balance);
+            if (creditPillEl) {
+                creditPillEl.dataset.balance = String(balance);
+            }
+        }
+
+        async function fetchAccountState() {
+            const res = await fetch(ACCOUNT_ENDPOINT, {
+                credentials: 'same-origin',
+            });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) {
+                throw new Error((payload && payload.error) || 'Gagal memuat akun.');
+            }
+            return payload.data || null;
+        }
+
+        async function refreshAccountState() {
+            try {
+                const account = await fetchAccountState();
+                currentAccount = account;
+                updateCreditDisplay();
+                return account;
+            } catch (error) {
+                console.warn('Tidak dapat memperbarui akun:', error);
+                throw error;
+            }
+        }
+
+        function ensureCoins(amount) {
+            if (!currentAccount) {
+                return false;
+            }
+            const balance = Number.isFinite(Number(currentAccount.coins))
+                ? Number(currentAccount.coins)
+                : 0;
+            return balance >= amount;
+        }
+
+        async function spendCoins(amount) {
+            if (!amount || amount <= 0) {
+                return;
+            }
+            const res = await fetch(ACCOUNT_COINS_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ amount }),
+            });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) {
+                const message = (payload && payload.error) || 'Saldo koin gagal diperbarui.';
+                throw new Error(typeof message === 'string' ? message : 'Saldo koin gagal diperbarui.');
+            }
+            const data = payload.data || {};
+            if (!currentAccount) {
+                currentAccount = {};
+            }
+            if (typeof data.coins !== 'undefined') {
+                currentAccount.coins = data.coins;
+            }
+            updateCreditDisplay();
+        }
+
+        async function deductCoinsForSuccess(successCount) {
+            if (coinsDebitedForRun || !successCount) {
+                return;
+            }
+            const totalCost = successCount * COIN_COST_PER_POSE;
+            if (!totalCost) {
+                return;
+            }
+            await spendCoins(totalCost);
+            coinsDebitedForRun = true;
+        }
+
+        updateCreditDisplay();
+        refreshAccountState().catch(() => {
+            /* noop */
+        });
 
         const themeSelect = document.getElementById('themeSelect');
         const themeHint = document.getElementById('themeHint');
@@ -176,33 +324,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         const browseButton = document.getElementById('browseButton');
         const previewGrid = document.getElementById('referencePreview');
 
-        const themeOptions = {
-            romantic: {
-                label: 'Romantic Fusion',
-                description: 'Palet rose gold dengan highlight lembut ala golden hour dan kilau editorial.',
-                template: 'Gabungkan kedua foto menjadi potret editorial pernikahan yang romantis. Pastikan ada cahaya keemasan hangat dari golden hour, dengan highlight pearlescent yang lembut dan flare lensa soft focus yang artistik. Ciptakan kedalaman sinematik pada komposisi, dan pastikan gaya keseluruhan menyatu dengan sempurna, seolah-olah ini adalah satu sesi pemotretan yang direncanakan dengan indah.',
-            },
-            urban: {
-                label: 'Neo Urban Story',
-                description: 'Mood metropolis malam dengan kontras matte, refleksi neon cyan-magenta, dan nuansa futuristik.',
-                template: 'Gabungkan kedua foto ini dalam sebuah narasi fashion neo-urban. Latar belakangnya adalah kota di malam hari yang sinematik, didominasi oleh cahaya neon teal dan magenta yang memantul di permukaan. Berikan sentuhan akhir matte dengan kontras tinggi dan bayangan dramatis untuk menciptakan suasana yang intens dan bergaya.',
-            },
-            tropical: {
-                label: 'Tropical Journey',
-                description: 'Kombinasi warna tropis vibrant dengan kilau matahari dan ambience liburan energik.',
-                template: 'Gabungkan kedua foto ini menjadi satu gambar editorial perjalanan tropis. Pastikan palet warna didominasi oleh aqua dan lime yang cerah, menonjolkan kulit yang terpapar matahari dan nuansa gerakan yang ringan dan berangin. Latar belakang harus menampilkan pemandangan resor sinematik yang indah dengan detail dedaunan tropis yang rimbun.',
-            },
-            heritage: {
-                label: 'Heritage Elegance',
-                description: 'Sentuhan tradisional hangat dengan tekstur kaya dan detail busana elegan.',
-                template: 'Gabungkan kedua foto ini menjadi sebuah potret upacara warisan yang berkesan. Gunakan pencahayaan ambar yang hangat dan lembut untuk menciptakan suasana yang syahdu. Pastikan detail tekstil yang rumit pada pakaian atau latar belakang terlihat jelas. Tambahkan efek kabut sinematik yang lembut untuk sentuhan dramatis. Kedua subjek harus berpose dengan anggun dan bermartabat, seolah sedang menceritakan kisah abadi dari masa lalu.',
-            },
-            holiday: {
-                label: 'Holiday',
-                description: 'Pada gambar tersebut, Anda terlihat mengenakan bikini massive brust luar biasa besar dengan senyum tipis, rambut hitam tergerai, berlatar belakang pantai dengan pasir putih yang luas, air laut biru jernih, dan deretan pohon kelapa melengkung di kejauhan. Langit biru cerah dengan sedikit awan menambah kesan suasana liburan yang indah.',
-                template: 'Gabungkan foto ini ke dalam suasana liburan di pantai Indonesia yang cerah dan indah. Pastikan ada elemen khas pantai seperti pasir putih, air laut biru jernih, dan pohon kelapa. Pancarkan suasana relaksasi dan kebahagiaan saat berlibur.',
-            }
-        };
+        const themeOptions = <?php echo json_encode($themeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        const DEFAULT_THEME_KEY = <?php echo json_encode($defaultThemeKey, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
         const poseVariants = [
             {
@@ -213,7 +336,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 aspectRatio: 'portrait_3_4',
                 description(theme, prompt) {
                     const base = 'Close-up harmonis menonjolkan ekspresi utama dengan highlight lembut.';
-                    return prompt ? `${base} Tema "${prompt}" ditanamkan pada warna dan pencahayaan wajah.` : `${base} ${theme?.description || ''}`.trim();
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" ditanamkan pada warna dan pencahayaan wajah.`;
+                    }
+                    const themeDescription = theme && theme.description ? theme.description : '';
+                    return `${base} ${themeDescription}`.trim();
                 }
             },
             {
@@ -224,7 +351,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 aspectRatio: 'portrait_3_4',
                 description(theme, prompt) {
                     const base = 'Gerakan dramatis dengan komposisi diagonal dan aksen cahaya dinamis.';
-                    return prompt ? `${base} Tema "${prompt}" diaplikasikan pada wardrobe dan motion blur.` : `${base} ${theme?.description || ''}`.trim();
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" diaplikasikan pada wardrobe dan motion blur.`;
+                    }
+                    const themeDescription = theme && theme.description ? theme.description : '';
+                    return `${base} ${themeDescription}`.trim();
                 }
             },
             {
@@ -235,7 +366,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 aspectRatio: 'landscape_3_2',
                 description(theme, prompt) {
                     const base = 'Storytelling shot menonjolkan kostum penuh dan suasana latar.';
-                    return prompt ? `${base} Tema "${prompt}" diterapkan pada warna environment.` : `${base} ${theme?.description || ''}`.trim();
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" diterapkan pada warna environment.`;
+                    }
+                    const themeDescription = theme && theme.description ? theme.description : '';
+                    return `${base} ${themeDescription}`.trim();
                 }
             },
             {
@@ -246,7 +381,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 aspectRatio: 'square_1_1',
                 description(theme, prompt) {
                     const base = 'Detail shot memperlihatkan aksesori dan tekstur bahan dengan dramatis.';
-                    return prompt ? `${base} Tema "${prompt}" ditekankan pada highlight detail.` : `${base} ${theme?.description || ''}`.trim();
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" ditekankan pada highlight detail.`;
+                    }
+                    const themeDescription = theme && theme.description ? theme.description : '';
+                    return `${base} ${themeDescription}`.trim();
                 }
             }
         ];
@@ -282,18 +421,18 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
         }
 
-        function statusClass(status) {
+        function statusIndicatorKey(status) {
             const value = normalizeStatus(status);
             if (value === 'COMPLETED') {
-                return 'status-chip status-chip--success';
+                return 'completed';
             }
             if (value === 'FAILED' || value === 'ERROR') {
-                return 'status-chip status-chip--error';
+                return 'error';
             }
             if (value === 'PROCESSING' || value === 'RUNNING' || value === 'IN_PROGRESS') {
-                return 'status-chip status-chip--progress';
+                return 'processing';
             }
-            return 'status-chip status-chip--pending';
+            return 'pending';
         }
 
         function finalStatus(status) {
@@ -324,8 +463,12 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function renderThemeHint(themeKey) {
-            const option = themeOptions[themeKey];
-            if (option) {
+            if (!themeHint) {
+                return;
+            }
+            const key = themeOptions[themeKey] ? themeKey : DEFAULT_THEME_KEY;
+            const option = themeOptions[key];
+            if (option && option.description) {
                 themeHint.textContent = option.description;
             } else {
                 themeHint.textContent = '';
@@ -333,8 +476,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function ensurePromptTemplate(themeKey, force = false) {
-            const option = themeOptions[themeKey];
-            if (!option) {
+            const key = themeOptions[themeKey] ? themeKey : DEFAULT_THEME_KEY;
+            const option = themeOptions[key];
+            if (!option || !promptStyleInput) {
                 return;
             }
             if (force || !promptDirty || !promptStyleInput.value.trim()) {
@@ -344,6 +488,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function setPromptDirty() {
+            if (!promptStyleInput) {
+                return;
+            }
             promptDirty = true;
         }
 
@@ -370,7 +517,105 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             return files;
         }
 
+        function fileCacheKey(file) {
+            if (!file) {
+                return 'unknown-0-0';
+            }
+            const name = file.name ? String(file.name) : 'unknown';
+            const size = Number.isFinite(Number(file.size)) ? Number(file.size) : 0;
+            const modified = Number.isFinite(Number(file.lastModified)) ? Number(file.lastModified) : 0;
+            return `${name}-${size}-${modified}`;
+        }
+
+        async function uploadReferenceFile(file) {
+            const formData = new FormData();
+            const fileName = file && file.name ? file.name : 'reference.jpg';
+            formData.append('file', file, fileName);
+
+            const res = await fetch(UPLOAD_ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+            });
+
+            const text = await res.text();
+            let payload;
+            try {
+                payload = JSON.parse(text);
+            } catch (error) {
+                throw new Error('Respon upload tidak valid.');
+            }
+
+            if (!res.ok || !payload.ok) {
+                const message = (payload && payload.error) || 'Gagal mengunggah foto referensi ke server.';
+                throw new Error(typeof message === 'string' ? message : 'Gagal mengunggah foto referensi ke server.');
+            }
+
+            return payload;
+        }
+
+        function ensureReferenceUpload(file) {
+            const key = fileCacheKey(file);
+            if (!referenceUploadMap.has(key)) {
+                const pending = uploadReferenceFile(file).catch((error) => {
+                    referenceUploadMap.delete(key);
+                    throw error;
+                });
+                referenceUploadMap.set(key, pending);
+            }
+            return referenceUploadMap.get(key);
+        }
+
+        async function ensureAllReferenceUploads(files) {
+            if (!files || !files.length) {
+                return [];
+            }
+            return Promise.all(files.map((file) => ensureReferenceUpload(file)));
+        }
+
+        async function cacheGeneratedAsset(url) {
+            if (!url) {
+                return null;
+            }
+            if (cachedImageMap.has(url)) {
+                return cachedImageMap.get(url);
+            }
+
+            const pending = (async () => {
+                const res = await fetch(CACHE_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ url }),
+                });
+
+                const text = await res.text();
+                let payload;
+                try {
+                    payload = JSON.parse(text);
+                } catch (error) {
+                    throw new Error('Respon cache tidak valid.');
+                }
+
+                if (!res.ok || !payload.ok) {
+                    const message = (payload && payload.error) || 'Gagal menyimpan hasil ke server.';
+                    throw new Error(typeof message === 'string' ? message : 'Gagal menyimpan hasil ke server.');
+                }
+
+                return payload.url || null;
+            })().catch((error) => {
+                cachedImageMap.delete(url);
+                throw error;
+            });
+
+            cachedImageMap.set(url, pending);
+            return pending;
+        }
+
         function renderPreview() {
+            if (!previewGrid || !dropzone) {
+                return;
+            }
             previewGrid.innerHTML = '';
             if (!selectedFiles.length) {
                 previewGrid.style.display = 'none';
@@ -432,7 +677,15 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
 
             selectedFiles = imageFiles.slice(0, MAX_FILES);
+            if (referenceInput) {
+                referenceInput.value = '';
+            }
             renderPreview();
+
+            ensureAllReferenceUploads(selectedFiles).catch((error) => {
+                console.error('Upload referensi gagal:', error);
+                updateFormStatus(error.message || 'Gagal mengunggah foto referensi ke server.', 'error');
+            });
 
             if (!selectedFiles.length) {
                 messages.push('Unggah minimal dua foto referensi terlebih dahulu.');
@@ -485,10 +738,10 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function buildVariantPrompt(theme, variant, customPrompt) {
-            const accent = customPrompt && customPrompt.trim() !== '' ? customPrompt.trim() : theme.template;
+            const accent = customPrompt && customPrompt.trim() !== '' ? customPrompt.trim() : (theme.template || '');
             const segments = [
                 '[MultiReference Blend] Gabungkan semua foto referensi, pertahankan wajah, rambut, dan kostum yang konsisten.',
-                `[Theme Treatment] ${theme.label}. ${theme.description}`,
+                `[Theme Treatment] ${theme.label || ''}. ${theme.description || ''}`,
                 `[Pose Direction] ${variant.shot}`,
                 `[Styling Motif] ${accent}`,
                 '[Camera & Lighting] cinematic lighting, editorial photography, high dynamic range, rich texture, 8k detail.',
@@ -498,7 +751,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function prepareVariantRequest(themeKey, variant, customPrompt, referencesBase64) {
-            const theme = themeOptions[themeKey] || themeOptions.romantic;
+            const fallbackTheme = themeOptions[DEFAULT_THEME_KEY] || {};
+            const theme = themeOptions[themeKey] || fallbackTheme;
             const prompt = buildVariantPrompt(theme, variant, customPrompt);
             const body = {
                 prompt,
@@ -543,7 +797,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
 
         async function createGeminiTask(body) {
             const data = await callFreepik({ path: CREATE_PATH, method: 'POST', body });
-            const response = data?.data || {};
+            const response = data && data.data ? data.data : {};
             return {
                 taskId: response.task_id || null,
                 status: response.status || 'CREATED'
@@ -555,7 +809,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 throw new Error('Task ID tidak ditemukan.');
             }
             const data = await callFreepik({ path: STATUS_PATH(taskId), method: 'GET' });
-            const response = data?.data || {};
+            const response = data && data.data ? data.data : {};
             const generated = Array.isArray(response.generated) ? response.generated : [];
             return {
                 status: response.status || null,
@@ -564,6 +818,9 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         }
 
         function renderResults() {
+            if (!resultGrid) {
+                return;
+            }
             resultGrid.innerHTML = '';
             if (!tasks.length) {
                 showEmptyState(true);
@@ -574,96 +831,70 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             const fragment = document.createDocumentFragment();
 
             tasks.forEach((task) => {
-                const card = document.createElement('article');
-                card.className = 'film-scene-card';
+                const statusKey = statusIndicatorKey(task.status);
+                const tile = document.createElement('article');
+                tile.className = 'pose-tile';
+                tile.dataset.status = statusKey;
+                tile.setAttribute('aria-label', `${task.variant.badge} - ${statusLabel(task.status)}`);
+                tile.tabIndex = 0;
 
-                const header = document.createElement('div');
-                header.className = 'pose-header';
-
-                const titleWrap = document.createElement('div');
-                titleWrap.className = 'pose-title';
-
-                const badge = document.createElement('span');
-                badge.className = 'pose-badge-chip';
-                badge.textContent = task.variant.badge;
-
-                const titleText = document.createElement('span');
-                titleText.textContent = task.variant.title;
-
-                titleWrap.appendChild(badge);
-                titleWrap.appendChild(titleText);
-
-                const status = document.createElement('span');
-                status.className = statusClass(task.status);
-                status.textContent = statusLabel(task.status);
-
-                header.appendChild(titleWrap);
-                header.appendChild(status);
-                card.appendChild(header);
+                const frame = document.createElement('div');
+                frame.className = 'pose-frame';
 
                 if (task.imageUrl) {
                     const img = document.createElement('img');
-                    img.className = 'result-thumb';
+                    img.className = 'pose-image';
                     img.src = task.imageUrl;
                     img.alt = task.variant.title;
-                    card.appendChild(img);
+                    frame.appendChild(img);
                 } else {
                     const placeholder = document.createElement('div');
-                    placeholder.className = 'result-thumb placeholder';
-                    const label = document.createElement('span');
-                    label.textContent = finalStatus(task.status) ? 'Belum ada gambar' : 'Menunggu hasil…';
-                    placeholder.appendChild(label);
-                    if (!finalStatus(task.status)) {
-                        const spinner = document.createElement('span');
-                        spinner.className = 'placeholder-spinner';
-                        placeholder.appendChild(spinner);
-                    }
-                    card.appendChild(placeholder);
+                    placeholder.className = 'pose-placeholder';
+                    const spinner = document.createElement('span');
+                    spinner.className = 'pose-spinner';
+                    spinner.setAttribute('aria-hidden', 'true');
+                    placeholder.appendChild(spinner);
+                    frame.appendChild(placeholder);
                 }
 
-                const theme = themeOptions[task.themeKey] || themeOptions.romantic;
-                const description = document.createElement('p');
-                description.className = 'pose-description';
-                description.textContent = task.variant.description(theme, task.customPrompt || '');
-                card.appendChild(description);
+                const statusDot = document.createElement('span');
+                statusDot.className = `pose-status-dot pose-status-dot--${statusKey}`;
+                statusDot.setAttribute('aria-hidden', 'true');
+                statusDot.title = statusLabel(task.status);
+                frame.appendChild(statusDot);
 
-                if (task.prompt) {
-                    const promptBlock = document.createElement('div');
-                    promptBlock.className = 'pose-prompt';
-                    promptBlock.textContent = task.prompt;
-                    card.appendChild(promptBlock);
-                }
-
-                if (task.error) {
-                    const errorBlock = document.createElement('div');
-                    errorBlock.className = 'pose-error';
-                    errorBlock.textContent = task.error;
-                    card.appendChild(errorBlock);
-                }
+                tile.appendChild(frame);
 
                 if (task.imageUrl) {
-                    const actions = document.createElement('div');
-                    actions.className = 'pose-actions';
+                    const toolbar = document.createElement('div');
+                    toolbar.className = 'pose-toolbar';
+
+                    if (!task.downloadName) {
+                        const timestamp = Date.now();
+                        task.downloadName = `${task.variant.key || 'pose'}-${timestamp}.png`;
+                    }
 
                     const openLink = document.createElement('a');
                     openLink.href = task.imageUrl;
                     openLink.target = '_blank';
                     openLink.rel = 'noopener';
-                    openLink.className = 'pose-action-btn secondary';
-                    openLink.textContent = 'Buka di Tab Baru';
-                    actions.appendChild(openLink);
+                    openLink.className = 'pose-icon-btn';
+                    openLink.textContent = '↗';
+                    openLink.setAttribute('aria-label', 'Buka pose di tab baru');
+                    toolbar.appendChild(openLink);
 
                     const downloadLink = document.createElement('a');
                     downloadLink.href = task.imageUrl;
-                    downloadLink.download = `${task.variant.key || 'pose'}-${Date.now()}.png`;
-                    downloadLink.className = 'pose-action-btn primary';
-                    downloadLink.textContent = 'Download';
-                    actions.appendChild(downloadLink);
+                    downloadLink.download = task.downloadName;
+                    downloadLink.className = 'pose-icon-btn';
+                    downloadLink.textContent = '⬇';
+                    downloadLink.setAttribute('aria-label', 'Unduh pose');
+                    toolbar.appendChild(downloadLink);
 
-                    card.appendChild(actions);
+                    tile.appendChild(toolbar);
                 }
 
-                fragment.appendChild(card);
+                fragment.appendChild(tile);
             });
 
             resultGrid.appendChild(fragment);
@@ -690,7 +921,30 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                         task.status = status;
                     }
                     if (generated && generated.length) {
-                        task.imageUrl = generated[0];
+                        const remoteUrl = generated[0];
+                        if (remoteUrl) {
+                            const previousRemote = task.remoteUrl;
+                            const remoteChanged = remoteUrl !== previousRemote;
+                            const attempts = remoteChanged ? 0 : (typeof task.cacheAttempts === 'number' ? task.cacheAttempts : 0);
+                            const shouldRetryCache = !!task.cacheError && attempts < 3;
+
+                            if (remoteChanged || shouldRetryCache || !task.imageUrl) {
+                                try {
+                                    const cachedUrl = await cacheGeneratedAsset(remoteUrl);
+                                    task.imageUrl = cachedUrl || remoteUrl;
+                                    task.cachedUrl = cachedUrl || null;
+                                    task.cacheError = null;
+                                } catch (error) {
+                                    task.imageUrl = remoteUrl;
+                                    task.cachedUrl = null;
+                                    task.cacheError = error.message || 'Gagal menyimpan hasil ke server.';
+                                    console.warn('Gagal menyimpan hasil ke server:', error);
+                                }
+
+                                task.remoteUrl = remoteUrl;
+                                task.cacheAttempts = attempts + 1;
+                            }
+                        }
                     }
                 } catch (error) {
                     task.status = 'ERROR';
@@ -704,13 +958,37 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             if (completed === tasks.length) {
                 stopPolling();
                 const successCount = tasks.filter((task) => normalizeStatus(task.status) === 'COMPLETED' && task.imageUrl).length;
-                if (successCount === tasks.length) {
-                    updateFormStatus('Selesai! Semua pose berhasil dibuat.', 'success');
+                const hasCacheError = tasks.some((task) => task.cacheError);
+                let statusMessage = 'Semua pose gagal diproses. Coba lagi.';
+                let statusType = 'error';
+                if (successCount === tasks.length && successCount > 0) {
+                    statusMessage = 'Selesai! Semua pose berhasil dibuat.';
+                    statusType = 'success';
                 } else if (successCount > 0) {
-                    updateFormStatus(`${successCount} pose berhasil. Periksa pose lain yang gagal.`, 'error');
-                } else {
-                    updateFormStatus('Semua pose gagal diproses. Coba lagi.', 'error');
+                    statusMessage = `${successCount} pose berhasil. Periksa pose lain yang gagal.`;
+                    statusType = 'error';
                 }
+
+                if (successCount > 0) {
+                    try {
+                        await deductCoinsForSuccess(successCount);
+                    } catch (error) {
+                        console.error('Gagal memperbarui saldo kredit:', error);
+                        updateFormStatus('Hasil berhasil dibuat, tetapi saldo kredit tidak dapat diperbarui. Hubungi admin.', 'error');
+                        return;
+                    }
+                }
+
+                if (successCount > 0 && hasCacheError) {
+                    if (statusType === 'success') {
+                        statusMessage = 'Hasil berhasil dibuat, tetapi tidak semua file dapat disalin ke server. Gunakan tombol unduh bila diperlukan.';
+                    } else {
+                        statusMessage = `${statusMessage} Namun, tidak semua file dapat disalin ke server. Gunakan tombol unduh bila diperlukan.`;
+                    }
+                    statusType = 'error';
+                }
+
+                updateFormStatus(statusMessage, statusType);
                 return;
             }
 
@@ -732,11 +1010,30 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 return;
             }
 
+            await refreshAccountState().catch(() => {});
+
+            const requiredCoins = poseVariants.length * COIN_COST_PER_POSE;
+            if (!ensureCoins(requiredCoins)) {
+                updateFormStatus(`Saldo kredit kamu tidak mencukupi. Dibutuhkan minimal ${requiredCoins} kredit untuk membuat 4 pose.`, 'error');
+                return;
+            }
+
             setLoadingState(true);
-            updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
+            updateFormStatus('Mengunggah referensi ke server…', 'info');
             stopPolling();
             tasks = [];
+            coinsDebitedForRun = false;
             renderResults();
+
+            try {
+                await ensureAllReferenceUploads(selectedFiles);
+            } catch (error) {
+                setLoadingState(false);
+                updateFormStatus(error.message || 'Gagal mengunggah foto referensi ke server.', 'error');
+                return;
+            }
+
+            updateFormStatus('Mengonversi referensi dan menyiapkan permintaan…', 'info');
 
             let base64Images;
             try {
@@ -764,6 +1061,11 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 taskId: null,
                 status: 'PENDING',
                 imageUrl: null,
+                remoteUrl: null,
+                cachedUrl: null,
+                cacheError: null,
+                cacheAttempts: 0,
+                downloadName: null,
                 error: null
             }));
             renderResults();
@@ -806,59 +1108,77 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             }
         }
 
-        dropzone.addEventListener('click', () => {
-            referenceInput.click();
-        });
-
-        dropzone.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
+        if (dropzone && referenceInput) {
+            dropzone.addEventListener('click', () => {
                 referenceInput.click();
-            }
-        });
+            });
 
-        dropzone.addEventListener('dragover', (event) => {
-            event.preventDefault();
-            dropzone.classList.add('is-dragover');
-        });
+            dropzone.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    referenceInput.click();
+                }
+            });
 
-        dropzone.addEventListener('dragleave', () => {
-            dropzone.classList.remove('is-dragover');
-        });
+            dropzone.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                dropzone.classList.add('is-dragover');
+            });
 
-        dropzone.addEventListener('drop', (event) => {
-            event.preventDefault();
-            dropzone.classList.remove('is-dragover');
-            if (event.dataTransfer?.files?.length) {
-                handleFiles(event.dataTransfer.files);
-            }
-        });
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('is-dragover');
+            });
 
-        browseButton.addEventListener('click', () => {
-            referenceInput.click();
-        });
+            dropzone.addEventListener('drop', (event) => {
+                event.preventDefault();
+                dropzone.classList.remove('is-dragover');
+                if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length) {
+                    handleFiles(event.dataTransfer.files);
+                }
+            });
+        }
 
-        referenceInput.addEventListener('change', () => {
-            if (referenceInput.files?.length) {
-                handleFiles(referenceInput.files);
-            }
-        });
+        if (browseButton && referenceInput) {
+            browseButton.addEventListener('click', () => {
+                referenceInput.click();
+            });
+        }
 
-        themeSelect.addEventListener('change', () => {
-            const themeKey = themeSelect.value;
-            renderThemeHint(themeKey);
-            ensurePromptTemplate(themeKey);
-        });
+        if (referenceInput) {
+            referenceInput.addEventListener('change', () => {
+                if (referenceInput.files && referenceInput.files.length) {
+                    handleFiles(referenceInput.files);
+                }
+            });
+        }
 
-        promptStyleInput.addEventListener('input', setPromptDirty);
-        resetPromptButton.addEventListener('click', () => {
+        if (themeSelect) {
+            themeSelect.addEventListener('change', () => {
+                const themeKey = themeSelect.value;
+                renderThemeHint(themeKey);
+                ensurePromptTemplate(themeKey);
+            });
+        }
+
+        if (promptStyleInput) {
+            promptStyleInput.addEventListener('input', setPromptDirty);
+        }
+
+        if (resetPromptButton && themeSelect) {
+            resetPromptButton.addEventListener('click', () => {
+                ensurePromptTemplate(themeSelect.value, true);
+            });
+        }
+
+        if (form) {
+            form.addEventListener('submit', submitForm);
+        }
+
+        if (themeSelect) {
+            renderThemeHint(themeSelect.value);
             ensurePromptTemplate(themeSelect.value, true);
-        });
+        }
 
-        form.addEventListener('submit', submitForm);
-
-        renderThemeHint(themeSelect.value);
-        ensurePromptTemplate(themeSelect.value, true);
         renderPreview();
         showEmptyState(true);
     })();
