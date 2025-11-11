@@ -1815,8 +1815,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         exit;
     }
 
-    $selectedApiKey = freepik_next_api_key();
-    if (!$selectedApiKey) {
+    $availableKeys = freepik_available_api_keys();
+    if (!$availableKeys) {
         echo json_encode([
             'ok'     => false,
             'status' => 500,
@@ -1853,55 +1853,83 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     $url = rtrim($FREEPIK_BASE_URL, '/') . $path;
 
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+    $maxAttempts = max(1, count($availableKeys));
+    $responseData = null;
+    $responseStatus = 0;
+    $responseOk = false;
 
-    $headers = [
-        'x-freepik-api-key: ' . $selectedApiKey,
-        'Accept: application/json'
-    ];
+    for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+        $selectedApiKey = freepik_next_api_key();
+        if (!$selectedApiKey) {
+            break;
+        }
 
-    if ($method !== 'GET' && $body !== null) {
-        if ($contentType === 'form') {
-            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-        } else {
-            $headers[] = 'Content-Type: application/json';
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+
+        $headers = [
+            'x-freepik-api-key: ' . $selectedApiKey,
+            'Accept: application/json'
+        ];
+
+        if ($method !== 'GET' && $body !== null) {
+            if ($contentType === 'form') {
+                $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+            } else {
+                $headers[] = 'Content-Type: application/json';
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+            }
+        }
+
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $responseBody = curl_exec($ch);
+        $errno        = curl_errno($ch);
+        $error        = curl_error($ch);
+        $statusCode   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+
+        if ($errno) {
+            echo json_encode([
+                'ok'     => false,
+                'status' => 500,
+                'error'  => 'cURL error: ' . $error
+            ]);
+            exit;
+        }
+
+        $data = null;
+        if ($responseBody !== '' && $responseBody !== null) {
+            $json = json_decode($responseBody, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $data = $json;
+            } else {
+                $data = $responseBody;
+            }
+        }
+
+        $responseData = $data;
+        $responseStatus = $statusCode;
+        $responseOk = $statusCode >= 200 && $statusCode < 300;
+
+        if ($statusCode === 429 && $attempt + 1 < $maxAttempts) {
+            usleep(200000);
+            continue;
+        }
+
+        break;
+    }
+
+    if ($responseStatus === 0) {
+        $responseStatus = 500;
+        if ($responseData === null) {
+            $responseData = ['error' => 'Freepik request tidak mendapatkan respons'];
         }
     }
 
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-    $responseBody = curl_exec($ch);
-    $errno        = curl_errno($ch);
-    $error        = curl_error($ch);
-    $statusCode   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
-
-    if ($errno) {
-        echo json_encode([
-            'ok'     => false,
-            'status' => 500,
-            'error'  => 'cURL error: ' . $error
-        ]);
-        exit;
-    }
-
-    $data = null;
-    if ($responseBody !== '' && $responseBody !== null) {
-        $json = json_decode($responseBody, true);
-        if (json_last_error() === JSON_ERROR_NONE) {
-            $data = $json;
-        } else {
-            $data = $responseBody;
-        }
-    }
-
-    $success = $statusCode >= 200 && $statusCode < 300;
-
-    if ($success && isset($payload['method']) && strtoupper((string)$payload['method']) !== 'GET' && $account) {
+    if ($responseOk && isset($payload['method']) && strtoupper((string)$payload['method']) !== 'GET' && $account) {
         auth_metrics_record_generation('freepik', [
             'type' => 'freepik',
             'detail' => isset($payload['path']) ? (string)$payload['path'] : '',
@@ -1911,9 +1939,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
 
     echo json_encode([
-        'ok'     => $success,
-        'status' => $statusCode,
-        'data'   => $data
+        'ok'     => $responseOk,
+        'status' => $responseStatus,
+        'data'   => $responseData
     ], JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -8212,18 +8240,6 @@ body[data-theme="light"] .profile-expiry.expired {
       </div>
 
       <div>
-        <div class="small-label">Aspect Ratio</div>
-        <div class="ugc-aspect-select">
-          <select id="ugcAspectRatio">
-            <option value="square_1_1">Square 1:1</option>
-            <option value="portrait_3_4">Portrait 3:4</option>
-            <option value="portrait_9_16">Portrait 9:16</option>
-            <option value="landscape_16_9">Landscape 16:9</option>
-          </select>
-        </div>
-      </div>
-
-      <div>
         <div class="small-label">Product Brief (Optional)</div>
         <textarea id="ugcBrief" placeholder="Contoh: Mempromosikan botol air berkelanjutan untuk penggemar kebugaran, menekankan gaya hidup ramah lingkungan dan aktivitas luar ruangan"></textarea>
       </div>
@@ -11109,7 +11125,6 @@ body[data-theme="light"] .profile-expiry.expired {
   const ugcStyleLabelEl    = document.getElementById('ugcStyleLabel');
   const ugcStyleDescEl     = document.getElementById('ugcStyleDescription');
   const ugcStyleIconEl     = document.getElementById('ugcStyleIcon');
-  const ugcAspectRatioSelect = document.getElementById('ugcAspectRatio');
   const ugcBriefInput      = document.getElementById('ugcBrief');
   const ugcGenerateBtn     = document.getElementById('ugcGenerateBtn');
 
@@ -13971,16 +13986,9 @@ body[data-theme="light"] .profile-expiry.expired {
   });
 
   const UGC_IDEA_COUNT = 5;
-  const UGC_ASPECT_OPTIONS = [
-    { value: 'square_1_1', label: 'Square 1:1' },
-    { value: 'portrait_3_4', label: 'Portrait 3:4' },
-    { value: 'portrait_9_16', label: 'Portrait 9:16' },
-    { value: 'landscape_16_9', label: 'Landscape 16:9' }
-  ];
-  const UGC_ASPECT_LABEL_MAP = UGC_ASPECT_OPTIONS.reduce((acc, opt) => {
-    acc[opt.value] = opt.label;
-    return acc;
-  }, {});
+  const UGC_DEFAULT_FRAMING_TEXT = 'versatile framing';
+  const UGC_DEFAULT_IMAGE_ASPECT_RATIO = 'auto';
+  const UGC_DEFAULT_VIDEO_ASPECT_RATIO = 'landscape_16_9'; // Seedance Pro 1080p expects 16:9 per Freepik docs
 
   const UGC_STYLE_GROUPS = [
     {
@@ -14072,7 +14080,6 @@ body[data-theme="light"] .profile-expiry.expired {
   let ugcModelImage = null;
   let ugcItems = [];
   let ugcPollTimer = null;
-  let ugcCurrentAspectRatio = sanitizeUgcAspectRatio(ugcAspectRatioSelect ? ugcAspectRatioSelect.value : null) || 'square_1_1';
 
   function normalizeUgcReference(entry) {
     if (!entry) return null;
@@ -14086,22 +14093,6 @@ body[data-theme="light"] .profile-expiry.expired {
       return entry.url;
     }
     return null;
-  }
-
-  function sanitizeUgcAspectRatio(value) {
-    if (typeof value !== 'string') return null;
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    return UGC_ASPECT_LABEL_MAP[trimmed] ? trimmed : null;
-  }
-
-  function getUgcAspectLabel(value) {
-    return UGC_ASPECT_LABEL_MAP[value] || '';
-  }
-
-  function describeUgcAspect(value) {
-    const label = getUgcAspectLabel(value);
-    return label ? `${label} framing` : 'versatile framing';
   }
 
   function formatUgcStatus(status) {
@@ -14158,14 +14149,13 @@ body[data-theme="light"] .profile-expiry.expired {
     return UGC_STYLE_LIBRARY[key] || UGC_STYLE_LIBRARY[DEFAULT_UGC_STYLE_KEY];
   }
 
-  function buildUgcImagePrompt(basePrompt, styleKey, index, aspectRatio) {
+  function buildUgcImagePrompt(basePrompt, styleKey, index) {
     const style = getUgcStyle(styleKey) || {};
     const cleaned = (basePrompt || '').trim().replace(/\s+/g, ' ');
     const promptBase = cleaned || 'Product UGC photo shot';
     const styleLabel = style.label || 'Basic style';
     const stylePrompt = style.prompt || 'balanced creator storytelling';
-    const aspectFragment = describeUgcAspect(aspectRatio).toLowerCase();
-    return `UGC Image #${index}: ${promptBase}. Style focus: ${styleLabel} — ${stylePrompt}. Capture in ${aspectFragment} with authentic creator energy.`;
+    return `UGC Image #${index}: ${promptBase}. Style focus: ${styleLabel} — ${stylePrompt}. Capture with ${UGC_DEFAULT_FRAMING_TEXT} and authentic creator energy.`;
   }
 
   function updateUgcStyleActiveState(activeKey) {
@@ -14263,7 +14253,6 @@ body[data-theme="light"] .profile-expiry.expired {
       row.className = 'ugc-row';
       row.dataset.index = item.index;
 
-      const aspectLabelText = (item.aspectLabel || '').trim();
       const imageStatusLabel = formatUgcStatus(item.status);
       const isImageReady = !!item.imageUrl;
       const isImageGenerating = !isImageReady && !finalStatus(item.status);
@@ -14276,9 +14265,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
       const imageLabel = document.createElement('div');
       imageLabel.className = 'ugc-column-label';
-      imageLabel.textContent = aspectLabelText
-        ? `Image ${item.index} (${aspectLabelText})`
-        : 'Image ' + item.index;
+      imageLabel.textContent = 'Image ' + item.index;
       imageCol.appendChild(imageLabel);
 
       const imgCard = document.createElement('div');
@@ -14327,7 +14314,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
       const videoLabel = document.createElement('div');
       videoLabel.className = 'ugc-column-label';
-      videoLabel.textContent = aspectLabelText ? `Video (${aspectLabelText})` : 'Video';
+      videoLabel.textContent = 'Video';
       videoCol.appendChild(videoLabel);
 
       const videoCard = document.createElement('div');
@@ -14402,9 +14389,7 @@ body[data-theme="light"] .profile-expiry.expired {
         if (videoPending) {
           status.textContent = 'Seedance 1080 sedang memproses';
         } else if (!item.remoteUrl || !finalStatus(item.status)) {
-          status.textContent = aspectLabelText
-            ? `Generate video (${aspectLabelText}) setelah gambar siap`
-            : 'Generate video setelah gambar siap';
+          status.textContent = 'Generate video setelah gambar siap';
         } else {
           status.textContent = 'Klik Generate Video untuk mulai animasi';
         }
@@ -14429,7 +14414,6 @@ body[data-theme="light"] .profile-expiry.expired {
       const metaParts = [];
       if (styleLabel) metaParts.push(styleLabel);
       if (styleDescription) metaParts.push(styleDescription);
-      if (aspectLabelText) metaParts.push(`${aspectLabelText} aspect`);
 
       if (metaParts.length) {
         const meta = document.createElement('div');
@@ -14588,18 +14572,6 @@ body[data-theme="light"] .profile-expiry.expired {
     ugcPollTimer = setInterval(() => { pollUgcOnce(); }, 8000);
   }
 
-  if (ugcAspectRatioSelect) {
-    if (!sanitizeUgcAspectRatio(ugcAspectRatioSelect.value)) {
-      ugcAspectRatioSelect.value = ugcCurrentAspectRatio;
-    }
-    ugcAspectRatioSelect.addEventListener('change', () => {
-      const selected = sanitizeUgcAspectRatio(ugcAspectRatioSelect.value);
-      if (selected) {
-        ugcCurrentAspectRatio = selected;
-      }
-    });
-  }
-
   ugcProductDrop.addEventListener('click', () => ugcProductInput.click());
   ugcProductInput.addEventListener('change', e => {
     const files = Array.from(e.target.files || []);
@@ -14680,21 +14652,18 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
 
-    const aspectRatio = sanitizeUgcAspectRatio(ugcAspectRatioSelect ? ugcAspectRatioSelect.value : ugcCurrentAspectRatio) || 'square_1_1';
-    ugcCurrentAspectRatio = aspectRatio;
-    const aspectLabel = getUgcAspectLabel(aspectRatio);
-
     ugcGenerateBtn.disabled = true;
     ugcItems = [];
     renderUgcList();
 
     const cfg = MODEL_CONFIG.gemini;
     const refs = buildUgcReferences();
+    const requestAspectRatio = UGC_DEFAULT_IMAGE_ASPECT_RATIO;
     let successfulIdeas = 0;
 
     try {
       for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
-        const prompt = buildUgcImagePrompt(brief, styleKey, i, aspectRatio);
+        const prompt = buildUgcImagePrompt(brief, styleKey, i);
         const item = {
           index: i,
           prompt,
@@ -14707,9 +14676,7 @@ body[data-theme="light"] .profile-expiry.expired {
           videoUrl: null,
           styleKey,
           styleLabel: styleMeta && styleMeta.label ? styleMeta.label : '',
-          styleDescription: styleMeta && styleMeta.description ? styleMeta.description : '',
-          aspectRatio,
-          aspectLabel
+          styleDescription: styleMeta && styleMeta.description ? styleMeta.description : ''
         };
         ugcItems.push(item);
         renderUgcList();
@@ -14717,7 +14684,7 @@ body[data-theme="light"] .profile-expiry.expired {
         const body = {
           prompt,
           num_images: 1,
-          aspect_ratio: aspectRatio
+          aspect_ratio: requestAspectRatio
         };
         if (refs.length) {
           body.reference_images = refs.slice();
@@ -14786,16 +14753,11 @@ body[data-theme="light"] .profile-expiry.expired {
     }
 
     const cfg = MODEL_CONFIG.seedancePro1080;
-    const aspectRatio = sanitizeUgcAspectRatio(item.aspectRatio) || sanitizeUgcAspectRatio(ugcCurrentAspectRatio) || 'square_1_1';
-    if (!item.aspectRatio) {
-      item.aspectRatio = aspectRatio;
-      item.aspectLabel = getUgcAspectLabel(aspectRatio);
-    }
     const requestPayload = {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
       imageUrl: item.remoteUrl,
       videoDuration: 10,
-      aspectRatio
+      aspectRatio: UGC_DEFAULT_VIDEO_ASPECT_RATIO
     };
 
     const body = typeof cfg.buildBody === 'function'
