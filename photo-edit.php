@@ -13,6 +13,7 @@ if ($account) {
     $account = auth_normalize_account($account);
 }
 
+$accountPayload = $account ? auth_account_public_payload($account) : null;
 $username = '';
 if ($account) {
     $username = trim((string)($account['name'] ?? ''));
@@ -23,6 +24,9 @@ if ($account) {
 if ($username === '') {
     $username = 'Pengguna';
 }
+
+$coinBalance = $accountPayload['coins'] ?? 0;
+$coinBalanceFormatted = number_format((int)$coinBalance, 0, ',', '.');
 
 $platform = auth_platform_public_view();
 $flashFeature = $platform['generators']['flashPhotoEdit'] ?? null;
@@ -65,12 +69,18 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     <p>Padukan 2-3 foto referensi kamu untuk membuat empat pose sinematik ala Filmmaker dengan kualitas asli dari Flash 2.5.</p>
                 </div>
                 <div class="photo-film-meta">
-                    <div class="user-chip" aria-label="Akun aktif">
-                        <span class="avatar-circle" aria-hidden="true"><?php echo htmlspecialchars(strtoupper(substr($username, 0, 2))); ?></span>
-                        <span class="user-meta">
-                            <span class="user-label">Masuk sebagai</span>
-                            <span class="user-name"><?php echo htmlspecialchars($username, ENT_QUOTES); ?></span>
-                        </span>
+                    <div class="user-stack">
+                        <div class="credit-pill" id="creditPill" role="status" aria-live="polite">
+                            <span class="credit-label">Saldo Kredit</span>
+                            <span class="credit-value" id="creditValue"><?php echo htmlspecialchars($coinBalanceFormatted, ENT_QUOTES); ?></span>
+                        </div>
+                        <div class="user-chip" aria-label="Akun aktif">
+                            <span class="avatar-circle" aria-hidden="true"><?php echo htmlspecialchars(strtoupper(substr($username, 0, 2))); ?></span>
+                            <span class="user-meta">
+                                <span class="user-label">Masuk sebagai</span>
+                                <span class="user-name"><?php echo htmlspecialchars($username, ENT_QUOTES); ?></span>
+                            </span>
+                        </div>
                     </div>
                     <a href="index.php" class="btn-secondary">← Kembali ke Dashboard</a>
                 </div>
@@ -155,12 +165,115 @@ if (!auth_is_admin() && !$isFlashEnabled) {
     (function () {
         'use strict';
 
+        const initialAccount = <?php echo json_encode($accountPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        const ACCOUNT_ENDPOINT = 'index.php?api=account';
+        const ACCOUNT_COINS_ENDPOINT = 'index.php?api=account-coins';
+        const COIN_COST_PER_POSE = 1;
         const API_ENDPOINT = 'index.php?api=freepik';
         const CREATE_PATH = '/v1/ai/gemini-2-5-flash-image-preview';
         const STATUS_PATH = (taskId) => `/v1/ai/gemini-2-5-flash-image-preview/${taskId}`;
         const POLL_INTERVAL = 8000;
         const MIN_FILES = 2;
         const MAX_FILES = 3;
+
+        let currentAccount = initialAccount;
+        let coinsDebitedForRun = false;
+
+        const creditValueEl = document.getElementById('creditValue');
+        const creditPillEl = document.getElementById('creditPill');
+
+        function formatCoins(value) {
+            const number = Number.isFinite(Number(value)) ? Number(value) : 0;
+            return number.toLocaleString('id-ID');
+        }
+
+        function updateCreditDisplay() {
+            if (!creditValueEl) {
+                return;
+            }
+            const balance = currentAccount && Number.isFinite(Number(currentAccount.coins))
+                ? Number(currentAccount.coins)
+                : 0;
+            creditValueEl.textContent = formatCoins(balance);
+            if (creditPillEl) {
+                creditPillEl.dataset.balance = String(balance);
+            }
+        }
+
+        async function fetchAccountState() {
+            const res = await fetch(ACCOUNT_ENDPOINT, {
+                credentials: 'same-origin',
+            });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) {
+                throw new Error((payload && payload.error) || 'Gagal memuat akun.');
+            }
+            return payload.data || null;
+        }
+
+        async function refreshAccountState() {
+            try {
+                const account = await fetchAccountState();
+                currentAccount = account;
+                updateCreditDisplay();
+                return account;
+            } catch (error) {
+                console.warn('Tidak dapat memperbarui akun:', error);
+                throw error;
+            }
+        }
+
+        function ensureCoins(amount) {
+            if (!currentAccount) {
+                return false;
+            }
+            const balance = Number.isFinite(Number(currentAccount.coins))
+                ? Number(currentAccount.coins)
+                : 0;
+            return balance >= amount;
+        }
+
+        async function spendCoins(amount) {
+            if (!amount || amount <= 0) {
+                return;
+            }
+            const res = await fetch(ACCOUNT_COINS_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ amount }),
+            });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) {
+                const message = (payload && payload.error) || 'Saldo koin gagal diperbarui.';
+                throw new Error(typeof message === 'string' ? message : 'Saldo koin gagal diperbarui.');
+            }
+            const data = payload.data || {};
+            if (!currentAccount) {
+                currentAccount = {};
+            }
+            if (typeof data.coins !== 'undefined') {
+                currentAccount.coins = data.coins;
+            }
+            updateCreditDisplay();
+        }
+
+        async function deductCoinsForSuccess(successCount) {
+            if (coinsDebitedForRun || !successCount) {
+                return;
+            }
+            const totalCost = successCount * COIN_COST_PER_POSE;
+            if (!totalCost) {
+                return;
+            }
+            await spendCoins(totalCost);
+            coinsDebitedForRun = true;
+        }
+
+        updateCreditDisplay();
+        refreshAccountState().catch(() => {
+            /* noop */
+        });
 
         const themeSelect = document.getElementById('themeSelect');
         const themeHint = document.getElementById('themeHint');
@@ -573,24 +686,49 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             showEmptyState(false);
             const fragment = document.createDocumentFragment();
 
-            tasks.forEach((task) => {
+            tasks.forEach((task, index) => {
                 const card = document.createElement('article');
-                card.className = 'film-scene-card';
+                card.className = 'film-scene-card pose-card';
+
+                const media = document.createElement('div');
+                media.className = 'pose-media';
+
+                if (task.imageUrl) {
+                    const img = document.createElement('img');
+                    img.className = 'pose-image';
+                    img.src = task.imageUrl;
+                    img.alt = task.variant.title;
+                    media.appendChild(img);
+                } else {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'pose-placeholder';
+                    const label = document.createElement('span');
+                    label.textContent = finalStatus(task.status) ? 'Belum ada gambar' : 'Menunggu hasil…';
+                    placeholder.appendChild(label);
+                    if (!finalStatus(task.status)) {
+                        const spinner = document.createElement('span');
+                        spinner.className = 'pose-spinner';
+                        placeholder.appendChild(spinner);
+                    }
+                    media.appendChild(placeholder);
+                }
+
+                const overlay = document.createElement('div');
+                overlay.className = 'pose-overlay';
 
                 const header = document.createElement('div');
-                header.className = 'pose-header';
+                header.className = 'pose-overlay-info';
 
                 const titleWrap = document.createElement('div');
-                titleWrap.className = 'pose-title';
+                titleWrap.className = 'pose-overlay-label';
 
                 const badge = document.createElement('span');
                 badge.className = 'pose-badge-chip';
                 badge.textContent = task.variant.badge;
+                titleWrap.appendChild(badge);
 
                 const titleText = document.createElement('span');
                 titleText.textContent = task.variant.title;
-
-                titleWrap.appendChild(badge);
                 titleWrap.appendChild(titleText);
 
                 const status = document.createElement('span');
@@ -599,68 +737,69 @@ if (!auth_is_admin() && !$isFlashEnabled) {
 
                 header.appendChild(titleWrap);
                 header.appendChild(status);
-                card.appendChild(header);
-
-                if (task.imageUrl) {
-                    const img = document.createElement('img');
-                    img.className = 'result-thumb';
-                    img.src = task.imageUrl;
-                    img.alt = task.variant.title;
-                    card.appendChild(img);
-                } else {
-                    const placeholder = document.createElement('div');
-                    placeholder.className = 'result-thumb placeholder';
-                    const label = document.createElement('span');
-                    label.textContent = finalStatus(task.status) ? 'Belum ada gambar' : 'Menunggu hasil…';
-                    placeholder.appendChild(label);
-                    if (!finalStatus(task.status)) {
-                        const spinner = document.createElement('span');
-                        spinner.className = 'placeholder-spinner';
-                        placeholder.appendChild(spinner);
-                    }
-                    card.appendChild(placeholder);
-                }
+                overlay.appendChild(header);
 
                 const theme = themeOptions[task.themeKey] || themeOptions.romantic;
-                const description = document.createElement('p');
-                description.className = 'pose-description';
-                description.textContent = task.variant.description(theme, task.customPrompt || '');
-                card.appendChild(description);
+                const hint = document.createElement('div');
+                hint.className = 'pose-overlay-hint';
+                hint.textContent = task.variant.description(theme, task.customPrompt || '');
+                overlay.appendChild(hint);
 
+                const actions = document.createElement('div');
+                actions.className = 'pose-overlay-actions';
+
+                let promptBlock = null;
                 if (task.prompt) {
-                    const promptBlock = document.createElement('div');
+                    promptBlock = document.createElement('div');
                     promptBlock.className = 'pose-prompt';
                     promptBlock.textContent = task.prompt;
+                    const promptId = `posePrompt-${task.variant.key || 'pose'}-${index}`;
+                    promptBlock.id = promptId;
+
+                    const promptButton = document.createElement('button');
+                    promptButton.type = 'button';
+                    promptButton.className = 'pose-mini-btn';
+                    promptButton.textContent = 'Prompt';
+                    promptButton.setAttribute('aria-expanded', 'false');
+                    promptButton.setAttribute('aria-controls', promptId);
+                    promptButton.addEventListener('click', () => {
+                        const isVisible = promptBlock.classList.toggle('is-visible');
+                        promptButton.setAttribute('aria-expanded', isVisible ? 'true' : 'false');
+                        promptButton.textContent = isVisible ? 'Tutup' : 'Prompt';
+                    });
+                    actions.appendChild(promptButton);
                     card.appendChild(promptBlock);
                 }
+
+                if (task.imageUrl) {
+                    const openLink = document.createElement('a');
+                    openLink.href = task.imageUrl;
+                    openLink.target = '_blank';
+                    openLink.rel = 'noopener';
+                    openLink.className = 'pose-mini-btn';
+                    openLink.textContent = 'Buka';
+                    actions.appendChild(openLink);
+
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = task.imageUrl;
+                    downloadLink.download = `${task.variant.key || 'pose'}-${Date.now()}.png`;
+                    downloadLink.className = 'pose-mini-btn primary';
+                    downloadLink.textContent = 'Unduh';
+                    actions.appendChild(downloadLink);
+                }
+
+                if (actions.children.length) {
+                    overlay.appendChild(actions);
+                }
+
+                card.appendChild(media);
+                card.appendChild(overlay);
 
                 if (task.error) {
                     const errorBlock = document.createElement('div');
                     errorBlock.className = 'pose-error';
                     errorBlock.textContent = task.error;
                     card.appendChild(errorBlock);
-                }
-
-                if (task.imageUrl) {
-                    const actions = document.createElement('div');
-                    actions.className = 'pose-actions';
-
-                    const openLink = document.createElement('a');
-                    openLink.href = task.imageUrl;
-                    openLink.target = '_blank';
-                    openLink.rel = 'noopener';
-                    openLink.className = 'pose-action-btn secondary';
-                    openLink.textContent = 'Buka di Tab Baru';
-                    actions.appendChild(openLink);
-
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = task.imageUrl;
-                    downloadLink.download = `${task.variant.key || 'pose'}-${Date.now()}.png`;
-                    downloadLink.className = 'pose-action-btn primary';
-                    downloadLink.textContent = 'Download';
-                    actions.appendChild(downloadLink);
-
-                    card.appendChild(actions);
                 }
 
                 fragment.appendChild(card);
@@ -704,13 +843,27 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             if (completed === tasks.length) {
                 stopPolling();
                 const successCount = tasks.filter((task) => normalizeStatus(task.status) === 'COMPLETED' && task.imageUrl).length;
-                if (successCount === tasks.length) {
-                    updateFormStatus('Selesai! Semua pose berhasil dibuat.', 'success');
+                let statusMessage = 'Semua pose gagal diproses. Coba lagi.';
+                let statusType = 'error';
+                if (successCount === tasks.length && successCount > 0) {
+                    statusMessage = 'Selesai! Semua pose berhasil dibuat.';
+                    statusType = 'success';
                 } else if (successCount > 0) {
-                    updateFormStatus(`${successCount} pose berhasil. Periksa pose lain yang gagal.`, 'error');
-                } else {
-                    updateFormStatus('Semua pose gagal diproses. Coba lagi.', 'error');
+                    statusMessage = `${successCount} pose berhasil. Periksa pose lain yang gagal.`;
+                    statusType = 'error';
                 }
+
+                if (successCount > 0) {
+                    try {
+                        await deductCoinsForSuccess(successCount);
+                    } catch (error) {
+                        console.error('Gagal memperbarui saldo kredit:', error);
+                        updateFormStatus('Hasil berhasil dibuat, tetapi saldo kredit tidak dapat diperbarui. Hubungi admin.', 'error');
+                        return;
+                    }
+                }
+
+                updateFormStatus(statusMessage, statusType);
                 return;
             }
 
@@ -732,10 +885,19 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 return;
             }
 
+            await refreshAccountState().catch(() => {});
+
+            const requiredCoins = poseVariants.length * COIN_COST_PER_POSE;
+            if (!ensureCoins(requiredCoins)) {
+                updateFormStatus(`Saldo kredit kamu tidak mencukupi. Dibutuhkan minimal ${requiredCoins} kredit untuk membuat 4 pose.`, 'error');
+                return;
+            }
+
             setLoadingState(true);
             updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
             stopPolling();
             tasks = [];
+            coinsDebitedForRun = false;
             renderResults();
 
             let base64Images;
