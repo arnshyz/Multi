@@ -3285,14 +3285,14 @@ body[data-theme="light"] {
   display: none;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 20px;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
   position: sticky;
-  top: 68px;
+  top: 72px;
   z-index: 5;
 }
 
@@ -3303,22 +3303,23 @@ body[data-theme="light"] {
 }
 
 .mobile-coin-label {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
 }
 
 .mobile-coin-value {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 600;
   color: var(--text);
 }
 
-.mobile-coin-topup {
+.mobile-coin-banner .topup-badge {
   width: auto;
-  min-width: 110px;
-  padding: 10px 18px;
+  min-width: 100px;
+  padding: 8px 14px;
+  font-size: 12px;
 }
 .stats-grid {
   display: grid;
@@ -4283,14 +4284,11 @@ body[data-theme="light"] .profile-avatar {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  
-  /* --- WARNA EMAS BERKILAU --- */
-  color: #583f08; /* Teks Cokelat Tua/Emas Gelap */
-  background: linear-gradient(90deg, #ffd700, #ffec85); /* Gradasi Emas Kuning ke Emas Terang */
-  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.5); /* Bayangan Emas */
-  /* --- AKHIR WARNA EMAS BERKILAU --- */
-  
+  color: var(--text);
+  background: rgba(148, 163, 184, 0.16);
+  box-shadow: none;
   overflow: hidden;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .profile-badge::before {
@@ -4305,16 +4303,40 @@ body[data-theme="light"] .profile-avatar {
   left: -60%;
   width: 50%;
   height: 100%;
-  
-  /* Efek Kilau/Shine */
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); 
-  animation: badgeShine 2.8s linear infinite;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0));
+  opacity: 0;
 }
 
 @keyframes badgeShine {
   0% { left: -60%; }
   60% { left: 120%; }
   100% { left: 120%; }
+}
+
+.profile-badge--premium {
+  color: #583f08;
+  background: linear-gradient(90deg, #ffd700, #ffec85);
+  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.5);
+}
+
+.profile-badge--premium::after {
+  opacity: 1;
+  animation: badgeShine 2.8s linear infinite;
+}
+
+.profile-badge--free {
+  color: #111827;
+  background: linear-gradient(135deg, #e2e8f0, #cbd5f5);
+  box-shadow: none;
+}
+
+.profile-badge--free::after {
+  opacity: 0;
+  animation: none;
+}
+
+.profile-badge--free::before {
+  filter: grayscale(0.4);
 }
 
 .topup-badge {
@@ -4367,23 +4389,24 @@ body[data-theme="light"] .profile-avatar {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  
+
   width: 28px; /* Ukuran badge */
   height: 28px; /* Ukuran badge */
-  
+
   /* --- Bentuk Bintang Bergerigi (Custom Clip-Path) --- */
   /* Ini adalah perkiraan untuk bentuk bintang bergerigi seperti gambar */
   clip-path: polygon(
     50% 0%, 65% 15%, 100% 19%, 85% 35%, 100% 61%, 75% 65%, 70% 100%, 50% 85%, 30% 100%, 25% 65%, 0% 61%, 15% 35%, 0% 19%, 35% 15%
   );
-  
+
   /* --- WARNA BIRU BERKILAU --- */
   color: #f0f8ff; /* Warna ikon centang: Biru sangat muda/putih */
   background: linear-gradient(90deg, #1e3a8a, #3b82f6); /* Gradasi Biru Tua ke Biru Terang */
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5); /* Bayangan Biru */
   /* --- AKHIR WARNA BIRU BERKILAU --- */
-  
+
   overflow: hidden; /* Penting untuk efek kilau */
+  transition: transform 0.3s ease, opacity 0.2s ease;
 }
 
 .verified-badge-star::before {
@@ -4398,20 +4421,26 @@ body[data-theme="light"] .profile-avatar {
   content: "";
   position: absolute;
   top: 0;
-  left: -100%; 
-  width: 70%; 
+  left: -100%;
+  width: 70%;
   height: 100%;
-  
+
   /* Efek Kilau/Shine */
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); 
-  animation: badgeShine 2.5s linear infinite; 
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0));
+  animation: badgeShineSweep 2.5s linear infinite;
   z-index: 1; /* Di bawah ikon centang, di atas background badge */
 }
 
+.verified-badge-star--hidden {
+  opacity: 0;
+  transform: scale(0.6);
+  pointer-events: none;
+}
+
 /* Keyframes untuk Animasi Kilauan */
-@keyframes badgeShine {
+@keyframes badgeShineSweep {
   0% { left: -100%; }
-  60% { left: 150%; } 
+  60% { left: 150%; }
   100% { left: 150%; }
 }
 
@@ -4444,6 +4473,11 @@ body[data-theme="light"] .profile-avatar {
   margin-top: 6px;
   gap: 12px;
 }
+
+.profile-expiry--active {
+  animation: profileExpiryPulse 3s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.25);
+}
 .profile-expiry--inline {
   margin-top: 6px;
   background: rgba(15, 23, 42, 0.2);
@@ -4463,8 +4497,18 @@ body[data-theme="light"] .profile-avatar {
   border-color: rgba(248,113,113,0.45);
   color: rgba(248,113,113,0.85);
 }
+.profile-expiry.expired.profile-expiry--active {
+  animation: none;
+  box-shadow: none;
+}
 .profile-expiry.expired .profile-expiry-label {
   color: inherit;
+}
+
+@keyframes profileExpiryPulse {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.25); }
+  70% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
 }
 .profile-card--mobile .profile-expiry {
   margin-top: 4px;
@@ -4490,8 +4534,8 @@ body[data-theme="light"] .profile-expiry.expired {
   color: var(--muted);
 }
 .profile-credit .credit-value {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text);
 }
 .profile-credit .credit-status {
@@ -6866,7 +6910,7 @@ body[data-theme="light"] .profile-expiry.expired {
         <div class="profile-text">
           <div class="profile-title">
             <span class="profile-display" id="profileDisplay">User</span>
-            <span class="profile-badge" id="profileBadge">PRO</span>
+            <span class="profile-badge profile-badge--premium" id="profileBadge">PRO</span>
           </div>
           <div class="profile-username" id="profileUsername">@username</div>
         </div>
@@ -6918,8 +6962,8 @@ body[data-theme="light"] .profile-expiry.expired {
           <div class="profile-text">
             <div class="profile-title">
               <span class="profile-display" id="profileDisplayMobile">User</span>
-              <span class="verified-badge-star"></span>
-              <span class="profile-badge" id="profileBadgeMobile">PRO</span>
+              <span class="verified-badge-star verified-badge-star--hidden" hidden></span>
+              <span class="profile-badge profile-badge--premium" id="profileBadgeMobile">PRO</span>
             </div>
             <div class="profile-username" id="profileUsernameMobile">@username</div>
             <div class="profile-expiry profile-expiry--inline" id="profileProExpiryMobile" hidden>
@@ -7767,6 +7811,7 @@ body[data-theme="light"] .profile-expiry.expired {
   const profileUsernameEl = document.getElementById('profileUsername');
   const profileCoinsEl = document.getElementById('profileCoins');
   const profileBadgeEl = document.getElementById('profileBadge');
+  const profileVerifiedBadgeEl = document.querySelector('.verified-badge-star');
   const profileProExpiryEl = document.getElementById('profileProExpiry');
   const profileProExpiryValueEl = document.getElementById('profileProExpiryValue');
   const profileAvatarEl = document.getElementById('profileAvatar');
@@ -9237,12 +9282,14 @@ body[data-theme="light"] .profile-expiry.expired {
     if (!iso) {
       container.hidden = true;
       container.classList.remove('expired');
+      container.classList.remove('profile-expiry--active');
       if (valueEl) valueEl.textContent = '';
       return;
     }
     const formatted = formatProExpiry(iso);
     container.hidden = false;
     container.classList.toggle('expired', !!expired);
+    container.classList.toggle('profile-expiry--active', !expired);
     if (valueEl) {
       valueEl.textContent = formatted ? (expired ? `${formatted} · sudah berakhir` : formatted) : '-';
     }
@@ -9258,6 +9305,9 @@ body[data-theme="light"] .profile-expiry.expired {
     const originalSubscription = account.subscription || effectiveTier;
     const proExpired = accountProExpired(account);
     const showProExpiry = (account.subscription || '').toLowerCase() === 'pro' && account.pro_expires_at;
+    const isVerified = typeof account.is_verified === 'boolean'
+      ? account.is_verified
+      : effectiveTier !== 'free';
     let badgeLabel = formatSubscriptionLabel(originalSubscription);
     if ((account.subscription || '').toLowerCase() === 'pro') {
       badgeLabel = proExpired ? 'PRO (EXPIRED)' : 'PRO';
@@ -9285,6 +9335,17 @@ body[data-theme="light"] .profile-expiry.expired {
       avatarUrlInput.value = account.avatar_url || '';
     }
     updateAvatarPreview(account.avatar_url || '', initials);
+
+    const badgeElements = [profileBadgeEl, profileBadgeMobile].filter(Boolean);
+    badgeElements.forEach(badge => {
+      badge.classList.toggle('profile-badge--premium', isVerified);
+      badge.classList.toggle('profile-badge--free', !isVerified);
+    });
+
+    if (profileVerifiedBadgeEl) {
+      profileVerifiedBadgeEl.classList.toggle('verified-badge-star--hidden', !isVerified);
+      profileVerifiedBadgeEl.hidden = !isVerified;
+    }
 
     updateProExpiryDisplay(profileProExpiryEl, profileProExpiryValueEl, showProExpiry ? account.pro_expires_at : null, proExpired);
     updateProExpiryDisplay(profileProExpiryMobileEl, profileProExpiryMobileValueEl, showProExpiry ? account.pro_expires_at : null, proExpired);
