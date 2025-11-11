@@ -1130,21 +1130,42 @@ function auth_drive_storage_info(?array $account): array
         $slug = 'user';
     }
 
-    $relative = 'generated/' . $slug;
-    $absolute = __DIR__ . '/' . $relative;
+    $baseRelative = 'generated/' . $slug;
+    $baseAbsolute = __DIR__ . '/' . $baseRelative;
+    $generateRelative = $baseRelative . '/generate';
+    $generateAbsolute = __DIR__ . '/' . $generateRelative;
+    $uploadsRelative = $baseRelative . '/uploads';
+    $uploadsAbsolute = __DIR__ . '/' . $uploadsRelative;
 
     return [
         'slug' => $slug,
-        'relative' => $relative,
-        'absolute' => $absolute,
+        'relative' => $generateRelative,
+        'absolute' => $generateAbsolute,
+        'relative_base' => $baseRelative,
+        'absolute_base' => $baseAbsolute,
+        'relative_generate' => $generateRelative,
+        'absolute_generate' => $generateAbsolute,
+        'relative_uploads' => $uploadsRelative,
+        'absolute_uploads' => $uploadsAbsolute,
     ];
 }
 
 function auth_drive_ensure_storage_directory(?array $account): array
 {
     $info = auth_drive_storage_info($account);
-    if (!is_dir($info['absolute'])) {
-        @mkdir($info['absolute'], 0775, true);
+    $directories = [
+        $info['absolute_base'] ?? null,
+        $info['absolute_generate'] ?? null,
+        $info['absolute_uploads'] ?? null,
+    ];
+
+    foreach ($directories as $dir) {
+        if (!$dir) {
+            continue;
+        }
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
     }
 
     return $info;
@@ -1183,7 +1204,10 @@ function auth_drive_download_remote_asset(array $account, string $url, string $k
     }
 
     $storageInfo = auth_drive_ensure_storage_directory($account);
-    $dir = $storageInfo['absolute'];
+    $dir = $storageInfo['absolute_generate'] ?? ($storageInfo['absolute'] ?? null);
+    if (!$dir) {
+        return null;
+    }
     if (!is_dir($dir) && !@mkdir($dir, 0775, true)) {
         return null;
     }
@@ -1267,7 +1291,12 @@ function auth_drive_download_remote_asset(array $account, string $url, string $k
 
     @chmod($dest, 0664);
 
-    $relative = $storageInfo['relative'] . '/' . $basename;
+    $relativeBase = $storageInfo['relative_generate'] ?? ($storageInfo['relative'] ?? null);
+    if (!$relativeBase) {
+        return null;
+    }
+
+    $relative = $relativeBase . '/' . $basename;
 
     return [
         'relative_path' => $relative,
@@ -1289,7 +1318,13 @@ function auth_drive_prepare_local_item(array $account, array $item): ?array
         $sourceUrl = $url;
     }
 
+    $storageInfo = auth_drive_storage_info($account);
+    $allowedPrefix = $storageInfo['relative_generate'] ?? ($storageInfo['relative'] ?? '');
+
     $storagePath = isset($item['storage_path']) ? auth_drive_normalize_storage_path($item['storage_path']) : null;
+    if ($storagePath && $allowedPrefix !== '' && strpos($storagePath, $allowedPrefix) !== 0) {
+        $storagePath = null;
+    }
 
     if ($storagePath) {
         $absolute = __DIR__ . '/' . $storagePath;
@@ -1324,7 +1359,7 @@ function auth_drive_prepare_local_item(array $account, array $item): ?array
 
     if (isset($item['storage_path'])) {
         $normalized = auth_drive_normalize_storage_path($item['storage_path']);
-        if ($normalized) {
+        if ($normalized && ($allowedPrefix === '' || strpos($normalized, $allowedPrefix) === 0)) {
             $item['storage_path'] = $normalized;
         } else {
             unset($item['storage_path']);
@@ -1417,8 +1452,22 @@ function auth_drive_delete_storage_files(array $account, array $paths): void
     }
 
     $info = auth_drive_storage_info($account);
-    $baseDir = $info['absolute'];
+    $baseDir = $info['absolute_base'] ?? ($info['absolute'] ?? null);
+    if (!$baseDir) {
+        return;
+    }
+
     $realBase = realpath($baseDir) ?: null;
+    $allowedPrefixes = [];
+    if (!empty($info['relative_base'])) {
+        $allowedPrefixes[] = $info['relative_base'];
+    }
+    if (!empty($info['relative_generate'])) {
+        $allowedPrefixes[] = $info['relative_generate'];
+    }
+    if (!empty($info['relative_uploads'])) {
+        $allowedPrefixes[] = $info['relative_uploads'];
+    }
 
     foreach ($paths as $path) {
         $normalized = auth_drive_normalize_storage_path($path);
@@ -1426,7 +1475,15 @@ function auth_drive_delete_storage_files(array $account, array $paths): void
             continue;
         }
 
-        if (strpos($normalized, $info['relative']) !== 0) {
+        $allowed = false;
+        foreach ($allowedPrefixes as $prefix) {
+            if ($prefix !== '' && strpos($normalized, $prefix) === 0) {
+                $allowed = true;
+                break;
+            }
+        }
+
+        if (!$allowed) {
             continue;
         }
 
@@ -1442,6 +1499,140 @@ function auth_drive_delete_storage_files(array $account, array $paths): void
 
         @unlink($absolute);
     }
+}
+
+function auth_drive_delete_items(string $accountId, array $targets, array &$errors = [])
+{
+    $errors = [];
+    if (!$targets) {
+        $errors['items'] = 'Tidak ada item drive yang dikirimkan.';
+        return null;
+    }
+
+    $normalizedTargets = [];
+    foreach ($targets as $target) {
+        if (!is_array($target)) {
+            continue;
+        }
+
+        $id = isset($target['id']) ? trim((string)$target['id']) : '';
+        $url = isset($target['url']) ? trim((string)$target['url']) : '';
+        $storage = isset($target['storage_path']) ? auth_drive_normalize_storage_path($target['storage_path']) : null;
+
+        if ($id === '' && $url === '' && !$storage) {
+            continue;
+        }
+
+        $normalizedTargets[] = [
+            'id' => $id !== '' ? $id : null,
+            'url' => $url !== '' ? $url : null,
+            'storage_path' => $storage,
+        ];
+    }
+
+    if (!$normalizedTargets) {
+        $errors['items'] = 'Tidak ada item drive yang valid untuk dihapus.';
+        return null;
+    }
+
+    $data = auth_storage_read();
+    $foundIndex = null;
+    foreach ($data['accounts'] as $idx => $account) {
+        if (is_array($account) && ($account['id'] ?? null) === $accountId) {
+            $foundIndex = $idx;
+            break;
+        }
+    }
+
+    if ($foundIndex === null) {
+        $errors['account'] = 'Akun tidak ditemukan.';
+        return null;
+    }
+
+    $account = auth_normalize_account($data['accounts'][$foundIndex]);
+    $items = isset($account['drive_items']) && is_array($account['drive_items'])
+        ? $account['drive_items']
+        : [];
+
+    $idSet = [];
+    $urlSet = [];
+    $storageSet = [];
+    foreach ($normalizedTargets as $target) {
+        if ($target['id']) {
+            $idSet[$target['id']] = true;
+        }
+        if ($target['url']) {
+            $urlSet[strtolower($target['url'])] = true;
+        }
+        if ($target['storage_path']) {
+            $storageSet[$target['storage_path']] = true;
+        }
+    }
+
+    if (!$idSet && !$urlSet && !$storageSet) {
+        $errors['items'] = 'Tidak ada item drive yang valid untuk dihapus.';
+        return null;
+    }
+
+    $filtered = [];
+    $storageToDelete = [];
+    $removedCount = 0;
+
+    foreach ($items as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        $entryId = isset($entry['id']) ? (string)$entry['id'] : '';
+        $entryUrl = isset($entry['url']) ? strtolower((string)$entry['url']) : '';
+        $entryStorage = isset($entry['storage_path']) ? auth_drive_normalize_storage_path($entry['storage_path']) : null;
+
+        $matches = false;
+        if ($entryId !== '' && isset($idSet[$entryId])) {
+            $matches = true;
+        }
+        if (!$matches && $entryUrl !== '' && isset($urlSet[$entryUrl])) {
+            $matches = true;
+        }
+        if (!$matches && $entryStorage && isset($storageSet[$entryStorage])) {
+            $matches = true;
+        }
+
+        if ($matches) {
+            $removedCount++;
+            if ($entryStorage) {
+                $storageToDelete[] = $entryStorage;
+                unset($storageSet[$entryStorage]);
+            }
+            continue;
+        }
+
+        $filtered[] = $entry;
+    }
+
+    if ($storageSet) {
+        $storageToDelete = array_merge($storageToDelete, array_keys($storageSet));
+    }
+
+    if ($removedCount === 0 && !$storageToDelete) {
+        $errors['general'] = 'Item drive tidak ditemukan.';
+        return null;
+    }
+
+    $account['drive_items'] = array_values($filtered);
+    $account['updated_at'] = gmdate('c');
+    $data['accounts'][$foundIndex] = auth_normalize_account($account);
+
+    if (!auth_storage_write($data)) {
+        $errors['general'] = 'Gagal menyimpan perubahan drive.';
+        return null;
+    }
+
+    if ($storageToDelete) {
+        auth_drive_delete_storage_files($account, array_unique($storageToDelete));
+    }
+
+    return $data['accounts'][$foundIndex]['drive_items'] ?? [];
 }
 
 function auth_normalize_drive_item($item): ?array

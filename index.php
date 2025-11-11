@@ -92,8 +92,9 @@ function drive_item_type_from_extension(string $extension): string
 
 function drive_merge_items_with_filesystem(array $account, array $items): array
 {
-    $info = auth_drive_storage_info($account);
-    $dir = $info['absolute'];
+    $info = auth_drive_ensure_storage_directory($account);
+    $dir = $info['absolute_generate'] ?? ($info['absolute'] ?? null);
+    $allowedPrefix = $info['relative_generate'] ?? ($info['relative'] ?? '');
 
     $normalizedItems = [];
     foreach ($items as $entry) {
@@ -103,7 +104,24 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
 
         if (isset($entry['storage_path'])) {
             $normalizedPath = auth_drive_normalize_storage_path($entry['storage_path']);
-            if ($normalizedPath) {
+            $uploadsPrefix = $info['relative_uploads'] ?? null;
+            if ($normalizedPath && $uploadsPrefix && strpos($normalizedPath, $uploadsPrefix) === 0) {
+                $normalizedPath = null;
+            } elseif ($normalizedPath && $allowedPrefix !== '' && strpos($normalizedPath, $allowedPrefix) !== 0) {
+                $legacyAbsolute = __DIR__ . '/' . $normalizedPath;
+                $targetDir = $info['absolute_generate'] ?? null;
+                $targetRelative = $info['relative_generate'] ?? null;
+                if ($targetDir && $targetRelative && is_file($legacyAbsolute)) {
+                    $basename = basename($normalizedPath);
+                    $newRelative = rtrim($targetRelative, '/') . '/' . $basename;
+                    $newAbsolute = __DIR__ . '/' . $newRelative;
+                    if (@rename($legacyAbsolute, $newAbsolute)) {
+                        $normalizedPath = $newRelative;
+                    }
+                }
+            }
+
+            if ($normalizedPath && ($allowedPrefix === '' || strpos($normalizedPath, $allowedPrefix) === 0)) {
                 $absolute = __DIR__ . '/' . $normalizedPath;
                 if (is_file($absolute)) {
                     $entry['storage_path'] = $normalizedPath;
@@ -113,7 +131,13 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
                         $entry['thumbnail_url'] = $localUrl;
                     }
                 }
+            } else {
+                unset($entry['storage_path']);
+                continue;
             }
+        } elseif (isset($entry['model']) && $entry['model'] === 'upload') {
+            // Skip manual uploads from appearing in Creative Drive view
+            continue;
         }
 
         $normalizedItems[] = $entry;
@@ -123,7 +147,7 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
         $items = $normalizedItems;
     }
 
-    if (!is_dir($dir)) {
+    if (!$dir || !is_dir($dir)) {
         return $items;
     }
 
@@ -153,7 +177,11 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
             continue;
         }
         $basename = basename($file);
-        $relative = $info['relative'] . '/' . $basename;
+        if ($allowedPrefix !== '' && strpos($file, ($info['absolute_generate'] ?? $dir)) !== 0) {
+            continue;
+        }
+
+        $relative = ($info['relative_generate'] ?? $info['relative']) . '/' . $basename;
         $url = app_public_url($relative);
 
         if (isset($existingByUrl[$url]) || isset($existingByStorage[$relative])) {
@@ -1152,20 +1180,26 @@ if ($requestedApi === 'drive-delete') {
         $payload = $_POST;
     }
 
-    $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
-    $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
-    $storagePath = isset($payload['storage_path']) ? trim((string)$payload['storage_path']) : '';
-
-    if ($itemId === '' && $itemUrl === '' && $storagePath === '') {
-        auth_json_response([
-            'ok' => false,
-            'status' => 422,
-            'error' => 'ID atau URL item wajib diisi.'
-        ], 422);
-    }
+    $bulkItems = isset($payload['items']) && is_array($payload['items']) ? $payload['items'] : [];
 
     $errors = [];
-    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $storagePath !== '' ? $storagePath : null, $errors);
+    if ($bulkItems) {
+        $items = auth_drive_delete_items($account['id'], $bulkItems, $errors);
+    } else {
+        $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
+        $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
+        $storagePath = isset($payload['storage_path']) ? trim((string)$payload['storage_path']) : '';
+
+        if ($itemId === '' && $itemUrl === '' && $storagePath === '') {
+            auth_json_response([
+                'ok' => false,
+                'status' => 422,
+                'error' => 'ID atau URL item wajib diisi.'
+            ], 422);
+        }
+
+        $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $storagePath !== '' ? $storagePath : null, $errors);
+    }
     if ($items === null) {
         $status = isset($errors['general']) ? 500 : 404;
         auth_json_response([
@@ -1582,7 +1616,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     }
 
     $storageInfo = auth_drive_ensure_storage_directory($account);
-    $dir = $storageInfo['absolute'];
+    $dir = $storageInfo['absolute_uploads'] ?? ($storageInfo['absolute'] ?? null);
+    if (!$dir) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Folder penyimpanan belum tersedia'
+        ]);
+        exit;
+    }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $allowed = [
@@ -1627,7 +1669,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         exit;
     }
 
-    $publicPath = $storageInfo['relative'] . '/' . $filename;
+    $relativeBase = $storageInfo['relative_uploads'] ?? ($storageInfo['relative'] ?? null);
+    if (!$relativeBase) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Folder penyimpanan belum tersedia'
+        ]);
+        exit;
+    }
+
+    $publicPath = $relativeBase . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -1678,7 +1730,15 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     }
 
     $storageInfo = auth_drive_ensure_storage_directory($account);
-    $dir = $storageInfo['absolute'];
+    $dir = $storageInfo['absolute_generate'] ?? ($storageInfo['absolute'] ?? null);
+    if (!$dir) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Folder penyimpanan belum tersedia'
+        ]);
+        exit;
+    }
 
     $pathPart = parse_url($url, PHP_URL_PATH);
     $ext = pathinfo($pathPart ?? '', PATHINFO_EXTENSION);
@@ -1720,7 +1780,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         exit;
     }
 
-    $publicPath = $storageInfo['relative'] . '/' . $filename;
+    $relativeBase = $storageInfo['relative_generate'] ?? ($storageInfo['relative'] ?? null);
+    if (!$relativeBase) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'Folder penyimpanan belum tersedia'
+        ]);
+        exit;
+    }
+
+    $publicPath = $relativeBase . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -3534,6 +3604,62 @@ body[data-theme="light"] {
   flex-direction: column;
   gap: 18px;
 }
+.drive-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 18px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
+}
+.drive-selection-group {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.drive-select-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.drive-select-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.drive-selection-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+.drive-delete-selected {
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.14);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fee2e2;
+  padding: 8px 16px;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.drive-delete-selected:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.drive-delete-selected:not(:disabled):hover {
+  background: rgba(248, 113, 113, 0.22);
+  border-color: rgba(248, 113, 113, 0.5);
+  box-shadow: 0 16px 28px rgba(248, 113, 113, 0.32);
+  transform: translateY(-1px);
+}
 .drive-empty {
   padding: 48px 24px;
   border: 1px dashed var(--border);
@@ -3581,6 +3707,18 @@ body[data-theme="light"] {
   justify-content: center;
   cursor: zoom-in;
 }
+.drive-card--selected {
+  border-color: rgba(99, 102, 241, 0.85);
+  box-shadow: 0 22px 42px rgba(99, 102, 241, 0.28);
+}
+.drive-card--selected .drive-thumb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.22), rgba(59, 130, 246, 0.12));
+  opacity: 0.85;
+  pointer-events: none;
+}
 .drive-thumb img,
 .drive-thumb video {
   width: 100%;
@@ -3622,6 +3760,31 @@ body[data-theme="light"] {
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
   z-index: 6;
 }
+.drive-select-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(6px);
+  z-index: 8;
+}
+.drive-select-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.drive-select-toggle span {
+  pointer-events: none;
+}
 .drive-card-footer {
   display: flex;
   flex-direction: column;
@@ -3636,38 +3799,65 @@ body[data-theme="light"] {
   color: var(--muted);
 }
 .drive-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
 }
-.drive-actions button,
-.drive-actions a {
-  flex: 1 1 calc(50% - 8px);
-  min-width: 120px;
-  border-radius: 10px;
-  border: 1px solid rgba(99, 102, 241, 0.4);
-  background: rgba(99, 102, 241, 0.12);
+.drive-action-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  background: rgba(99, 102, 241, 0.14);
   color: var(--text);
-  padding: 6px 8px;
+  padding: 8px 10px;
   font-size: 11px;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
-.drive-actions button:hover,
-.drive-actions a:hover {
+.drive-action-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(99, 102, 241, 0.65);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
   background: rgba(99, 102, 241, 0.2);
-  border-color: rgba(129, 140, 248, 0.7);
 }
-.drive-actions .danger {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.45);
-  color: var(--danger);
+.drive-action-btn.danger {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.14);
+  color: #fee2e2;
 }
-.drive-actions .danger:hover {
+.drive-action-btn.danger:hover {
   background: rgba(239, 68, 68, 0.22);
-  border-color: rgba(239, 68, 68, 0.65);
+  border-color: rgba(239, 68, 68, 0.75);
+  box-shadow: 0 16px 32px rgba(239, 68, 68, 0.32);
+}
+.drive-download-btn {
+  color: #f8fafc;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.92), rgba(59, 130, 246, 0.92));
+  border: none;
+  overflow: hidden;
+  box-shadow: 0 16px 32px rgba(59, 130, 246, 0.35);
+}
+.drive-download-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.6) 50%, transparent 100%);
+  transform: translateX(-100%);
+  transition: transform 0.45s ease;
+}
+.drive-download-btn:hover::after {
+  transform: translateX(100%);
+}
+.drive-download-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 40px rgba(59, 130, 246, 0.45);
 }
 .drive-clear-date {
   margin-left: auto;
@@ -7225,6 +7415,17 @@ body[data-theme="light"] .profile-expiry.expired {
         <button type="button" class="small secondary drive-clear-date" id="driveClearDate">Reset tanggal</button>
       </section>
 
+      <section class="drive-selection-bar" id="driveSelectionBar" hidden>
+        <div class="drive-selection-group">
+          <label class="drive-select-checkbox">
+            <input type="checkbox" id="driveSelectAll">
+            <span>Pilih semua</span>
+          </label>
+          <span class="drive-selection-count" id="driveSelectionCount">Tidak ada file dipilih</span>
+        </div>
+        <button type="button" class="small danger drive-delete-selected" id="driveDeleteSelected" disabled>Hapus terpilih</button>
+      </section>
+
       <section class="drive-content">
         <div id="driveEmpty" class="drive-empty">Belum ada file tersimpan. Generate konten untuk mengisi drive pribadi kamu.</div>
         <div id="driveGrid" class="drive-grid"></div>
@@ -8017,6 +8218,10 @@ body[data-theme="light"] .profile-expiry.expired {
   const driveSortFilter = document.getElementById('driveSortFilter');
   const driveDateFilter = document.getElementById('driveDateFilter');
   const driveClearDateBtn = document.getElementById('driveClearDate');
+  const driveSelectionBar = document.getElementById('driveSelectionBar');
+  const driveSelectAllCheckbox = document.getElementById('driveSelectAll');
+  const driveDeleteSelectedBtn = document.getElementById('driveDeleteSelected');
+  const driveSelectionCountEl = document.getElementById('driveSelectionCount');
   const driveTotalCountEl = document.getElementById('driveTotalCount');
   const driveTypeSummaryEl = document.getElementById('driveTypeSummary');
   const watermarkNotice = document.getElementById('watermarkNotice');
@@ -8255,6 +8460,9 @@ body[data-theme="light"] .profile-expiry.expired {
   let driveItems = [];
   let driveLoaded = false;
   let driveLoading = false;
+  const driveSelection = new Map();
+  const driveItemIndex = new Map();
+  let driveFilteredItems = [];
 
   function defaultPlatformState() {
     return {
@@ -8939,6 +9147,91 @@ body[data-theme="light"] .profile-expiry.expired {
     return String(modelId).toUpperCase();
   }
 
+  function driveItemKey(item) {
+    if (!item || typeof item !== 'object') return null;
+    if (item.id) return `id:${item.id}`;
+    const storage = item.storage_path || item.storagePath;
+    if (storage) return `storage:${storage}`;
+    if (item.url) return `url:${item.url}`;
+    return null;
+  }
+
+  function driveSelectionTarget(item) {
+    if (!item || typeof item !== 'object') return null;
+    const target = {};
+    if (item.id) target.id = String(item.id);
+    const storage = item.storage_path || item.storagePath;
+    if (storage) target.storage_path = String(storage);
+    if (item.url) target.url = String(item.url);
+    return Object.keys(target).length ? target : null;
+  }
+
+  function refreshDriveItemIndex() {
+    driveItemIndex.clear();
+    if (!Array.isArray(driveItems)) return;
+    driveItems.forEach(item => {
+      const key = driveItemKey(item);
+      if (key) {
+        driveItemIndex.set(key, item);
+      }
+    });
+  }
+
+  function pruneDriveSelection() {
+    let changed = false;
+    driveSelection.forEach((value, key) => {
+      if (!driveItemIndex.has(key)) {
+        driveSelection.delete(key);
+        changed = true;
+        return;
+      }
+      const latest = driveItemIndex.get(key);
+      const target = driveSelectionTarget(latest);
+      if (target) {
+        driveSelection.set(key, target);
+      }
+    });
+    updateDriveSelectionBar();
+  }
+
+  function updateDriveSelectionBar() {
+    if (!driveSelectionBar) return;
+
+    const selectedCount = driveSelection.size;
+    const visibleCount = Array.isArray(driveFilteredItems) ? driveFilteredItems.length : 0;
+    const showBar = selectedCount > 0 || visibleCount > 0;
+    driveSelectionBar.hidden = !showBar;
+
+    if (driveSelectionCountEl) {
+      driveSelectionCountEl.textContent = selectedCount
+        ? `${selectedCount} dipilih`
+        : 'Tidak ada file dipilih';
+    }
+
+    if (driveDeleteSelectedBtn) {
+      driveDeleteSelectedBtn.disabled = selectedCount === 0;
+    }
+
+    if (driveSelectAllCheckbox) {
+      if (!visibleCount) {
+        driveSelectAllCheckbox.checked = false;
+        driveSelectAllCheckbox.indeterminate = false;
+        driveSelectAllCheckbox.disabled = true;
+      } else {
+        let visibleSelected = 0;
+        driveFilteredItems.forEach(item => {
+          const key = driveItemKey(item);
+          if (key && driveSelection.has(key)) {
+            visibleSelected += 1;
+          }
+        });
+        driveSelectAllCheckbox.disabled = false;
+        driveSelectAllCheckbox.checked = visibleSelected > 0 && visibleSelected === visibleCount;
+        driveSelectAllCheckbox.indeterminate = visibleSelected > 0 && visibleSelected < visibleCount;
+      }
+    }
+  }
+
   function formatDriveDate(iso) {
     if (!iso) return '-';
     const date = new Date(iso);
@@ -8989,6 +9282,7 @@ body[data-theme="light"] .profile-expiry.expired {
       return bTime - aTime;
     });
 
+    driveFilteredItems = items.slice();
     driveEmpty.style.display = items.length ? 'none' : 'block';
     driveGrid.innerHTML = '';
 
@@ -8996,6 +9290,17 @@ body[data-theme="light"] .profile-expiry.expired {
       if (!item || !item.url) return;
       const card = document.createElement('div');
       card.className = 'drive-card';
+      const key = driveItemKey(item);
+      const isSelected = key ? driveSelection.has(key) : false;
+      if (key && isSelected) {
+        const refreshedTarget = driveSelectionTarget(item);
+        if (refreshedTarget) {
+          driveSelection.set(key, refreshedTarget);
+        }
+      }
+      if (isSelected) {
+        card.classList.add('drive-card--selected');
+      }
 
       const thumb = document.createElement('div');
       thumb.className = 'drive-thumb';
@@ -9029,6 +9334,42 @@ body[data-theme="light"] .profile-expiry.expired {
         openAssetPreview(item.url, type);
       });
 
+      if (key) {
+        const selectToggle = document.createElement('label');
+        selectToggle.className = 'drive-select-toggle';
+        selectToggle.addEventListener('click', evt => evt.stopPropagation());
+
+        const selectInput = document.createElement('input');
+        selectInput.type = 'checkbox';
+        selectInput.checked = isSelected;
+        selectInput.addEventListener('click', evt => evt.stopPropagation());
+
+        const selectText = document.createElement('span');
+        const refreshSelectText = () => {
+          selectText.textContent = selectInput.checked ? 'Dipilih' : 'Pilih';
+        };
+        refreshSelectText();
+
+        selectInput.addEventListener('change', () => {
+          if (!key) return;
+          if (selectInput.checked) {
+            const target = driveSelectionTarget(item);
+            if (target) {
+              driveSelection.set(key, target);
+            }
+          } else {
+            driveSelection.delete(key);
+          }
+          card.classList.toggle('drive-card--selected', selectInput.checked);
+          refreshSelectText();
+          updateDriveSelectionBar();
+        });
+
+        selectToggle.appendChild(selectInput);
+        selectToggle.appendChild(selectText);
+        card.appendChild(selectToggle);
+      }
+
       const footer = document.createElement('div');
       footer.className = 'drive-card-footer';
 
@@ -9052,12 +9393,14 @@ body[data-theme="light"] .profile-expiry.expired {
       const previewBtn = document.createElement('button');
       previewBtn.type = 'button';
       previewBtn.textContent = 'Preview';
+      previewBtn.className = 'drive-action-btn';
       previewBtn.addEventListener('click', () => openAssetPreview(item.url, type));
       actions.appendChild(previewBtn);
 
       const copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.textContent = 'Copy Link';
+      copyBtn.className = 'drive-action-btn';
       copyBtn.addEventListener('click', () => copyDriveLink(item, copyBtn));
       actions.appendChild(copyBtn);
 
@@ -9067,11 +9410,12 @@ body[data-theme="light"] .profile-expiry.expired {
       downloadLink.rel = 'noopener';
       downloadLink.textContent = 'Download';
       downloadLink.setAttribute('download', '');
+      downloadLink.className = 'drive-action-btn drive-download-btn';
       actions.appendChild(downloadLink);
 
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
-      deleteBtn.className = 'danger';
+      deleteBtn.className = 'drive-action-btn danger';
       deleteBtn.textContent = 'Hapus';
       deleteBtn.addEventListener('click', () => deleteDriveEntry(item, deleteBtn));
       actions.appendChild(deleteBtn);
@@ -9083,6 +9427,7 @@ body[data-theme="light"] .profile-expiry.expired {
     });
 
     updateDriveSummary();
+    updateDriveSelectionBar();
   }
 
   async function loadDriveItems(force = false) {
@@ -9104,6 +9449,8 @@ body[data-theme="light"] .profile-expiry.expired {
         throw new Error((data && data.error) || 'Gagal memuat drive.');
       }
       driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      refreshDriveItemIndex();
+      pruneDriveSelection();
       driveLoaded = true;
       renderDriveItems();
     } catch (err) {
@@ -9130,6 +9477,8 @@ body[data-theme="light"] .profile-expiry.expired {
     }
 
     driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+    refreshDriveItemIndex();
+    pruneDriveSelection();
     driveLoaded = true;
     renderDriveItems();
     return driveItems;
@@ -9274,7 +9623,8 @@ body[data-theme="light"] .profile-expiry.expired {
     const payload = {};
     if (item.id) payload.id = item.id;
     if (item.url) payload.url = item.url;
-    if (item.storage_path) payload.storage_path = item.storage_path;
+    const storagePath = item.storage_path || item.storagePath;
+    if (storagePath) payload.storage_path = storagePath;
     if (!payload.id && !payload.url && !payload.storage_path) {
       alert('Item drive tidak valid.');
       return;
@@ -9297,6 +9647,8 @@ body[data-theme="light"] .profile-expiry.expired {
         throw new Error(pickErrorMessage(data && data.error));
       }
       driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      refreshDriveItemIndex();
+      pruneDriveSelection();
       driveLoaded = true;
       renderDriveItems();
     } catch (err) {
@@ -9305,6 +9657,65 @@ body[data-theme="light"] .profile-expiry.expired {
       if (button) {
         button.disabled = false;
         button.textContent = 'Hapus';
+      }
+    }
+  }
+
+  async function deleteSelectedDriveEntries(button) {
+    if (!driveSelection.size) {
+      alert('Tidak ada file yang dipilih.');
+      return;
+    }
+
+    const payloadItems = Array.from(driveSelection.values())
+      .map(target => {
+        if (!target || typeof target !== 'object') return null;
+        const entry = {};
+        if (target.id) entry.id = target.id;
+        if (target.url) entry.url = target.url;
+        if (target.storage_path) entry.storage_path = target.storage_path;
+        return Object.keys(entry).length ? entry : null;
+      })
+      .filter(Boolean);
+
+    if (!payloadItems.length) {
+      alert('Tidak ada file yang valid untuk dihapus.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Hapus ${payloadItems.length} file terpilih?`);
+    if (!confirmed) {
+      return;
+    }
+
+    const originalText = button ? button.textContent : '';
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menghapus…';
+    }
+
+    try {
+      const res = await fetch(DRIVE_DELETE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ items: payloadItems })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(pickErrorMessage(data && data.error));
+      }
+      driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      refreshDriveItemIndex();
+      driveSelection.clear();
+      driveLoaded = true;
+      renderDriveItems();
+    } catch (err) {
+      alert('Gagal menghapus file terpilih: ' + (err.message || err));
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText || 'Hapus terpilih';
       }
     }
   }
@@ -12564,6 +12975,38 @@ body[data-theme="light"] .profile-expiry.expired {
       if (driveDateFilter) driveDateFilter.value = '';
       renderDriveItems();
     });
+  }
+
+  if (driveSelectAllCheckbox) {
+    driveSelectAllCheckbox.addEventListener('change', () => {
+      if (!driveFilteredItems.length) {
+        driveSelectAllCheckbox.checked = false;
+        driveSelectAllCheckbox.indeterminate = false;
+        return;
+      }
+
+      const shouldSelect = driveSelectAllCheckbox.checked;
+      driveSelectAllCheckbox.indeterminate = false;
+
+      driveFilteredItems.forEach(item => {
+        const key = driveItemKey(item);
+        if (!key) return;
+        if (shouldSelect) {
+          const target = driveSelectionTarget(item);
+          if (target) {
+            driveSelection.set(key, target);
+          }
+        } else {
+          driveSelection.delete(key);
+        }
+      });
+
+      renderDriveItems();
+    });
+  }
+
+  if (driveDeleteSelectedBtn) {
+    driveDeleteSelectedBtn.addEventListener('click', () => deleteSelectedDriveEntries(driveDeleteSelectedBtn));
   }
 
   navButtons = Array.from(document.querySelectorAll('.sidebar-link[data-target], .js-dashboard-nav[data-target]'));
