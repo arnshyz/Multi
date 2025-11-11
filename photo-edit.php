@@ -368,6 +368,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             } catch (error) {
                 throw new Error('Respons saldo tidak valid.');
             }
+            return 'status-chip status-chip--pending';
+        }
 
             if (!res.ok || !payload || !payload.ok) {
                 const message = payload?.error
@@ -528,6 +530,8 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 generateButton.classList.remove('loading');
                 generateButton.disabled = false;
             }
+            const name = (file.name || '').toLowerCase();
+            return /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(name);
         }
 
         function showEmptyState(show) {
@@ -1085,7 +1089,19 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         async function submitForm(event) {
             event.preventDefault();
 
-            if (!validateFiles(selectedFiles)) {
+            renderResults();
+
+            const completed = tasks.filter((task) => finalStatus(task.status)).length;
+            if (completed === tasks.length) {
+                stopPolling();
+                const successCount = tasks.filter((task) => normalizeStatus(task.status) === 'COMPLETED' && task.imageUrl).length;
+                if (successCount === tasks.length) {
+                    updateFormStatus('Selesai! Semua pose berhasil dibuat.', 'success');
+                } else if (successCount > 0) {
+                    updateFormStatus(`${successCount} pose berhasil. Periksa pose lain yang gagal.`, 'error');
+                } else {
+                    updateFormStatus('Semua pose gagal diproses. Coba lagi.', 'error');
+                }
                 return;
             }
 
@@ -1097,6 +1113,13 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 updateFormStatus(`Saldo koin tidak cukup. Minimal ${REQUIRED_COINS} koin dibutuhkan.`, 'error');
                 return;
             }
+        }
+
+        function startPolling() {
+            stopPolling();
+            pollOnce();
+            pollTimer = setInterval(pollOnce, POLL_INTERVAL);
+        }
 
             updateFormStatus('Mengunggah referensi dan menyiapkan permintaan…', 'info');
             stopPolling();
