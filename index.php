@@ -14095,6 +14095,20 @@ body[data-theme="light"] .profile-expiry.expired {
     return UGC_ASPECT_LABEL_MAP[trimmed] ? trimmed : null;
   }
 
+  const UGC_ASPECT_VIDEO_RATIO = {
+    square_1_1: '1:1',
+    portrait_3_4: '3:4',
+    portrait_9_16: '9:16',
+    landscape_16_9: '16:9'
+  };
+
+  function ugcAspectToVideoRatio(value) {
+    if (typeof value !== 'string') return null;
+    const key = value.trim();
+    if (!key) return null;
+    return UGC_ASPECT_VIDEO_RATIO[key] || null;
+  }
+
   function getUgcAspectLabel(value) {
     return UGC_ASPECT_LABEL_MAP[value] || '';
   }
@@ -14786,10 +14800,11 @@ body[data-theme="light"] .profile-expiry.expired {
     }
 
     const cfg = MODEL_CONFIG.seedancePro1080;
-    const aspectRatio = sanitizeUgcAspectRatio(item.aspectRatio) || sanitizeUgcAspectRatio(ugcCurrentAspectRatio) || 'square_1_1';
+    const aspectKey = sanitizeUgcAspectRatio(item.aspectRatio) || sanitizeUgcAspectRatio(ugcCurrentAspectRatio) || 'square_1_1';
+    const aspectRatio = ugcAspectToVideoRatio(aspectKey) || 'auto';
     if (!item.aspectRatio) {
-      item.aspectRatio = aspectRatio;
-      item.aspectLabel = getUgcAspectLabel(aspectRatio);
+      item.aspectRatio = aspectKey;
+      item.aspectLabel = getUgcAspectLabel(aspectKey);
     }
     const requestPayload = {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
