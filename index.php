@@ -1925,6 +1925,7 @@ if (!auth_is_logged_in()) {
                 <a href="#use-cases">Use Cases</a>
                 <a href="#resources">Resource</a>
                 <a href="#pricing">Pricing</a>
+                <a href="kling25pro.php" class="accent-link">Kling 2.5 Pro</a>
             </nav>
 
             <div class="nav-actions">
@@ -1946,6 +1947,7 @@ if (!auth_is_logged_in()) {
         <a href="#use-cases">Use Cases</a>
         <a href="#resources">Resource</a>
         <a href="#pricing">Pricing</a>
+        <a href="kling25pro.php" class="accent-link">Kling 2.5 Pro</a>
         <div class="mobile-actions">
             <a href="#" class="btn-login-mobile"><i class="fas fa-arrow-right"></i> Login</a>
             <a href="#" class="btn-signup-mobile"><i class="fas fa-user-plus"></i> Sign Up</a>
@@ -7018,7 +7020,6 @@ body[data-theme="light"] .profile-expiry.expired {
             <option value="seedancePro1080">Seedance Pro – 1080p</option>
             <option value="klingStd21">Kling Std v2.1</option>
             <option value="kling21Master">Kling v2.1 Master</option>
-            <option value="kling25Pro">Kling v2.5 Pro</option>
             <option value="pixverse">PixVerse</option>
             <option value="minimax1080">MiniMax Hailuo 02 – 1080p</option>
           </optgroup>
@@ -9512,7 +9513,6 @@ body[data-theme="light"] .profile-expiry.expired {
     seedancePro720: { values: [5, 10], default: 5, defaultLayout: 'portrait' },
     seedancePro1080: { values: [5, 10], default: 5, defaultLayout: 'landscape' },
     klingStd21: { values: [5, 8], default: 5, defaultLayout: 'portrait' },
-    kling25Pro: { values: [5, 8, 12], default: 5, defaultLayout: 'landscape' },
     minimax1080: { values: [6, 12], default: 6, defaultLayout: 'landscape' },
     _default: { values: [5], default: 5, defaultLayout: 'portrait' }
   };
@@ -9771,15 +9771,6 @@ body[data-theme="light"] .profile-expiry.expired {
       statusPath: taskId => `/v1/ai/image-to-video/kling-v2-1-master/${taskId}`,
       buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
-    kling25Pro: {
-      id: 'kling25Pro',
-      label: 'Kling v2.5 Pro',
-      type: 'video',
-      path: '/v1/ai/image-to-video/kling-v2-5-pro',
-      videoPath: taskId => `/v1/ai/image-to-video/kling-v2-5-pro/${taskId}/video`,
-      statusPath: taskId => `/v1/ai/image-to-video/kling-v2-5-pro/${taskId}`,
-      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
-    },
     pixverse: {
       id: 'pixverse',
       label: 'PixVerse',
@@ -9817,7 +9808,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
   const FEATURE_MODELS = {
     imageGen: ['gemini','imagen3','seedream4','fluxPro11','mystic','getHyperflux','seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'],
-    videoGen: ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','kling25Pro','pixverse','minimax1080','latentSync']
+    videoGen: ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','pixverse','minimax1080','latentSync']
   };
 
   const STORAGE_KEY = 'freepik_jobs_v1';
@@ -10838,7 +10829,7 @@ body[data-theme="light"] .profile-expiry.expired {
       modelHint.textContent = 'Upscaler: wajib image URL. Prompt opsional.';
     } else if (id === 'removeBg') {
       modelHint.textContent = 'Remove Background: wajib image URL. Response langsung URL hasil (valid 5 menit).';
-    } else if (['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'].includes(id)) {
+    } else if (['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','minimax1080'].includes(id)) {
       modelHint.textContent = 'Image-to-video: wajib image URL + prompt singkat. Pilih durasi & layout (portrait / landscape / square).';
     } else if (id === 'latentSync') {
       modelHint.textContent = 'Latent-Sync: wajib video URL dan audio URL. Prompt opsional.';
@@ -10896,7 +10887,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
     const isT2I = ['gemini','imagen3','seedream4','fluxPro11','mystic','getHyperflux'].includes(id);
     const isEdit = ['seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'].includes(id);
-    const isI2V = ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','kling25Pro','pixverse','minimax1080'].includes(id);
+    const isI2V = ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','pixverse','minimax1080'].includes(id);
     const isLip = id === 'latentSync';
 
     rowImageUrl.classList.add('hidden');
@@ -11843,7 +11834,7 @@ body[data-theme="light"] .profile-expiry.expired {
     const requireImageModels = [
       'upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg',
       'wan480','wan720','seedancePro480','seedancePro720','seedancePro1080',
-      'klingStd21','kling25Pro','minimax1080','seedream4edit'
+      'klingStd21','minimax1080','seedream4edit'
     ];
 
     if (!formData.prompt && ['gemini','imagen3','seedream4','fluxPro11'].includes(modelId)) {
