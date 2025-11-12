@@ -402,6 +402,65 @@ body.kling-doc {
     color: rgba(148, 163, 184, 0.9);
 }
 
+.doc-inline-form {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.doc-inline-form input {
+    flex: 1 1 240px;
+    min-width: 180px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(15, 23, 42, 0.65);
+    color: inherit;
+}
+
+.doc-inline-form input:focus {
+    outline: 2px solid rgba(59, 130, 246, 0.55);
+    outline-offset: 1px;
+}
+
+.doc-video-preview {
+    margin-top: 18px;
+    padding: 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    background: rgba(30, 64, 175, 0.18);
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.doc-video-preview.is-visible {
+    display: flex;
+}
+
+.doc-video-preview__label {
+    font-weight: 600;
+}
+
+.doc-video-preview__player {
+    width: 100%;
+    border-radius: 12px;
+    background: #000;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
 @media (max-width: 1080px) {
     .doc-hero {
         grid-template-columns: 1fr;

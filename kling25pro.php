@@ -101,12 +101,33 @@ if ($account) {
                     <pre class="code-block" id="responsePayload">{ }
 </pre>
                 </div>
+                <div class="doc-result" id="tasksResult">
+                    <div class="doc-result__header">
+                        <h3>Daftar Task Aktif</h3>
+                        <button type="button" class="btn-secondary" id="fetchTasksBtn">Muat Daftar</button>
+                    </div>
+                    <pre class="code-block" id="tasksPayload">{ }
+</pre>
+                </div>
+                <div class="doc-result" id="statusResult">
+                    <div class="doc-result__header">
+                        <h3>Status Task</h3>
+                    </div>
+                    <form id="statusForm" class="doc-inline-form" novalidate>
+                        <label class="sr-only" for="statusTaskId">Task ID</label>
+                        <input type="text" id="statusTaskId" name="task_id" placeholder="Masukkan Task ID" required>
+                        <button type="submit" class="btn-primary" id="statusSubmitBtn">Cek Status</button>
+                    </form>
+                    <pre class="code-block" id="statusPayload">{ }
+</pre>
+                </div>
                 <div class="doc-result" id="videoResult">
                     <div class="doc-result__header">
                         <h3>Video URLs</h3>
                         <button type="button" class="btn-primary" id="fetchVideoBtn" disabled>Ambil Video</button>
                     </div>
                     <ul class="doc-video-list" id="videoList"></ul>
+                    <div class="doc-video-preview" id="videoPreview"></div>
                 </div>
             </section>
         </main>
@@ -119,6 +140,13 @@ if ($account) {
         const responseEl = document.getElementById('responsePayload');
         const fetchVideoBtn = document.getElementById('fetchVideoBtn');
         const videoList = document.getElementById('videoList');
+        const videoPreview = document.getElementById('videoPreview');
+        const fetchTasksBtn = document.getElementById('fetchTasksBtn');
+        const tasksPayloadEl = document.getElementById('tasksPayload');
+        const statusForm = document.getElementById('statusForm');
+        const statusTaskIdInput = document.getElementById('statusTaskId');
+        const statusPayloadEl = document.getElementById('statusPayload');
+        const statusSubmitBtn = document.getElementById('statusSubmitBtn');
         const resetBtn = document.getElementById('resetBtn');
         const submitBtn = document.getElementById('submitBtn');
 
@@ -134,13 +162,26 @@ if ($account) {
             if (responseEl) {
                 responseEl.textContent = '{ }\n';
             }
+            if (tasksPayloadEl) {
+                tasksPayloadEl.textContent = '{ }\n';
+            }
+            if (statusPayloadEl) {
+                statusPayloadEl.textContent = '{ }\n';
+            }
             if (videoList) {
                 videoList.innerHTML = '';
+            }
+            if (videoPreview) {
+                videoPreview.innerHTML = '';
+                videoPreview.classList.remove('is-visible');
             }
             if (fetchVideoBtn) {
                 fetchVideoBtn.disabled = true;
             }
             currentTaskId = null;
+            if (statusTaskIdInput) {
+                statusTaskIdInput.value = '';
+            }
         }
 
         function normalizeData(data) {
@@ -225,13 +266,17 @@ if ($account) {
             return messages;
         }
 
-        function renderResponse(payload) {
-            if (!responseEl) return;
+        function renderJson(target, payload) {
+            if (!target) return;
             try {
-                responseEl.textContent = JSON.stringify(payload, null, 2);
+                target.textContent = JSON.stringify(payload, null, 2);
             } catch (err) {
-                responseEl.textContent = String(payload || '');
+                target.textContent = String(payload || '');
             }
+        }
+
+        function renderResponse(payload) {
+            renderJson(responseEl, payload);
         }
 
         function renderVideos(urls) {
@@ -242,6 +287,10 @@ if ($account) {
                 empty.className = 'doc-video-empty';
                 empty.textContent = 'Belum ada URL video yang tersedia.';
                 videoList.appendChild(empty);
+                if (videoPreview) {
+                    videoPreview.innerHTML = '';
+                    videoPreview.classList.remove('is-visible');
+                }
                 return;
             }
 
@@ -264,6 +313,35 @@ if ($account) {
 
                 videoList.appendChild(item);
             });
+
+            if (videoPreview) {
+                const primaryUrl = urls[0];
+                videoPreview.innerHTML = '';
+                if (primaryUrl) {
+                    const heading = document.createElement('div');
+                    heading.className = 'doc-video-preview__label';
+                    heading.textContent = 'Preview Video';
+
+                    const video = document.createElement('video');
+                    video.controls = true;
+                    video.preload = 'metadata';
+                    video.src = primaryUrl;
+                    video.className = 'doc-video-preview__player';
+
+                    videoPreview.appendChild(heading);
+                    videoPreview.appendChild(video);
+                    videoPreview.classList.add('is-visible');
+                } else {
+                    videoPreview.classList.remove('is-visible');
+                }
+            }
+        }
+
+        function updateStatusTaskId(taskId) {
+            if (!statusTaskIdInput || !taskId) {
+                return;
+            }
+            statusTaskIdInput.value = taskId;
         }
 
         function extractVideoUrlsFromResponse(payload) {
@@ -428,6 +506,7 @@ if ($account) {
 
                     if (taskId) {
                         currentTaskId = taskId;
+                        updateStatusTaskId(taskId);
                         if (fetchVideoBtn) {
                             fetchVideoBtn.disabled = false;
                         }
@@ -482,6 +561,86 @@ if ($account) {
                     console.error('Gagal mengambil video Kling:', error);
                     setStatus(error.message || 'Gagal mengambil video.', 'error');
                     fetchVideoBtn.disabled = false;
+                }
+            });
+        }
+
+        if (fetchTasksBtn) {
+            fetchTasksBtn.addEventListener('click', async () => {
+                setStatus('Memuat daftar task Kling...', 'info');
+                fetchTasksBtn.disabled = true;
+
+                try {
+                    const data = await callFreepikEndpoint({
+                        path: '/v1/ai/image-to-video/kling-v2-5-pro/tasks',
+                        method: 'GET'
+                    });
+
+                    renderJson(tasksPayloadEl, data);
+                    setStatus('Daftar task berhasil dimuat.', 'success');
+
+                    const normalized = normalizeData(data);
+                    if (normalized && Array.isArray(normalized.items) && normalized.items.length) {
+                        const firstTask = normalized.items[0];
+                        const id = firstTask && (firstTask.task_id || firstTask.taskId);
+                        if (id) {
+                            updateStatusTaskId(id);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Gagal memuat daftar task Kling:', error);
+                    setStatus(error.message || 'Gagal memuat daftar task.', 'error');
+                } finally {
+                    fetchTasksBtn.disabled = false;
+                }
+            });
+        }
+
+        if (statusForm) {
+            statusForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                const taskId = statusTaskIdInput ? statusTaskIdInput.value.trim() : '';
+
+                if (!taskId) {
+                    setStatus('Masukkan Task ID terlebih dahulu.', 'error');
+                    return;
+                }
+
+                setStatus(`Mengambil status task ${taskId}...`, 'info');
+                if (statusSubmitBtn) {
+                    statusSubmitBtn.disabled = true;
+                }
+
+                try {
+                    const data = await callFreepikEndpoint({
+                        path: `/v1/ai/image-to-video/kling-v2-5-pro/${encodeURIComponent(taskId)}`,
+                        method: 'GET'
+                    });
+
+                    renderJson(statusPayloadEl, data);
+                    setStatus('Status task berhasil diambil.', 'success');
+
+                    const normalized = normalizeData(data);
+                    const latestTaskId = normalized && (normalized.task_id || normalized.taskId);
+                    if (latestTaskId) {
+                        currentTaskId = latestTaskId;
+                        updateStatusTaskId(latestTaskId);
+                        if (fetchVideoBtn) {
+                            fetchVideoBtn.disabled = false;
+                        }
+                    }
+
+                    const urls = extractVideoUrlsFromResponse(normalized);
+                    if (urls.length) {
+                        renderVideos(urls);
+                    }
+                } catch (error) {
+                    console.error('Gagal mengambil status task Kling:', error);
+                    setStatus(error.message || 'Gagal mengambil status task.', 'error');
+                } finally {
+                    if (statusSubmitBtn) {
+                        statusSubmitBtn.disabled = false;
+                    }
                 }
             });
         }
