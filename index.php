@@ -92,9 +92,8 @@ function drive_item_type_from_extension(string $extension): string
 
 function drive_merge_items_with_filesystem(array $account, array $items): array
 {
-    $info = auth_drive_ensure_storage_directory($account);
-    $dir = $info['absolute_generate'] ?? ($info['absolute'] ?? null);
-    $allowedPrefix = $info['relative_generate'] ?? ($info['relative'] ?? '');
+    $info = auth_drive_storage_info($account);
+    $dir = $info['absolute'];
 
     $normalizedItems = [];
     foreach ($items as $entry) {
@@ -104,24 +103,7 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
 
         if (isset($entry['storage_path'])) {
             $normalizedPath = auth_drive_normalize_storage_path($entry['storage_path']);
-            $uploadsPrefix = $info['relative_uploads'] ?? null;
-            if ($normalizedPath && $uploadsPrefix && strpos($normalizedPath, $uploadsPrefix) === 0) {
-                $normalizedPath = null;
-            } elseif ($normalizedPath && $allowedPrefix !== '' && strpos($normalizedPath, $allowedPrefix) !== 0) {
-                $legacyAbsolute = __DIR__ . '/' . $normalizedPath;
-                $targetDir = $info['absolute_generate'] ?? null;
-                $targetRelative = $info['relative_generate'] ?? null;
-                if ($targetDir && $targetRelative && is_file($legacyAbsolute)) {
-                    $basename = basename($normalizedPath);
-                    $newRelative = rtrim($targetRelative, '/') . '/' . $basename;
-                    $newAbsolute = __DIR__ . '/' . $newRelative;
-                    if (@rename($legacyAbsolute, $newAbsolute)) {
-                        $normalizedPath = $newRelative;
-                    }
-                }
-            }
-
-            if ($normalizedPath && ($allowedPrefix === '' || strpos($normalizedPath, $allowedPrefix) === 0)) {
+            if ($normalizedPath) {
                 $absolute = __DIR__ . '/' . $normalizedPath;
                 if (is_file($absolute)) {
                     $entry['storage_path'] = $normalizedPath;
@@ -131,13 +113,7 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
                         $entry['thumbnail_url'] = $localUrl;
                     }
                 }
-            } else {
-                unset($entry['storage_path']);
-                continue;
             }
-        } elseif (isset($entry['model']) && $entry['model'] === 'upload') {
-            // Skip manual uploads from appearing in Creative Drive view
-            continue;
         }
 
         $normalizedItems[] = $entry;
@@ -147,7 +123,7 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
         $items = $normalizedItems;
     }
 
-    if (!$dir || !is_dir($dir)) {
+    if (!is_dir($dir)) {
         return $items;
     }
 
@@ -177,11 +153,7 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
             continue;
         }
         $basename = basename($file);
-        if ($allowedPrefix !== '' && strpos($file, ($info['absolute_generate'] ?? $dir)) !== 0) {
-            continue;
-        }
-
-        $relative = ($info['relative_generate'] ?? $info['relative']) . '/' . $basename;
+        $relative = $info['relative'] . '/' . $basename;
         $url = app_public_url($relative);
 
         if (isset($existingByUrl[$url]) || isset($existingByStorage[$relative])) {
@@ -1180,26 +1152,20 @@ if ($requestedApi === 'drive-delete') {
         $payload = $_POST;
     }
 
-    $bulkItems = isset($payload['items']) && is_array($payload['items']) ? $payload['items'] : [];
+    $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
+    $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
+    $storagePath = isset($payload['storage_path']) ? trim((string)$payload['storage_path']) : '';
+
+    if ($itemId === '' && $itemUrl === '' && $storagePath === '') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'ID atau URL item wajib diisi.'
+        ], 422);
+    }
 
     $errors = [];
-    if ($bulkItems) {
-        $items = auth_drive_delete_items($account['id'], $bulkItems, $errors);
-    } else {
-        $itemId = isset($payload['id']) ? trim((string)$payload['id']) : '';
-        $itemUrl = isset($payload['url']) ? trim((string)$payload['url']) : '';
-        $storagePath = isset($payload['storage_path']) ? trim((string)$payload['storage_path']) : '';
-
-        if ($itemId === '' && $itemUrl === '' && $storagePath === '') {
-            auth_json_response([
-                'ok' => false,
-                'status' => 422,
-                'error' => 'ID atau URL item wajib diisi.'
-            ], 422);
-        }
-
-        $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $storagePath !== '' ? $storagePath : null, $errors);
-    }
+    $items = auth_drive_delete_item($account['id'], $itemId, $itemUrl, $storagePath !== '' ? $storagePath : null, $errors);
     if ($items === null) {
         $status = isset($errors['general']) ? 500 : 404;
         auth_json_response([
@@ -1616,15 +1582,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
     }
 
     $storageInfo = auth_drive_ensure_storage_directory($account);
-    $dir = $storageInfo['absolute_uploads'] ?? ($storageInfo['absolute'] ?? null);
-    if (!$dir) {
-        echo json_encode([
-            'ok'     => false,
-            'status' => 500,
-            'error'  => 'Folder penyimpanan belum tersedia'
-        ]);
-        exit;
-    }
+    $dir = $storageInfo['absolute'];
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $allowed = [
@@ -1669,17 +1627,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'upload') {
         exit;
     }
 
-    $relativeBase = $storageInfo['relative_uploads'] ?? ($storageInfo['relative'] ?? null);
-    if (!$relativeBase) {
-        echo json_encode([
-            'ok'     => false,
-            'status' => 500,
-            'error'  => 'Folder penyimpanan belum tersedia'
-        ]);
-        exit;
-    }
-
-    $publicPath = $relativeBase . '/' . $filename;
+    $publicPath = $storageInfo['relative'] . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -1730,15 +1678,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
     }
 
     $storageInfo = auth_drive_ensure_storage_directory($account);
-    $dir = $storageInfo['absolute_generate'] ?? ($storageInfo['absolute'] ?? null);
-    if (!$dir) {
-        echo json_encode([
-            'ok'     => false,
-            'status' => 500,
-            'error'  => 'Folder penyimpanan belum tersedia'
-        ]);
-        exit;
-    }
+    $dir = $storageInfo['absolute'];
 
     $pathPart = parse_url($url, PHP_URL_PATH);
     $ext = pathinfo($pathPart ?? '', PATHINFO_EXTENSION);
@@ -1780,17 +1720,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'cache') {
         exit;
     }
 
-    $relativeBase = $storageInfo['relative_generate'] ?? ($storageInfo['relative'] ?? null);
-    if (!$relativeBase) {
-        echo json_encode([
-            'ok'     => false,
-            'status' => 500,
-            'error'  => 'Folder penyimpanan belum tersedia'
-        ]);
-        exit;
-    }
-
-    $publicPath = $relativeBase . '/' . $filename;
+    $publicPath = $storageInfo['relative'] . '/' . $filename;
 
     echo json_encode([
         'ok'     => true,
@@ -1815,8 +1745,8 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
         exit;
     }
 
-    $availableKeys = freepik_available_api_keys();
-    if (!$availableKeys) {
+    $selectedApiKey = freepik_next_api_key();
+    if (!$selectedApiKey) {
         echo json_encode([
             'ok'     => false,
             'status' => 500,
@@ -1853,83 +1783,55 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
 
     $url = rtrim($FREEPIK_BASE_URL, '/') . $path;
 
-    $maxAttempts = max(1, count($availableKeys));
-    $responseData = null;
-    $responseStatus = 0;
-    $responseOk = false;
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
 
-    for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
-        $selectedApiKey = freepik_next_api_key();
-        if (!$selectedApiKey) {
-            break;
-        }
+    $headers = [
+        'x-freepik-api-key: ' . $selectedApiKey,
+        'Accept: application/json'
+    ];
 
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-
-        $headers = [
-            'x-freepik-api-key: ' . $selectedApiKey,
-            'Accept: application/json'
-        ];
-
-        if ($method !== 'GET' && $body !== null) {
-            if ($contentType === 'form') {
-                $headers[] = 'Content-Type: application/x-www-form-urlencoded';
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-            } else {
-                $headers[] = 'Content-Type: application/json';
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
-            }
-        }
-
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-        $responseBody = curl_exec($ch);
-        $errno        = curl_errno($ch);
-        $error        = curl_error($ch);
-        $statusCode   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
-
-        if ($errno) {
-            echo json_encode([
-                'ok'     => false,
-                'status' => 500,
-                'error'  => 'cURL error: ' . $error
-            ]);
-            exit;
-        }
-
-        $data = null;
-        if ($responseBody !== '' && $responseBody !== null) {
-            $json = json_decode($responseBody, true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                $data = $json;
-            } else {
-                $data = $responseBody;
-            }
-        }
-
-        $responseData = $data;
-        $responseStatus = $statusCode;
-        $responseOk = $statusCode >= 200 && $statusCode < 300;
-
-        if ($statusCode === 429 && $attempt + 1 < $maxAttempts) {
-            usleep(200000);
-            continue;
-        }
-
-        break;
-    }
-
-    if ($responseStatus === 0) {
-        $responseStatus = 500;
-        if ($responseData === null) {
-            $responseData = ['error' => 'Freepik request tidak mendapatkan respons'];
+    if ($method !== 'GET' && $body !== null) {
+        if ($contentType === 'form') {
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        } else {
+            $headers[] = 'Content-Type: application/json';
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
         }
     }
 
-    if ($responseOk && isset($payload['method']) && strtoupper((string)$payload['method']) !== 'GET' && $account) {
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+    $responseBody = curl_exec($ch);
+    $errno        = curl_errno($ch);
+    $error        = curl_error($ch);
+    $statusCode   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if ($errno) {
+        echo json_encode([
+            'ok'     => false,
+            'status' => 500,
+            'error'  => 'cURL error: ' . $error
+        ]);
+        exit;
+    }
+
+    $data = null;
+    if ($responseBody !== '' && $responseBody !== null) {
+        $json = json_decode($responseBody, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $data = $json;
+        } else {
+            $data = $responseBody;
+        }
+    }
+
+    $success = $statusCode >= 200 && $statusCode < 300;
+
+    if ($success && isset($payload['method']) && strtoupper((string)$payload['method']) !== 'GET' && $account) {
         auth_metrics_record_generation('freepik', [
             'type' => 'freepik',
             'detail' => isset($payload['path']) ? (string)$payload['path'] : '',
@@ -1939,9 +1841,9 @@ if (isset($_GET['api']) && $_GET['api'] === 'freepik') {
     }
 
     echo json_encode([
-        'ok'     => $responseOk,
-        'status' => $responseStatus,
-        'data'   => $responseData
+        'ok'     => $success,
+        'status' => $statusCode,
+        'data'   => $data
     ], JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -2056,8 +1958,8 @@ if (!auth_is_logged_in()) {
                 <span class="gradient-text">Hasilkan Konten</span>
                 Instan
             </h1>
-            <p>Powered by <strong>Gemini Flash 2.5 &amp; Imagen 3</strong> — Mesin generasi gambar AI tercepat di Sidoarjo.</p>
-            <p class="subtitle-mobile">ciptakan aset visual berkualitas studio tanpa keterampilan desain apa pun.</p>
+            <p>Powered by <strong>Kling 2.5 Pro &amp; Seedance </strong> — Model generasi video AI tercanggih di sidoarjo</p>
+            <p class="subtitle-mobile">menghasilkan video berkualitas studio tanpa keterampilan teknis apa pun.</p>
 
             <div class="cta-area">
                 <a href="#" class="cta-button js-open-signup">
@@ -2070,8 +1972,8 @@ if (!auth_is_logged_in()) {
 
         <div class="stats-panel">
             <div class="stat-card glass-card stat-big">
-                <p>25K+</p>
-                <span>Images generated by users</span>
+                <p>10K+</p>
+                <span>Videos Created by users</span>
             </div>
             <div class="stat-card-row">
                 <div class="stat-card glass-card stat-small">
@@ -2132,9 +2034,9 @@ if (!auth_is_logged_in()) {
 
     <section class="product-features" aria-labelledby="product-section-title">
         <div class="product-header">
-            <h2 class="product-title" id="product-section-title">Pembuat Konten Visual AI</h2>
+            <h2 class="product-title" id="product-section-title">Pembuat Iklan Video AI</h2>
             <p class="product-subtitle">dibangun untuk kinerja instan</p>
-            <p class="product-description">Ubah halaman produk apa pun menjadi materi promosi yang unggul—dibuat, diuji, dan dioptimalkan dalam hitungan detik.</p>
+            <p class="product-description">Ubah halaman produk apa pun menjadi iklan video yang unggul—dibuat, diuji, dan dioptimalkan dalam hitungan detik.</p>
         </div>
 
         <div class="feature-card glass-card">
@@ -2144,8 +2046,8 @@ if (!auth_is_logged_in()) {
             </div>
             <div class="feature-content">
                 <span class="feature-tag">AI-POWERED</span>
-                <h3>Pembuatan Konten UGC Instan</h3>
-                <p>Ubah produk apa pun menjadi konten UGC yang autentik dalam hitungan menit. AI kami memilih gaya visual menarik yang tampak seperti berasal dari pelanggan sungguhan.</p>
+                <h3>Pembuatan Video UGC Instan</h3>
+                <p>Ubah produk apa pun menjadi video konten buatan pengguna yang autentik dalam hitungan menit. AI kami menemukan musik dan video menarik yang tampak seperti berasal dari pelanggan sungguhan.</p>
                 <a href="#" class="btn-try-now js-open-signup">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
@@ -2175,7 +2077,7 @@ if (!auth_is_logged_in()) {
             <div class="feature-content">
                 <span class="feature-tag">PERFORMANCE</span>
                 <h3>Data-Driven Insights</h3>
-                <p>Dapatkan analisis mendetail tentang apa yang berhasil dan apa yang tidak. Lacak interaksi, konversi, dan ROI di semua aset visual Anda dengan wawasan yang dapat ditindaklanjuti.</p>
+                <p>Dapatkan analisis mendetail tentang apa yang berhasil dan apa yang tidak. Lacak interaksi, konversi, dan ROI di semua iklan video Anda dengan wawasan yang dapat ditindaklanjuti.</p>
                 <a href="#" class="btn-try-now js-open-signup">
                     <i class="fas fa-arrow-right"></i> Try it now
                 </a>
@@ -2201,7 +2103,7 @@ if (!auth_is_logged_in()) {
     <section class="use-cases" id="use-cases" aria-labelledby="use-cases-title">
         <div class="use-cases-header">
             <h2 id="use-cases-title">Cara Kerja AKAY.IO</h2>
-            <p>Dari inspirasi hingga peluncuran—alur kerja lengkap Anda untuk membuat konten visual yang unggul.</p>
+            <p>Dari inspirasi hingga pengoptimalan—alur kerja lengkap Anda untuk membuat iklan video yang unggul.</p>
         </div>
 
         <div class="workflow-grid">
@@ -2219,7 +2121,7 @@ if (!auth_is_logged_in()) {
                 <div class="card-number">02</div>
                 <h4>Create Winning Ads</h4>
                 <p class="card-subtitle">Dari tautan hingga peluncuran, seketika.</p>
-                <p>Ubah URL produk atau aset statis menjadi gambar promosi yang memukau. Sesuaikan dengan gaya, suasana, atau konsep kampanye.</p>
+                <p>Ubah URL produk atau aset statis menjadi iklan video yang memukau. Sesuaikan dengan musik, emosi, atau sulih suara.</p>
                 <div class="underline-red"></div>
             </div>
 
@@ -2228,7 +2130,7 @@ if (!auth_is_logged_in()) {
                 <div class="card-number">03</div>
                 <h4>Launch and Test</h4>
                 <p class="card-subtitle">Uji semuanya dengan teliti.</p>
-                <p>Berkreasilah dengan beragam varian visual. Temukan pemenang berdasarkan format utama, konten, atau audiens—secara otomatis.</p>
+                <p>Berkreasilah dengan beragam varian video. Temukan pemenang berdasarkan format utama, konten, atau audiens—secara otomatis.</p>
                 <div class="underline-orange"></div>
             </div>
 
@@ -2321,8 +2223,8 @@ if (!auth_is_logged_in()) {
                 <div class="key-features">
                     <h4>Key Features:</h4>
                     <ul>
-                        <li><i class="fas fa-check-circle"></i> Gemini Flash &amp; Imagen - UNLIMITED</li>
-                        <li><i class="fas fa-check-circle"></i> Audio &amp; Image Generator - UNLIMITED</li>
+                        <li><i class="fas fa-check-circle"></i> Veo 3 &amp; Veo 2 - UNLIMITED</li>
+                        <li><i class="fas fa-check-circle"></i> Voice &amp; Image Generator - UNLIMITED</li>
                         <li><i class="fas fa-check-circle"></i> Face Swap - UNLIMITED</li>
                         <li><i class="fas fa-check-circle"></i> Grup Tutorial Premium</li>
                         <li><i class="fas fa-check-circle"></i> + 7 more features</li>
@@ -2348,7 +2250,7 @@ if (!auth_is_logged_in()) {
                     <h4>Key Features:</h4>
                     <ul>
                         <li><i class="fas fa-check-circle"></i> Semua Fitur Pro Plan</li>
-                        <li><i class="fas fa-check-circle"></i> Flux, Mystic, HyperFlux Unlimited - Selamanya</li>
+                        <li><i class="fas fa-check-circle"></i> Kling, Seedance, Nano Banana Unlimited - Selamanya</li>
                         <li><i class="fas fa-check-circle"></i> Bot Telegram All-in-One</li>
                         <li><i class="fas fa-check-circle"></i> Kecepatan Tinggi &amp; Stabil</li>
                         <li><i class="fas fa-check-circle"></i> No Garansi (Trick &amp; Celah)</li>
@@ -2372,15 +2274,15 @@ if (!auth_is_logged_in()) {
         <div class="review-header">
             <h2 id="review-section-title">Loved by Marketers</h2>
             <p>who create winning ads</p>
-            <p class="review-subtitle">Bergabunglah dengan ribuan pemasar yang sukses dalam kampanye iklan mereka dengan generator gambar bertenaga AI.</p>
+            <p class="review-subtitle">Bergabunglah dengan ribuan pemasar yang sukses dalam kampanye iklan mereka dengan pembuatan video bertenaga AI.</p>
         </div>
 
         <div class="reviews-grid">
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Wah, akses unlimited Gemini Flash 2.5 benar-benar gila. Saya mengisi katalog promosi tanpa khawatir kehabisan kredit. Sungguh, ini mengubah alur kerja saya."</p>
-                <div class="review-tag">Unlimited Gemini Flash 2.5</div>
+                <p class="review-text">"Wah, fitur unlimited Veo 3.1 benar-benar gila. Saya menonton iklan gila-gilaan tanpa khawatir kehabisan kredit. Sungguh, ini mengubah alur kerja saya."</p>
+                <div class="review-tag">Unlimited Veo 3.1</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">S</div>
                     <div class="reviewer-details">
@@ -2393,7 +2295,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Anjay, Akaygen untuk konten UGC keren banget! Gambarnya terlihat autentik banget, sampai-sampai kamu bisa bersumpah kalau itu dari pelanggan asli. Tingkat konversi saya melonjak drastis. Nggak nyangka ini bagus banget."</p>
+                <p class="review-text">"Anjay, Akaygen untuk konten UGC keren banget! Videonya terlihat autentik banget, sampai-sampai kamu bisa bersumpah kalau itu dari pelanggan asli. Tingkat konversi saya melonjak drastis. Nggak nyangka ini bagus banget."</p>
                 <div class="review-tag">AkayGen UGC Master</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">M</div>
@@ -2407,8 +2309,8 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Oke, Imagen 3 seharga Rp500 itu benar-benar gila. Platform lain mematok harga Rp15.000 untuk barang yang sama. Masa sih? Harga segitu nggak masuk akal. Sudah hemat ribuan bulan ini."</p>
-                <div class="review-tag">Imagen 3 - Rp 500 only</div>
+                <p class="review-text">"Oke, Sora 2 seharga Rp500 itu benar-benar gila. Platform lain mematok harga Rp15.000 untuk barang yang sama. Masa sih? Harga segitu nggak masuk akal. Sudah hemat ribuan bulan ini."</p>
+                <div class="review-tag">Sora 2 - Rp 500 only</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">E</div>
                     <div class="reviewer-details">
@@ -2421,7 +2323,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Kombinasi Imagen 3 tanpa batas + Flux cepat sungguh luar biasa nilainya. Saya sedang menguji banyak variasinya sekarang. Klien saya sangat puas dengan hasilnya. Platform ini sebenarnya adalah kode curang."</p>
+                <p class="review-text">"Kombinasi Veo tanpa batas + Sora 2 yang murah sungguh luar biasa nilainya. Saya sedang menguji banyak variasinya sekarang. Klien saya sangat puas dengan hasilnya. Platform ini sebenarnya adalah kode curang."</p>
                 <div class="review-tag">Testing 100+ variations</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">D</div>
@@ -2435,7 +2337,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Konten UGC AkayGen itu keren banget. Saking nyatanya, pengikut saya sampai mengira saya mempekerjakan kreator sungguhan. Dan faktanya gambarnya nggak terbatas? Aduh, saya nggak akan pernah kembali ke pengeditan manual."</p>
+                <p class="review-text">"Video UGC AkayGen itu keren banget. Saking nyatanya, pengikut saya sampai mengira saya mempekerjakan kreator sungguhan. Dan faktanya videonya nggak terbatas? Aduh, saya nggak akan pernah kembali ke pengeditan manual."</p>
                 <div class="review-tag">100% organic look</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">J</div>
@@ -2449,7 +2351,7 @@ if (!auth_is_logged_in()) {
             <div class="review-card glass-card">
                 <div class="quote-icon">”</div>
                 <div class="rating">★★★★★</div>
-                <p class="review-text">"Membandingkan AKAY.IO dengan 3 pesaing dan jujur ​​saja, tidak ada tandingannya. Gemini Flash unlimited + Imagen 3 dengan harga gila-gilaan + kualitas NexaGen? Batalkan semua yang lain. Ini dia alatnya sekarang."</p>
+                <p class="review-text">"Membandingkan AKAY.IO dengan 3 pesaing dan jujur ​​saja, tidak ada tandingannya. Veo 3.1 unlimited + Sora 2 dengan harga gila-gilaan + kualitas NexaGen? Batalkan semua yang lain. Ini dia alatnya sekarang."</p>
                 <div class="review-tag">Switched from 3 platforms</div>
                 <div class="reviewer-info">
                     <div class="reviewer-avatar">A</div>
@@ -2468,7 +2370,7 @@ if (!auth_is_logged_in()) {
             </div>
             <div class="stat-item">
                 <p class="stat-number">2M+</p>
-                <small>Images Generated</small>
+                <small>Videos Generated</small>
             </div>
             <div class="stat-item">
                 <p class="stat-number">98%</p>
@@ -2488,7 +2390,7 @@ if (!auth_is_logged_in()) {
                     <img src="logo.png" alt="AKAY.IO Logo" class="logo-icon">
                     AKAY NUSANTARA
                 </div>
-                <p class="footer-description">Konten visual bertenaga AI yang menghasilkan konversi. Buat kampanye sukses dalam hitungan detik dengan kekuatan kecerdasan buatan.</p>
+                <p class="footer-description">Iklan video bertenaga AI yang menghasilkan konversi. Buat iklan yang sukses dalam hitungan detik dengan kekuatan kecerdasan buatan..</p>
 
                 <div class="social-icons">
                     <a href="#" class="icon-circle"><i class="fab fa-tiktok"></i></a>
@@ -3092,7 +2994,6 @@ $currentUser = auth_is_logged_in() ? (string)($_SESSION['auth_user'] ?? '') : ''
   --input-border: rgba(203, 213, 225, 0.75);
   --sidebar-text-muted: rgba(100, 116, 139, 0.75);
   --stat-bg: rgba(59, 130, 246, 0.1);
-  --mobile-nav-height: 64px;
 }
 body {
   margin: 0;
@@ -3123,117 +3024,6 @@ button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
-}
-
-.has-mobile-bottom-nav {
-  min-height: 100vh;
-}
-
-.mobile-bottom-nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1200;
-  display: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-  min-height: var(--mobile-nav-height);
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.95) 0%, rgba(37, 99, 235, 0.95) 50%, rgba(14, 165, 233, 0.95) 100%);
-  box-shadow: 0 -14px 28px rgba(15, 23, 42, 0.18);
-  border-radius: 18px 18px 0 0;
-}
-
-.mobile-bottom-nav__item {
-  flex: 1 1 0;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: capitalize;
-  letter-spacing: 0.01em;
-  transition: transform 0.25s ease, color 0.25s ease;
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-.mobile-bottom-nav__item:focus {
-  outline: none;
-}
-
-.mobile-bottom-nav__item[disabled],
-.mobile-bottom-nav__item.locked {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.mobile-bottom-nav__icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.16);
-  color: #ffffff;
-  transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
-}
-
-.mobile-bottom-nav__icon svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  fill: none;
-}
-
-.mobile-bottom-nav__icon i {
-  font-size: 16px;
-}
-
-.mobile-bottom-nav__label {
-  display: block;
-}
-
-.mobile-bottom-nav__item.is-active,
-.mobile-bottom-nav__item:hover,
-.mobile-bottom-nav__item:focus-visible {
-  color: #ffffff;
-  transform: translateY(-2px);
-}
-
-.mobile-bottom-nav__item.is-active .mobile-bottom-nav__icon,
-.mobile-bottom-nav__item:hover .mobile-bottom-nav__icon,
-.mobile-bottom-nav__item:focus-visible .mobile-bottom-nav__icon {
-  background: #ffffff;
-  color: var(--accent);
-  transform: scale(1.05);
-}
-
-@media (max-width: 960px) {
-  body.has-mobile-bottom-nav {
-    padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px));
-  }
-
-  .mobile-bottom-nav {
-    display: flex;
-  }
-
-  .workspace {
-    padding-bottom: calc(var(--mobile-nav-height) + 16px);
-  }
-
-  .workspace-main {
-    padding-bottom: calc(var(--mobile-nav-height) + 32px);
-  }
 }
 body::before,
 body::after {
@@ -3383,14 +3173,14 @@ body[data-theme="light"] {
   display: none;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 16px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 20px;
   border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
   position: sticky;
-  top: 72px;
+  top: 68px;
   z-index: 5;
 }
 
@@ -3401,23 +3191,22 @@ body[data-theme="light"] {
 }
 
 .mobile-coin-label {
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
 }
 
 .mobile-coin-value {
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--text);
 }
 
-.mobile-coin-banner .topup-badge {
+.mobile-coin-topup {
   width: auto;
-  min-width: 100px;
-  padding: 8px 14px;
-  font-size: 12px;
+  min-width: 110px;
+  padding: 10px 18px;
 }
 .stats-grid {
   display: grid;
@@ -3632,62 +3421,6 @@ body[data-theme="light"] {
   flex-direction: column;
   gap: 18px;
 }
-.drive-selection-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 12px 18px;
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
-}
-.drive-selection-group {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-.drive-select-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-  user-select: none;
-}
-.drive-select-checkbox input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-}
-.drive-selection-count {
-  font-size: 12px;
-  color: var(--muted);
-}
-.drive-delete-selected {
-  border-radius: 12px;
-  background: rgba(248, 113, 113, 0.14);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  color: #fee2e2;
-  padding: 8px 16px;
-  font-weight: 600;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-}
-.drive-delete-selected:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-.drive-delete-selected:not(:disabled):hover {
-  background: rgba(248, 113, 113, 0.22);
-  border-color: rgba(248, 113, 113, 0.5);
-  box-shadow: 0 16px 28px rgba(248, 113, 113, 0.32);
-  transform: translateY(-1px);
-}
 .drive-empty {
   padding: 48px 24px;
   border: 1px dashed var(--border);
@@ -3735,18 +3468,6 @@ body[data-theme="light"] {
   justify-content: center;
   cursor: zoom-in;
 }
-.drive-card--selected {
-  border-color: rgba(99, 102, 241, 0.85);
-  box-shadow: 0 22px 42px rgba(99, 102, 241, 0.28);
-}
-.drive-card--selected .drive-thumb::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.22), rgba(59, 130, 246, 0.12));
-  opacity: 0.85;
-  pointer-events: none;
-}
 .drive-thumb img,
 .drive-thumb video {
   width: 100%;
@@ -3788,31 +3509,6 @@ body[data-theme="light"] {
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
   z-index: 6;
 }
-.drive-select-toggle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(15, 23, 42, 0.72);
-  color: #f8fafc;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 999px;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.35);
-  backdrop-filter: blur(6px);
-  z-index: 8;
-}
-.drive-select-toggle input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-}
-.drive-select-toggle span {
-  pointer-events: none;
-}
 .drive-card-footer {
   display: flex;
   flex-direction: column;
@@ -3827,65 +3523,38 @@ body[data-theme="light"] {
   color: var(--muted);
 }
 .drive-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
 }
-.drive-action-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border-radius: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.45);
-  background: rgba(99, 102, 241, 0.14);
+.drive-actions button,
+.drive-actions a {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 120px;
+  border-radius: 10px;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.12);
   color: var(--text);
-  padding: 8px 10px;
+  padding: 6px 8px;
   font-size: 11px;
-  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
-.drive-action-btn:hover {
-  transform: translateY(-1px);
-  border-color: rgba(99, 102, 241, 0.65);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
+.drive-actions button:hover,
+.drive-actions a:hover {
   background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(129, 140, 248, 0.7);
 }
-.drive-action-btn.danger {
-  border-color: rgba(239, 68, 68, 0.55);
-  background: rgba(239, 68, 68, 0.14);
-  color: #fee2e2;
+.drive-actions .danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: var(--danger);
 }
-.drive-action-btn.danger:hover {
+.drive-actions .danger:hover {
   background: rgba(239, 68, 68, 0.22);
-  border-color: rgba(239, 68, 68, 0.75);
-  box-shadow: 0 16px 32px rgba(239, 68, 68, 0.32);
-}
-.drive-download-btn {
-  color: #f8fafc;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.92), rgba(59, 130, 246, 0.92));
-  border: none;
-  overflow: hidden;
-  box-shadow: 0 16px 32px rgba(59, 130, 246, 0.35);
-}
-.drive-download-btn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.6) 50%, transparent 100%);
-  transform: translateX(-100%);
-  transition: transform 0.45s ease;
-}
-.drive-download-btn:hover::after {
-  transform: translateX(100%);
-}
-.drive-download-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 22px 40px rgba(59, 130, 246, 0.45);
+  border-color: rgba(239, 68, 68, 0.65);
 }
 .drive-clear-date {
   margin-left: auto;
@@ -4502,11 +4171,14 @@ body[data-theme="light"] .profile-avatar {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text);
-  background: rgba(148, 163, 184, 0.16);
-  box-shadow: none;
+  
+  /* --- WARNA EMAS BERKILAU --- */
+  color: #583f08; /* Teks Cokelat Tua/Emas Gelap */
+  background: linear-gradient(90deg, #ffd700, #ffec85); /* Gradasi Emas Kuning ke Emas Terang */
+  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.5); /* Bayangan Emas */
+  /* --- AKHIR WARNA EMAS BERKILAU --- */
+  
   overflow: hidden;
-  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .profile-badge::before {
@@ -4521,40 +4193,16 @@ body[data-theme="light"] .profile-avatar {
   left: -60%;
   width: 50%;
   height: 100%;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0));
-  opacity: 0;
+  
+  /* Efek Kilau/Shine */
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); 
+  animation: badgeShine 2.8s linear infinite;
 }
 
 @keyframes badgeShine {
   0% { left: -60%; }
   60% { left: 120%; }
   100% { left: 120%; }
-}
-
-.profile-badge--premium {
-  color: #583f08;
-  background: linear-gradient(90deg, #ffd700, #ffec85);
-  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.5);
-}
-
-.profile-badge--premium::after {
-  opacity: 1;
-  animation: badgeShine 2.8s linear infinite;
-}
-
-.profile-badge--free {
-  color: #111827;
-  background: linear-gradient(135deg, #e2e8f0, #cbd5f5);
-  box-shadow: none;
-}
-
-.profile-badge--free::after {
-  opacity: 0;
-  animation: none;
-}
-
-.profile-badge--free::before {
-  filter: grayscale(0.4);
 }
 
 .topup-badge {
@@ -4607,24 +4255,23 @@ body[data-theme="light"] .profile-avatar {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-
+  
   width: 28px; /* Ukuran badge */
   height: 28px; /* Ukuran badge */
-
+  
   /* --- Bentuk Bintang Bergerigi (Custom Clip-Path) --- */
   /* Ini adalah perkiraan untuk bentuk bintang bergerigi seperti gambar */
   clip-path: polygon(
     50% 0%, 65% 15%, 100% 19%, 85% 35%, 100% 61%, 75% 65%, 70% 100%, 50% 85%, 30% 100%, 25% 65%, 0% 61%, 15% 35%, 0% 19%, 35% 15%
   );
-
+  
   /* --- WARNA BIRU BERKILAU --- */
   color: #f0f8ff; /* Warna ikon centang: Biru sangat muda/putih */
   background: linear-gradient(90deg, #1e3a8a, #3b82f6); /* Gradasi Biru Tua ke Biru Terang */
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5); /* Bayangan Biru */
   /* --- AKHIR WARNA BIRU BERKILAU --- */
-
+  
   overflow: hidden; /* Penting untuk efek kilau */
-  transition: transform 0.3s ease, opacity 0.2s ease;
 }
 
 .verified-badge-star::before {
@@ -4639,26 +4286,20 @@ body[data-theme="light"] .profile-avatar {
   content: "";
   position: absolute;
   top: 0;
-  left: -100%;
-  width: 70%;
+  left: -100%; 
+  width: 70%; 
   height: 100%;
-
+  
   /* Efek Kilau/Shine */
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0));
-  animation: badgeShineSweep 2.5s linear infinite;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)); 
+  animation: badgeShine 2.5s linear infinite; 
   z-index: 1; /* Di bawah ikon centang, di atas background badge */
 }
 
-.verified-badge-star--hidden {
-  opacity: 0;
-  transform: scale(0.6);
-  pointer-events: none;
-}
-
 /* Keyframes untuk Animasi Kilauan */
-@keyframes badgeShineSweep {
+@keyframes badgeShine {
   0% { left: -100%; }
-  60% { left: 150%; }
+  60% { left: 150%; } 
   100% { left: 150%; }
 }
 
@@ -4691,11 +4332,6 @@ body[data-theme="light"] .profile-avatar {
   margin-top: 6px;
   gap: 12px;
 }
-
-.profile-expiry--active {
-  animation: profileExpiryPulse 3s ease-in-out infinite;
-  box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.25);
-}
 .profile-expiry--inline {
   margin-top: 6px;
   background: rgba(15, 23, 42, 0.2);
@@ -4715,18 +4351,8 @@ body[data-theme="light"] .profile-avatar {
   border-color: rgba(248,113,113,0.45);
   color: rgba(248,113,113,0.85);
 }
-.profile-expiry.expired.profile-expiry--active {
-  animation: none;
-  box-shadow: none;
-}
 .profile-expiry.expired .profile-expiry-label {
   color: inherit;
-}
-
-@keyframes profileExpiryPulse {
-  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.25); }
-  70% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
 }
 .profile-card--mobile .profile-expiry {
   margin-top: 4px;
@@ -4752,8 +4378,8 @@ body[data-theme="light"] .profile-expiry.expired {
   color: var(--muted);
 }
 .profile-credit .credit-value {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
   color: var(--text);
 }
 .profile-credit .credit-status {
@@ -5116,7 +4742,8 @@ body[data-theme="light"] .profile-expiry.expired {
     gap: 16px;
     min-height: 0;
   }
-  .film-scenes-board {
+  .film-scenes-board,
+  .ugc-list-card {
     padding: 16px;
   }
   .film-scenes-container {
@@ -5164,19 +4791,13 @@ body[data-theme="light"] .profile-expiry.expired {
     width: 100%;
     text-align: center;
   }
-  .preview-btn-group {
+  .preview-btn-group,
+  .ugc-video-actions {
     flex-direction: column;
     align-items: stretch;
   }
-  .preview-btn-group > * {
-    width: 100%;
-  }
-  .ugc-video-actions {
-    justify-content: flex-start;
-    gap: 10px;
-  }
-  .ugc-download-btn,
-  .ugc-generate-btn {
+  .preview-btn-group > *,
+  .ugc-video-actions > * {
     width: 100%;
   }
   .film-slider-row {
@@ -5421,25 +5042,6 @@ body[data-theme="light"] .profile-expiry.expired {
       border: 1px solid var(--border);
       background: var(--card-overlay);
       padding: 10px;
-    }
-    .gemini-json-output {
-      margin: 0;
-      padding: 12px;
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      background: rgba(15, 23, 42, 0.55);
-      color: var(--muted);
-      font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', monospace;
-      font-size: 12px;
-      line-height: 1.5;
-      overflow: auto;
-      max-height: 260px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .light-mode .gemini-json-output {
-      background: rgba(255, 255, 255, 0.92);
-      color: var(--text);
     }
     .gemini-video-results {
       display: flex;
@@ -6373,12 +5975,13 @@ body[data-theme="light"] .profile-expiry.expired {
       .ugc-app { grid-template-columns: 1fr; }
     }
     .ugc-list-card {
+      background: linear-gradient(135deg, rgba(37,99,235,0.14), rgba(14,165,233,0.1));
+      border-radius: 12px;
+      border: 1px dashed rgba(75,85,99,0.8);
+      padding: 12px 14px;
       display: flex;
       flex-direction: column;
-      gap: 18px;
-      padding: 0;
-      background: transparent;
-      border: none;
+      gap: 12px;
     }
     .ugc-empty {
       flex: 1;
@@ -6386,387 +5989,91 @@ body[data-theme="light"] .profile-expiry.expired {
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 36px 12px;
+      padding: 32px 10px;
       font-size: 12px;
       color: var(--muted);
-      border-radius: 16px;
-      border: 1px dashed rgba(148,163,184,0.3);
-      background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(14,165,233,0.06));
     }
     .ugc-row {
       background: var(--card);
-      border-radius: 18px;
-      border: 1px solid rgba(148,163,184,0.22);
-      box-shadow: 0 24px 44px rgba(15,23,42,0.22);
+      border-radius: 12px;
+      border: 1px solid var(--border);
       display: grid;
-      grid-template-columns: minmax(0, 240px) minmax(0, 220px) minmax(0, 1fr);
-      gap: 20px;
-      padding: 22px;
-      align-items: stretch;
+      grid-template-columns: 210px 1fr;
+      gap: 12px;
+      padding: 10px;
     }
     @media (max-width: 900px) {
-      .ugc-row {
-        grid-template-columns: 1fr;
-        padding: 18px;
-      }
+      .ugc-row { grid-template-columns: 1fr; }
     }
-    .ugc-column {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .ugc-column-label {
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: rgba(148,163,184,0.95);
-    }
-    .ugc-image-card {
-      position: relative;
-      border-radius: 16px;
-      border: 1px solid rgba(148,163,184,0.25);
-      background: linear-gradient(145deg, rgba(37,99,235,0.18), rgba(14,165,233,0.12));
-      min-height: 240px;
-      overflow: hidden;
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .ugc-result-header {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .ugc-result-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text);
-    }
-    .ugc-result-subtitle {
-      font-size: 13px;
-      color: rgba(148,163,184,0.92);
-    }
-    .ugc-download-group {
+    .ugc-media-block {
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
-    .ugc-download-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      transition: box-shadow 0.3s ease, transform 0.3s ease;
-    }
-    .ugc-image-card img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .ugc-image-placeholder {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      font-size: 12px;
-      color: rgba(148,163,184,0.85);
-      text-align: center;
-      padding: 16px;
-      position: relative;
-      overflow: hidden;
-      border-radius: 14px;
-    }
-    .ugc-placeholder-title {
-      font-weight: 600;
-      color: rgba(226,232,240,0.95);
-    }
-    .ugc-placeholder-status {
+    .ugc-media-card {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg,#7c3aed,#0f172a);
+      padding: 10px 8px;
+      color: #e5e7eb;
       font-size: 11px;
-      color: rgba(148,163,184,0.7);
+      text-align: center;
+      min-height: 160px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ugc-media-card img {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      border-radius: 12px;
+      object-fit: cover;
+      background:#000;
+    }
+    .ugc-media-title {
+      font-size: 11px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    .ugc-media-status {
+      font-size: 10px;
+      opacity: .8;
     }
     .ugc-video-card {
-      border-radius: 16px;
-      border: 1px solid rgba(30,41,59,0.45);
-      background: radial-gradient(circle at top, rgba(17,24,39,0.88), rgba(2,6,23,0.92));
-      min-height: 220px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 18px;
-      position: relative;
-      overflow: hidden;
-      transition: box-shadow 0.3s ease, transform 0.3s ease;
-    }
-    .ugc-field-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: rgba(148,163,184,0.92);
-    }
-    textarea.ugc-textarea {
-      width: 100%;
-      height: 100%;
-      border-radius: 14px;
-      object-fit: cover;
-      background: #000;
-    }
-    .ugc-video-placeholder {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      text-align: center;
-      color: rgba(203,213,225,0.9);
-      font-size: 12px;
-      position: relative;
-      overflow: hidden;
-      border-radius: 14px;
-    }
-    .ugc-video-placeholder .ugc-placeholder-status {
-      color: rgba(148,163,184,0.7);
-    }
-    .ugc-image-placeholder.is-loading::before,
-    .ugc-video-placeholder.is-loading::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, rgba(148,163,184,0.05) 0%, rgba(148,163,184,0.18) 45%, rgba(148,163,184,0.05) 100%);
-      animation: ugcShimmer 1.6s linear infinite;
-      opacity: 0.85;
-    }
-    .ugc-image-placeholder.is-loading > *,
-    .ugc-video-placeholder.is-loading > * {
-      position: relative;
-      z-index: 1;
-    }
-    .ugc-loading-spinner {
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      border: 3px solid rgba(148,163,184,0.28);
-      border-top-color: rgba(96,165,250,0.9);
-      animation: ugcSpin 0.9s linear infinite;
-    }
-    .ugc-image-card.is-loading,
-    .ugc-video-card.is-loading {
-      box-shadow: 0 14px 28px rgba(15,23,42,0.28);
-      transform: translateY(1px);
-    }
-    .ugc-video-badge {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      background: rgba(34,197,94,0.18);
-      color: rgba(187,247,208,0.95);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.12));
+      padding: 10px;
       font-size: 11px;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(34,197,94,0.35);
+      text-align: center;
+      min-height: 80px;
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items:center;
+      justify-content:center;
+    }
+    .ugc-video-card video {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      border-radius: 12px;
+      background: #000;
+      object-fit: cover;
     }
     .ugc-video-actions {
       display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .ugc-result-header {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .ugc-result-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text);
-    }
-    .ugc-result-subtitle {
-      font-size: 13px;
-      color: rgba(148,163,184,0.92);
-    }
-    .ugc-download-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .ugc-download-btn {
-      display: inline-flex;
-      align-items: center;
+      gap: 6px;
       justify-content: center;
-      padding: 10px 22px;
-      border-radius: 999px;
-      border: none;
-      background: linear-gradient(135deg, rgba(59,130,246,0.92), rgba(14,165,233,0.86));
-      color: #fff;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      position: relative;
-      overflow: hidden;
-      background-size: 220% 220%;
-      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
-    }
-    .ugc-download-btn:hover {
-      transform: translateY(-2px) scale(1.01);
-      box-shadow: 0 18px 34px rgba(14,165,233,0.26);
-      background-position: 100% 0;
-    }
-    .ugc-download-btn:disabled {
-      cursor: not-allowed;
-      opacity: 0.55;
-      transform: none;
-      box-shadow: none;
-      background-position: 0 0;
-    }
-    .ugc-secondary-actions {
-      display: flex;
       flex-wrap: wrap;
-      gap: 14px;
     }
-    .ugc-link-btn {
-      background: none;
-      border: none;
-      padding: 0;
-      color: rgba(96,165,250,0.95);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      transition: color 0.2s ease;
-    }
-    .ugc-link-btn:hover {
-      color: rgba(129,212,250,0.95);
-    }
-    .ugc-link-btn:disabled {
-      color: rgba(148,163,184,0.6);
-      cursor: not-allowed;
-    }
-    .ugc-form-group {
+    .ugc-right {
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
-    .ugc-field-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: rgba(148,163,184,0.92);
-    }
-    textarea.ugc-textarea {
-      width: 100%;
-      min-height: 90px;
-      border-radius: 12px;
-      border: 1px solid rgba(148,163,184,0.25);
-      background: rgba(15,23,42,0.45);
-      color: var(--text);
-      padding: 10px 12px;
-      font-size: 13px;
-      resize: vertical;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    textarea.ugc-textarea:focus {
-      outline: none;
-      border-color: rgba(96,165,250,0.65);
-      box-shadow: 0 0 0 2px rgba(96,165,250,0.25);
-    }
-    textarea.ugc-textarea:disabled {
-      opacity: 0.65;
-      cursor: not-allowed;
-    }
-    .ugc-generate-row {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .ugc-generate-btn {
-      align-self: flex-start;
-      border-radius: 999px;
-      border: none;
-      padding: 10px 22px;
-      background: linear-gradient(135deg, rgba(139,92,246,0.92), rgba(14,165,233,0.86));
-      color: #fff;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      position: relative;
-      overflow: hidden;
-      background-size: 220% 220%;
-      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
-    }
-    .ugc-generate-btn:hover {
-      transform: translateY(-2px) scale(1.01);
-      box-shadow: 0 18px 32px rgba(139,92,246,0.3);
-      background-position: 100% 0;
-    }
-    .ugc-generate-btn:disabled {
-      cursor: not-allowed;
-      opacity: 0.55;
-      transform: none;
-      box-shadow: none;
-      background-position: 0 0;
-    }
-    .ugc-primary-btn {
-      width: 100%;
-      margin-top: 4px;
-      border: none;
-      border-radius: 12px;
-      padding: 12px 18px;
-      background: linear-gradient(135deg, rgba(37,99,235,0.95), rgba(14,165,233,0.9));
-      color: #fff;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.01em;
-      cursor: pointer;
-      position: relative;
-      overflow: hidden;
-      background-size: 220% 220%;
-      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease, background-position 0.4s ease;
-    }
-    .ugc-primary-btn:hover {
-      transform: translateY(-2px) scale(1.01);
-      box-shadow: 0 20px 38px rgba(14,165,233,0.26);
-      background-position: 100% 0;
-    }
-    .ugc-primary-btn:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-      transform: none;
-      box-shadow: none;
-      background-position: 0 0;
-    }
-    .ugc-download-btn::before,
-    .ugc-generate-btn::before,
-    .ugc-primary-btn::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, rgba(255,255,255,0.4), rgba(255,255,255,0));
-      transform: translateX(-120%);
-      opacity: 0;
-      transition: transform 0.45s ease, opacity 0.45s ease;
-      pointer-events: none;
-    }
-    .ugc-download-btn:hover::before,
-    .ugc-generate-btn:hover::before,
-    .ugc-primary-btn:hover::before {
-      transform: translateX(120%);
-      opacity: 0.35;
-    }
-    .ugc-aspect-select select {
-      width: 100%;
-      border-radius: 10px;
-      border: 1px solid rgba(148,163,184,0.28);
-      background: var(--card);
-      color: var(--text);
-      padding: 10px 12px;
-      font-size: 13px;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    .ugc-aspect-select select:focus {
-      outline: none;
-      border-color: rgba(96,165,250,0.65);
-      box-shadow: 0 0 0 2px rgba(96,165,250,0.25);
+    .ugc-prompt-label {
+      font-size: 11px;
+      color: var(--muted);
     }
     .ugc-product-preview {
       display:flex;
@@ -6930,9 +6237,6 @@ body[data-theme="light"] .profile-expiry.expired {
       z-index: 2000;
     }
     .asset-preview.hidden { display: none; }
-    .asset-preview.visible {
-      animation: ugcOverlayFade 0.28s ease forwards;
-    }
     .asset-preview-inner {
       background: var(--card);
       border-radius: 14px;
@@ -6946,9 +6250,6 @@ body[data-theme="light"] .profile-expiry.expired {
       gap: 12px;
       box-shadow: 0 18px 55px rgba(15,23,42,0.8);
       position: relative;
-    }
-    .asset-preview.visible .asset-preview-inner {
-      animation: ugcModalPop 0.34s cubic-bezier(0.22,0.61,0.36,1) forwards;
     }
     .asset-preview-close {
       position: absolute;
@@ -7304,23 +6605,6 @@ body[data-theme="light"] .profile-expiry.expired {
       color: var(--muted);
       text-align: center;
     }
-    @keyframes ugcSpin {
-      to { transform: rotate(360deg); }
-    }
-    @keyframes ugcShimmer {
-      0% { transform: translateX(-80%); }
-      50% { transform: translateX(0); }
-      100% { transform: translateX(80%); }
-    }
-    @keyframes ugcOverlayFade {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    @keyframes ugcModalPop {
-      0% { transform: translateY(24px) scale(0.92); opacity: 0; }
-      60% { transform: translateY(-6px) scale(1.01); opacity: 1; }
-      100% { transform: translateY(0) scale(1); opacity: 1; }
-    }
     @keyframes maintenanceGlow {
       0% { transform: rotate(0deg) scale(1); opacity: 0.45; }
       50% { transform: rotate(180deg) scale(1.04); opacity: 0.6; }
@@ -7390,7 +6674,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
   </style>
 </head>
-<body data-theme="dark" class="has-mobile-bottom-nav">
+<body data-theme="dark">
 
 <div class="workspace sidebar-open">
   <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true">
@@ -7442,6 +6726,12 @@ body[data-theme="light"] .profile-expiry.expired {
       </span>
       <span class="nav-label">Image Gen</span>
     </button>
+    <button class="sidebar-link" data-target="viewHub" data-feature="videoGen">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4.5 6h9a2.5 2.5 0 0 1 2.5 2.5v7a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 2 15.5v-7A2.5 2.5 0 0 1 4.5 6zm11 2.5 6-3v11l-6-3z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </span>
+      <span class="nav-label">Video Gen</span>
+    </button>
     <button class="sidebar-link" data-target="viewAudio" data-feature="audioGen">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M12 3v10a3 3 0 0 0 6 0V9m-6 6a3 3 0 0 1-6 0V9m6 11v-2m-6 2v-2m12 2v-2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
@@ -7464,7 +6754,7 @@ body[data-theme="light"] .profile-expiry.expired {
         <div class="profile-text">
           <div class="profile-title">
             <span class="profile-display" id="profileDisplay">User</span>
-            <span class="profile-badge profile-badge--premium" id="profileBadge">PRO</span>
+            <span class="profile-badge" id="profileBadge">PRO</span>
           </div>
           <div class="profile-username" id="profileUsername">@username</div>
         </div>
@@ -7516,8 +6806,8 @@ body[data-theme="light"] .profile-expiry.expired {
           <div class="profile-text">
             <div class="profile-title">
               <span class="profile-display" id="profileDisplayMobile">User</span>
-              <span class="verified-badge-star verified-badge-star--hidden" hidden></span>
-              <span class="profile-badge profile-badge--premium" id="profileBadgeMobile">PRO</span>
+              <span class="verified-badge-star"></span>
+              <span class="profile-badge" id="profileBadgeMobile">PRO</span>
             </div>
             <div class="profile-username" id="profileUsernameMobile">@username</div>
             <div class="profile-expiry profile-expiry--inline" id="profileProExpiryMobile" hidden>
@@ -7537,6 +6827,11 @@ body[data-theme="light"] .profile-expiry.expired {
           <span class="stat-label">Saldo Kredit Aktif Kamu</span>
           <span class="stat-value" id="statCoins">0</span>
           <span class="stat-meta">Saldo aktif untuk semua generator</span>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Videos Generated</span>
+          <span class="stat-value" id="statVideos">0</span>
+          <span class="stat-meta">Total job video yang berhasil</span>
         </article>
         <article class="stat-card">
           <span class="stat-label">Images Generated</span>
@@ -7609,17 +6904,6 @@ body[data-theme="light"] .profile-expiry.expired {
           </select>
         </div>
         <button type="button" class="small secondary drive-clear-date" id="driveClearDate">Reset tanggal</button>
-      </section>
-
-      <section class="drive-selection-bar" id="driveSelectionBar" hidden>
-        <div class="drive-selection-group">
-          <label class="drive-select-checkbox">
-            <input type="checkbox" id="driveSelectAll">
-            <span>Pilih semua</span>
-          </label>
-          <span class="drive-selection-count" id="driveSelectionCount">Tidak ada file dipilih</span>
-        </div>
-        <button type="button" class="small danger drive-delete-selected" id="driveDeleteSelected" disabled>Hapus terpilih</button>
       </section>
 
       <section class="drive-content">
@@ -7726,13 +7010,30 @@ body[data-theme="light"] .profile-expiry.expired {
             <option value="upscalePrecV2">Upscale Precision V2</option>
             <option value="removeBg">Remove Background</option>
           </optgroup>
+          <optgroup label="Image → Video">
+            <option value="wan480">Wan v2.2 – 480p</option>
+            <option value="wan720">Wan v2.2 – 720p</option>
+            <option value="seedancePro480">Seedance Pro – 480p</option>
+            <option value="seedancePro720">Seedance Pro – 720p</option>
+            <option value="seedancePro1080">Seedance Pro – 1080p</option>
+            <option value="klingStd21">Kling Std v2.1</option>
+            <option value="kling21Master">Kling v2.1 Master</option>
+            <option value="kling25Pro">Kling v2.5 Pro</option>
+            <option value="pixverse">PixVerse</option>
+            <option value="minimax1080">MiniMax Hailuo 02 – 1080p</option>
+          </optgroup>
+          <optgroup label="Lip Sync">
+            <option value="latentSync">Latent-Sync</option>
+          </optgroup>
         </select>
       </div>
       <div class="small-label">Hint input</div>
-        <div id="modelHint" class="muted" style="font-size:11px">
-          Image Gen (Gemini, Imagen, Seedream, Flux, Mystic, Hyperflux): cukup prompt + opsi aspect ratio.
-          Image Editing / Upscale: wajib image URL.
-        </div>
+      <div id="modelHint" class="muted" style="font-size:11px">
+        Image Gen (Gemini, Imagen, Seedream, Flux, Mystic, Hyperflux): cukup prompt + opsi aspect ratio.
+        Image Editing / Upscale: wajib image URL.
+        Image→Video & PixVerse/Kling: image URL + prompt.
+        Latent-Sync: video URL + audio URL.
+      </div>
     </div>
 
     <div class="card hub-form-card">
@@ -7802,6 +7103,28 @@ body[data-theme="light"] .profile-expiry.expired {
                 </div>
               </div>
               <div class="upload-status" id="imageUploadStatus"></div>
+            </div>
+          </div>
+
+          <div id="rowVideoAudio" class="field-row hidden" style="margin-top:4px">
+            <div>
+              <label for="videoUrl">Video URL (Lipsync)</label>
+              <input id="videoUrl" type="text" placeholder="https://...mp4">
+            </div>
+            <div>
+              <label for="audioUrl">Audio URL (Lipsync)</label>
+              <input id="audioUrl" type="text" placeholder="https://...mp3 / .wav">
+            </div>
+          </div>
+
+          <div id="rowVideoSettings" class="field-row hidden" style="margin-top:4px">
+            <div>
+              <label for="videoDuration">Durasi video</label>
+              <select id="videoDuration"></select>
+            </div>
+            <div>
+              <label for="videoLayout">Layout</label>
+              <select id="videoLayout"></select>
             </div>
           </div>
 
@@ -7943,13 +7266,12 @@ body[data-theme="light"] .profile-expiry.expired {
 <div id="viewAudio" class="gemini-view app-view" hidden>
   <section class="card gemini-hero">
     <div>
-      <h1>Audio Generator (TTS &amp; SFX)</h1>
-      <p>Buat narasi dan efek suara custom menggunakan Google Gemini dan Freepik AI.</p>
+      <h1>Audio Generator (TTS)</h1>
+      <p>Ubah skrip teks menjadi audio natural menggunakan Google Gemini Text-to-Speech.</p>
     </div>
     <div class="gemini-hero-badges">
       <span class="gemini-badge">Google Gemini</span>
-      <span class="gemini-badge">Freepik AI</span>
-      <span class="gemini-badge gemini-badge--accent">Speech &amp; Sound</span>
+      <span class="gemini-badge gemini-badge--accent">Speech Generation</span>
     </div>
   </section>
 
@@ -8029,69 +7351,6 @@ body[data-theme="light"] .profile-expiry.expired {
           <li>Gunakan detail suasana &amp; emosi: <em>"Narasi ramah dengan energi tinggi untuk video promosi."</em></li>
           <li>Atur pengucapan dengan menambahkan catatan di dalam tanda kurung.</li>
           <li>Gunakan referensi suara bila ingin mencocokkan tone tertentu.</li>
-        </ul>
-      </section>
-    </article>
-
-    <article class="card-soft gemini-card">
-      <header class="gemini-card__header">
-        <div>
-          <h2>Sound Effects</h2>
-          <p>Generate efek suara original dari deskripsi teks menggunakan Freepik Sound Effects API.</p>
-        </div>
-      </header>
-      <form id="soundFxForm" class="gemini-form" novalidate>
-        <div class="gemini-field">
-          <label for="soundFxPrompt">Deskripsi Sound Effect</label>
-          <textarea id="soundFxPrompt" rows="4" placeholder="Contoh: Ledakan sinematik dengan gema pendek"></textarea>
-        </div>
-        <div class="gemini-field-row">
-          <div class="gemini-field">
-            <label for="soundFxDuration">Durasi (detik, opsional)</label>
-            <input type="number" id="soundFxDuration" min="1" max="120" step="1" placeholder="5">
-          </div>
-          <div class="gemini-field">
-            <label for="soundFxFormat">Format Audio</label>
-            <select id="soundFxFormat">
-              <option value="mp3" selected>MP3</option>
-              <option value="wav">WAV</option>
-              <option value="ogg">OGG</option>
-            </select>
-          </div>
-        </div>
-        <div class="gemini-field-row">
-          <div class="gemini-field">
-            <label for="soundFxCategories">Kategori (opsional)</label>
-            <input type="text" id="soundFxCategories" placeholder="contoh: cinematic,impact">
-            <p class="muted" style="font-size:10px;margin-top:4px;">Pisahkan dengan koma untuk memilih lebih dari satu kategori.</p>
-          </div>
-          <div class="gemini-field">
-            <label for="soundFxSeed">Seed (opsional)</label>
-            <input type="text" id="soundFxSeed" placeholder="Angka atau teks custom">
-          </div>
-        </div>
-        <div class="gemini-field">
-          <label for="soundFxAdvanced">Advanced Options JSON (opsional)</label>
-          <textarea id="soundFxAdvanced" rows="3" placeholder='{"intensity":"high"}'></textarea>
-          <p class="muted" style="font-size:10px;margin-top:4px;">Opsional: gabungkan pengaturan lanjutan sesuai dokumentasi Freepik.</p>
-        </div>
-        <div class="gemini-actions">
-          <button type="submit" id="soundFxSubmit">Generate Sound Effect</button>
-          <button type="button" class="secondary" id="soundFxReset">Reset</button>
-        </div>
-        <div class="account-form-status" id="soundFxStatus" role="status"></div>
-      </form>
-      <div class="gemini-audio-output" id="soundFxResult">
-        <audio id="soundFxAudio" controls hidden></audio>
-        <a id="soundFxDownload" class="download-link" href="#" download hidden>Download Sound Effect</a>
-        <pre id="soundFxMeta" class="gemini-json-output" hidden></pre>
-      </div>
-      <section class="gemini-guides">
-        <h3>Tips Prompt</h3>
-        <ul>
-          <li>Sertakan aksi, suasana, dan lingkungan: <em>"Dentuman bass futuristik di ruangan logam besar."</em></li>
-          <li>Gunakan kategori untuk membantu model memilih gaya efek, misalnya <code>whoosh</code>, <code>impact</code>, atau <code>ambient</code>.</li>
-          <li>Manfaatkan opsi lanjutan untuk mengatur intensitas, variasi, atau format khusus.</li>
         </ul>
       </section>
     </article>
@@ -8278,12 +7537,18 @@ body[data-theme="light"] .profile-expiry.expired {
       </div>
 
       <div>
-        <button type="button" id="ugcGenerateBtn" class="ugc-primary-btn">
+        <button type="button" id="ugcGenerateBtn" style="width:100%;margin-top:4px;">
           Generate UGC
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
           Sistem akan membuat 5 ide UGC beserta gambar dari Gemini Flash 2.5.
-          Tiap baris menyertakan prompt, gambar, dan opsi unduhan.
+          Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
+        </div>
+        <div class="progress-inline" id="ugcProgress">
+          <div class="progress-label"><span>Progress</span><span id="ugcProgressValue">0%</span></div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="ugcProgressFill"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -8292,50 +7557,6 @@ body[data-theme="light"] .profile-expiry.expired {
 
 </main>
 </div>
-
-<nav class="mobile-bottom-nav" aria-label="Navigasi utama dashboard mobile">
-  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav is-active" data-target="viewDashboard">
-    <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" stroke-linecap="round" stroke-linejoin="round"></path>
-      </svg>
-    </span>
-    <span class="mobile-bottom-nav__label">Dashboard</span>
-  </button>
-  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewHub" data-feature="imageGen">
-    <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M8.757 15.243l-2.121 2.121m12.728 0-2.121-2.121M8.757 8.757 6.636 6.636" stroke-linecap="round" stroke-linejoin="round"></path>
-      </svg>
-    </span>
-    <span class="mobile-bottom-nav__label">Image Gen</span>
-  </button>
-  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewFilm" data-feature="filmmaker">
-    <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 0V4m4 2V4m4 2V4m4 2V4" stroke-linecap="round" stroke-linejoin="round"></path>
-      </svg>
-    </span>
-    <span class="mobile-bottom-nav__label">Filmmaker</span>
-  </button>
-  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewUGC" data-feature="ugc">
-    <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 5h16M4 12h16M4 19h16" stroke-linecap="round" stroke-linejoin="round"></path>
-      </svg>
-    </span>
-    <span class="mobile-bottom-nav__label">UGC Tool</span>
-  </button>
-  <button type="button" class="mobile-bottom-nav__item js-dashboard-nav" data-target="viewAccount">
-    <span class="mobile-bottom-nav__icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M10.325 4.317a1 1 0 0 1 .987-.817h1.376a1 1 0 0 1 .987.817l.287 1.436a1 1 0 0 0 .96.804l1.45.055a1 1 0 0 1 .939.734l.345 1.31a1 1 0 0 1-.276.98l-1.07 1.026a1 1 0 0 0-.3.95l.332 1.406a1 1 0 0 1-.6 1.141l-1.307.522a1 1 0 0 0-.62.83l-.135 1.452a1 1 0 0 1-.995.915h-1.38a1 1 0 0 1-.994-.915l-.135-1.452a1 1 0 0 0-.62-.83l-1.307-.522a1 1 0 0 1-.6-1.141l.332-1.406a1 1 0 0 0-.3-.95l-1.07-1.026a1 1 0 0 1-.276-.98l.345-1.31a1 1 0 0 1 .939-.734l1.45-.055a1 1 0 0 0 .96-.804z" stroke-linecap="round" stroke-linejoin="round"></path>
-        <circle cx="12" cy="12" r="3" stroke-linecap="round" stroke-linejoin="round"></circle>
-      </svg>
-    </span>
-    <span class="mobile-bottom-nav__label">Akun</span>
-  </button>
-</nav>
 
 <div id="assetPreviewModal" class="asset-preview hidden">
   <div class="asset-preview-inner">
@@ -8382,7 +7603,6 @@ body[data-theme="light"] .profile-expiry.expired {
   const profileUsernameEl = document.getElementById('profileUsername');
   const profileCoinsEl = document.getElementById('profileCoins');
   const profileBadgeEl = document.getElementById('profileBadge');
-  const profileVerifiedBadgeEl = document.querySelector('.verified-badge-star');
   const profileProExpiryEl = document.getElementById('profileProExpiry');
   const profileProExpiryValueEl = document.getElementById('profileProExpiryValue');
   const profileAvatarEl = document.getElementById('profileAvatar');
@@ -8421,6 +7641,7 @@ body[data-theme="light"] .profile-expiry.expired {
     ? window.matchMedia('(max-width: 960px)')
     : { matches: false };
   const statCoinsEl = document.getElementById('statCoins');
+  const statVideosEl = document.getElementById('statVideos');
   const statImagesEl = document.getElementById('statImages');
   const statQueueEl = document.getElementById('statQueue');
   const driveNavButton = document.getElementById('driveNavButton');
@@ -8430,10 +7651,6 @@ body[data-theme="light"] .profile-expiry.expired {
   const driveSortFilter = document.getElementById('driveSortFilter');
   const driveDateFilter = document.getElementById('driveDateFilter');
   const driveClearDateBtn = document.getElementById('driveClearDate');
-  const driveSelectionBar = document.getElementById('driveSelectionBar');
-  const driveSelectAllCheckbox = document.getElementById('driveSelectAll');
-  const driveDeleteSelectedBtn = document.getElementById('driveDeleteSelected');
-  const driveSelectionCountEl = document.getElementById('driveSelectionCount');
   const driveTotalCountEl = document.getElementById('driveTotalCount');
   const driveTypeSummaryEl = document.getElementById('driveTypeSummary');
   const watermarkNotice = document.getElementById('watermarkNotice');
@@ -8472,12 +7689,13 @@ body[data-theme="light"] .profile-expiry.expired {
   const TOPUP_WHATSAPP = 'https://wa.me/62818404222';
   const PLATFORM_FEATURE_META = {
     imageGen: { label: 'Image Gen' },
+    videoGen: { label: 'Video Gen' },
     audioGen: { label: 'Audio Gen' },
     filmmaker: { label: 'Filmmaker' },
     ugc: { label: 'UGC Tool' },
     flashPhotoEdit: { label: 'Flash Photo Edit' }
   };
-  const HUB_FEATURE_KEYS = ['imageGen'];
+  const HUB_FEATURE_KEYS = ['imageGen', 'videoGen'];
 
   let currentAccount = null;
   let currentTheme = 'dark';
@@ -8671,9 +7889,6 @@ body[data-theme="light"] .profile-expiry.expired {
   let driveItems = [];
   let driveLoaded = false;
   let driveLoading = false;
-  const driveSelection = new Map();
-  const driveItemIndex = new Map();
-  let driveFilteredItems = [];
 
   function defaultPlatformState() {
     return {
@@ -8936,7 +8151,6 @@ body[data-theme="light"] .profile-expiry.expired {
     setDisabledState(geminiTextSubmitBtn, restricted);
     setDisabledState(geminiSpeechSubmitBtn, restricted);
     setDisabledState(geminiVeoSubmitBtn, restricted);
-    setDisabledState(soundFxSubmitBtn, restricted);
     refreshTopupConfirm();
   }
 
@@ -9321,12 +8535,19 @@ body[data-theme="light"] .profile-expiry.expired {
     const queueCount = totalJobs.filter(job => !finalStatus(job.status)).length;
     const completed = totalJobs.filter(job => finalStatus(job.status));
 
+    const videoCount = completed.filter(job => {
+      const cfg = modelConfigMap[job.modelId];
+      const type = job.type || (cfg && cfg.type);
+      return type === 'video';
+    }).length;
+
     const imageCount = completed.filter(job => {
       const cfg = modelConfigMap[job.modelId];
       const type = job.type || (cfg && cfg.type);
       return type === 'image' || type === 'edit';
     }).length;
 
+    if (statVideosEl) statVideosEl.textContent = videoCount.toLocaleString('id-ID');
     if (statImagesEl) statImagesEl.textContent = imageCount.toLocaleString('id-ID');
     if (statQueueEl) statQueueEl.textContent = queueCount.toLocaleString('id-ID');
   }
@@ -9350,91 +8571,6 @@ body[data-theme="light"] .profile-expiry.expired {
     const cfg = modelConfigMap[modelId];
     if (cfg && cfg.label) return cfg.label;
     return String(modelId).toUpperCase();
-  }
-
-  function driveItemKey(item) {
-    if (!item || typeof item !== 'object') return null;
-    if (item.id) return `id:${item.id}`;
-    const storage = item.storage_path || item.storagePath;
-    if (storage) return `storage:${storage}`;
-    if (item.url) return `url:${item.url}`;
-    return null;
-  }
-
-  function driveSelectionTarget(item) {
-    if (!item || typeof item !== 'object') return null;
-    const target = {};
-    if (item.id) target.id = String(item.id);
-    const storage = item.storage_path || item.storagePath;
-    if (storage) target.storage_path = String(storage);
-    if (item.url) target.url = String(item.url);
-    return Object.keys(target).length ? target : null;
-  }
-
-  function refreshDriveItemIndex() {
-    driveItemIndex.clear();
-    if (!Array.isArray(driveItems)) return;
-    driveItems.forEach(item => {
-      const key = driveItemKey(item);
-      if (key) {
-        driveItemIndex.set(key, item);
-      }
-    });
-  }
-
-  function pruneDriveSelection() {
-    let changed = false;
-    driveSelection.forEach((value, key) => {
-      if (!driveItemIndex.has(key)) {
-        driveSelection.delete(key);
-        changed = true;
-        return;
-      }
-      const latest = driveItemIndex.get(key);
-      const target = driveSelectionTarget(latest);
-      if (target) {
-        driveSelection.set(key, target);
-      }
-    });
-    updateDriveSelectionBar();
-  }
-
-  function updateDriveSelectionBar() {
-    if (!driveSelectionBar) return;
-
-    const selectedCount = driveSelection.size;
-    const visibleCount = Array.isArray(driveFilteredItems) ? driveFilteredItems.length : 0;
-    const showBar = selectedCount > 0 || visibleCount > 0;
-    driveSelectionBar.hidden = !showBar;
-
-    if (driveSelectionCountEl) {
-      driveSelectionCountEl.textContent = selectedCount
-        ? `${selectedCount} dipilih`
-        : 'Tidak ada file dipilih';
-    }
-
-    if (driveDeleteSelectedBtn) {
-      driveDeleteSelectedBtn.disabled = selectedCount === 0;
-    }
-
-    if (driveSelectAllCheckbox) {
-      if (!visibleCount) {
-        driveSelectAllCheckbox.checked = false;
-        driveSelectAllCheckbox.indeterminate = false;
-        driveSelectAllCheckbox.disabled = true;
-      } else {
-        let visibleSelected = 0;
-        driveFilteredItems.forEach(item => {
-          const key = driveItemKey(item);
-          if (key && driveSelection.has(key)) {
-            visibleSelected += 1;
-          }
-        });
-        driveSelectAllCheckbox.disabled = false;
-        driveSelectAllCheckbox.checked = visibleSelected > 0 && visibleSelected === visibleCount;
-        driveSelectAllCheckbox.indeterminate = visibleSelected > 0 && visibleSelected < visibleCount;
-      }
-    }
   }
 
   function formatDriveDate(iso) {
@@ -9487,7 +8623,6 @@ body[data-theme="light"] .profile-expiry.expired {
       return bTime - aTime;
     });
 
-    driveFilteredItems = items.slice();
     driveEmpty.style.display = items.length ? 'none' : 'block';
     driveGrid.innerHTML = '';
 
@@ -9495,17 +8630,6 @@ body[data-theme="light"] .profile-expiry.expired {
       if (!item || !item.url) return;
       const card = document.createElement('div');
       card.className = 'drive-card';
-      const key = driveItemKey(item);
-      const isSelected = key ? driveSelection.has(key) : false;
-      if (key && isSelected) {
-        const refreshedTarget = driveSelectionTarget(item);
-        if (refreshedTarget) {
-          driveSelection.set(key, refreshedTarget);
-        }
-      }
-      if (isSelected) {
-        card.classList.add('drive-card--selected');
-      }
 
       const thumb = document.createElement('div');
       thumb.className = 'drive-thumb';
@@ -9539,42 +8663,6 @@ body[data-theme="light"] .profile-expiry.expired {
         openAssetPreview(item.url, type);
       });
 
-      if (key) {
-        const selectToggle = document.createElement('label');
-        selectToggle.className = 'drive-select-toggle';
-        selectToggle.addEventListener('click', evt => evt.stopPropagation());
-
-        const selectInput = document.createElement('input');
-        selectInput.type = 'checkbox';
-        selectInput.checked = isSelected;
-        selectInput.addEventListener('click', evt => evt.stopPropagation());
-
-        const selectText = document.createElement('span');
-        const refreshSelectText = () => {
-          selectText.textContent = selectInput.checked ? 'Dipilih' : 'Pilih';
-        };
-        refreshSelectText();
-
-        selectInput.addEventListener('change', () => {
-          if (!key) return;
-          if (selectInput.checked) {
-            const target = driveSelectionTarget(item);
-            if (target) {
-              driveSelection.set(key, target);
-            }
-          } else {
-            driveSelection.delete(key);
-          }
-          card.classList.toggle('drive-card--selected', selectInput.checked);
-          refreshSelectText();
-          updateDriveSelectionBar();
-        });
-
-        selectToggle.appendChild(selectInput);
-        selectToggle.appendChild(selectText);
-        card.appendChild(selectToggle);
-      }
-
       const footer = document.createElement('div');
       footer.className = 'drive-card-footer';
 
@@ -9598,14 +8686,12 @@ body[data-theme="light"] .profile-expiry.expired {
       const previewBtn = document.createElement('button');
       previewBtn.type = 'button';
       previewBtn.textContent = 'Preview';
-      previewBtn.className = 'drive-action-btn';
       previewBtn.addEventListener('click', () => openAssetPreview(item.url, type));
       actions.appendChild(previewBtn);
 
       const copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.textContent = 'Copy Link';
-      copyBtn.className = 'drive-action-btn';
       copyBtn.addEventListener('click', () => copyDriveLink(item, copyBtn));
       actions.appendChild(copyBtn);
 
@@ -9615,12 +8701,11 @@ body[data-theme="light"] .profile-expiry.expired {
       downloadLink.rel = 'noopener';
       downloadLink.textContent = 'Download';
       downloadLink.setAttribute('download', '');
-      downloadLink.className = 'drive-action-btn drive-download-btn';
       actions.appendChild(downloadLink);
 
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
-      deleteBtn.className = 'drive-action-btn danger';
+      deleteBtn.className = 'danger';
       deleteBtn.textContent = 'Hapus';
       deleteBtn.addEventListener('click', () => deleteDriveEntry(item, deleteBtn));
       actions.appendChild(deleteBtn);
@@ -9632,7 +8717,6 @@ body[data-theme="light"] .profile-expiry.expired {
     });
 
     updateDriveSummary();
-    updateDriveSelectionBar();
   }
 
   async function loadDriveItems(force = false) {
@@ -9654,8 +8738,6 @@ body[data-theme="light"] .profile-expiry.expired {
         throw new Error((data && data.error) || 'Gagal memuat drive.');
       }
       driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
-      refreshDriveItemIndex();
-      pruneDriveSelection();
       driveLoaded = true;
       renderDriveItems();
     } catch (err) {
@@ -9682,8 +8764,6 @@ body[data-theme="light"] .profile-expiry.expired {
     }
 
     driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
-    refreshDriveItemIndex();
-    pruneDriveSelection();
     driveLoaded = true;
     renderDriveItems();
     return driveItems;
@@ -9775,13 +8855,60 @@ body[data-theme="light"] .profile-expiry.expired {
     }
   }
 
+  async function saveUgcVideoToDrive(item, button) {
+    if (!item || !item.videoUrl) {
+      alert('Video UGC belum siap.');
+      return;
+    }
+
+    const url = ensureAbsoluteUrl(item.videoUrl);
+    if (!/^https?:\/\//i.test(url)) {
+      alert('URL video tidak valid.');
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menyimpan…';
+    }
+
+    const entry = {
+      type: 'video',
+      url,
+      model: 'ugc-video',
+      prompt: item.videoPrompt || item.prompt || null,
+      created_at: nowIso()
+    };
+
+    const thumb = ensureAbsoluteUrl(item.imageUrl || item.remoteUrl || '');
+    if (/^https?:\/\//i.test(thumb)) {
+      entry.thumbnail_url = thumb;
+    }
+
+    try {
+      await persistDriveItems([entry]);
+      if (button) {
+        button.textContent = 'Tersimpan ✓';
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = 'Simpan Video';
+        }, 1800);
+      }
+    } catch (err) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Simpan Video';
+      }
+      alert('Gagal menyimpan video ke drive: ' + (err.message || err));
+    }
+  }
+
   async function deleteDriveEntry(item, button) {
     if (!item) return;
     const payload = {};
     if (item.id) payload.id = item.id;
     if (item.url) payload.url = item.url;
-    const storagePath = item.storage_path || item.storagePath;
-    if (storagePath) payload.storage_path = storagePath;
+    if (item.storage_path) payload.storage_path = item.storage_path;
     if (!payload.id && !payload.url && !payload.storage_path) {
       alert('Item drive tidak valid.');
       return;
@@ -9804,8 +8931,6 @@ body[data-theme="light"] .profile-expiry.expired {
         throw new Error(pickErrorMessage(data && data.error));
       }
       driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
-      refreshDriveItemIndex();
-      pruneDriveSelection();
       driveLoaded = true;
       renderDriveItems();
     } catch (err) {
@@ -9814,65 +8939,6 @@ body[data-theme="light"] .profile-expiry.expired {
       if (button) {
         button.disabled = false;
         button.textContent = 'Hapus';
-      }
-    }
-  }
-
-  async function deleteSelectedDriveEntries(button) {
-    if (!driveSelection.size) {
-      alert('Tidak ada file yang dipilih.');
-      return;
-    }
-
-    const payloadItems = Array.from(driveSelection.values())
-      .map(target => {
-        if (!target || typeof target !== 'object') return null;
-        const entry = {};
-        if (target.id) entry.id = target.id;
-        if (target.url) entry.url = target.url;
-        if (target.storage_path) entry.storage_path = target.storage_path;
-        return Object.keys(entry).length ? entry : null;
-      })
-      .filter(Boolean);
-
-    if (!payloadItems.length) {
-      alert('Tidak ada file yang valid untuk dihapus.');
-      return;
-    }
-
-    const confirmed = window.confirm(`Hapus ${payloadItems.length} file terpilih?`);
-    if (!confirmed) {
-      return;
-    }
-
-    const originalText = button ? button.textContent : '';
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'Menghapus…';
-    }
-
-    try {
-      const res = await fetch(DRIVE_DELETE_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ items: payloadItems })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(pickErrorMessage(data && data.error));
-      }
-      driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
-      refreshDriveItemIndex();
-      driveSelection.clear();
-      driveLoaded = true;
-      renderDriveItems();
-    } catch (err) {
-      alert('Gagal menghapus file terpilih: ' + (err.message || err));
-    } finally {
-      if (button) {
-        button.disabled = false;
-        button.textContent = originalText || 'Hapus terpilih';
       }
     }
   }
@@ -10007,14 +9073,12 @@ body[data-theme="light"] .profile-expiry.expired {
     if (!iso) {
       container.hidden = true;
       container.classList.remove('expired');
-      container.classList.remove('profile-expiry--active');
       if (valueEl) valueEl.textContent = '';
       return;
     }
     const formatted = formatProExpiry(iso);
     container.hidden = false;
     container.classList.toggle('expired', !!expired);
-    container.classList.toggle('profile-expiry--active', !expired);
     if (valueEl) {
       valueEl.textContent = formatted ? (expired ? `${formatted} · sudah berakhir` : formatted) : '-';
     }
@@ -10030,9 +9094,6 @@ body[data-theme="light"] .profile-expiry.expired {
     const originalSubscription = account.subscription || effectiveTier;
     const proExpired = accountProExpired(account);
     const showProExpiry = (account.subscription || '').toLowerCase() === 'pro' && account.pro_expires_at;
-    const isVerified = typeof account.is_verified === 'boolean'
-      ? account.is_verified
-      : effectiveTier !== 'free';
     let badgeLabel = formatSubscriptionLabel(originalSubscription);
     if ((account.subscription || '').toLowerCase() === 'pro') {
       badgeLabel = proExpired ? 'PRO (EXPIRED)' : 'PRO';
@@ -10060,17 +9121,6 @@ body[data-theme="light"] .profile-expiry.expired {
       avatarUrlInput.value = account.avatar_url || '';
     }
     updateAvatarPreview(account.avatar_url || '', initials);
-
-    const badgeElements = [profileBadgeEl, profileBadgeMobile].filter(Boolean);
-    badgeElements.forEach(badge => {
-      badge.classList.toggle('profile-badge--premium', isVerified);
-      badge.classList.toggle('profile-badge--free', !isVerified);
-    });
-
-    if (profileVerifiedBadgeEl) {
-      profileVerifiedBadgeEl.classList.toggle('verified-badge-star--hidden', !isVerified);
-      profileVerifiedBadgeEl.hidden = !isVerified;
-    }
 
     updateProExpiryDisplay(profileProExpiryEl, profileProExpiryValueEl, showProExpiry ? account.pro_expires_at : null, proExpired);
     updateProExpiryDisplay(profileProExpiryMobileEl, profileProExpiryMobileValueEl, showProExpiry ? account.pro_expires_at : null, proExpired);
@@ -10444,6 +9494,50 @@ body[data-theme="light"] .profile-expiry.expired {
     }
   };
 
+  const VIDEO_LAYOUT_OPTIONS = [
+    { value: 'portrait',  label: 'Portrait 9:16',  ratio: 'portrait_9_16' },
+    { value: 'landscape', label: 'Landscape 16:9', ratio: 'landscape_16_9' },
+    { value: 'square',    label: 'Square 1:1',     ratio: 'square_1_1' }
+  ];
+
+  const VIDEO_LAYOUT_TO_RATIO = VIDEO_LAYOUT_OPTIONS.reduce((acc, opt) => {
+    acc[opt.value] = opt.ratio;
+    return acc;
+  }, {});
+
+  const VIDEO_MODEL_DURATION_OPTIONS = {
+    wan480: { values: [4, 6, 10], default: 6, defaultLayout: 'portrait' },
+    wan720: { values: [4, 6, 10], default: 6, defaultLayout: 'portrait' },
+    seedancePro480: { values: [5, 10], default: 5, defaultLayout: 'portrait' },
+    seedancePro720: { values: [5, 10], default: 5, defaultLayout: 'portrait' },
+    seedancePro1080: { values: [5, 10], default: 5, defaultLayout: 'landscape' },
+    klingStd21: { values: [5, 8], default: 5, defaultLayout: 'portrait' },
+    kling25Pro: { values: [5, 8, 12], default: 5, defaultLayout: 'landscape' },
+    minimax1080: { values: [6, 12], default: 6, defaultLayout: 'landscape' },
+    _default: { values: [5], default: 5, defaultLayout: 'portrait' }
+  };
+
+  function mapVideoAspect(layoutKey) {
+    if (!layoutKey) return 'auto';
+    const key = String(layoutKey).toLowerCase();
+    return VIDEO_LAYOUT_TO_RATIO[key] || 'auto';
+  }
+
+  function applyVideoExtras(body, formData = {}) {
+    if (!body || typeof body !== 'object') return body;
+    const duration = formData.videoDuration;
+    if (typeof duration === 'number' && !Number.isNaN(duration) && duration > 0) {
+      body.duration = duration;
+    }
+    const ratio = mapVideoAspect(formData.videoLayout);
+    if (ratio && (ratio !== 'auto' || !body.aspect_ratio)) {
+      body.aspect_ratio = ratio;
+    } else if (!body.aspect_ratio) {
+      body.aspect_ratio = 'auto';
+    }
+    return body;
+  }
+
   // ===== MODEL CONFIG =====
   const MODEL_CONFIG = {
     gemini: {
@@ -10583,12 +9677,108 @@ body[data-theme="light"] .profile-expiry.expired {
       buildBody: f => `image_url=${encodeURIComponent(f.imageUrl)}`
     },
 
+    wan480: {
+      id: 'wan480',
+      label: 'Wan v2.2 – 480p',
+      type: 'video',
+      path: '/v1/ai/image-to-video/wan-v2-2-480p',
+      statusPath: taskId => `/v1/ai/image-to-video/wan-v2-2-480p/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    wan720: {
+      id: 'wan720',
+      label: 'Wan v2.2 – 720p',
+      type: 'video',
+      path: '/v1/ai/image-to-video/wan-v2-2-720p',
+      statusPath: taskId => `/v1/ai/image-to-video/wan-v2-2-720p/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    seedancePro480: {
+      id: 'seedancePro480',
+      label: 'Seedance Pro – 480p',
+      type: 'video',
+      path: '/v1/ai/image-to-video/seedance-pro-480p',
+      statusPath: taskId => `/v1/ai/image-to-video/seedance-pro-480p/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    seedancePro720: {
+      id: 'seedancePro720',
+      label: 'Seedance Pro – 720p',
+      type: 'video',
+      path: '/v1/ai/image-to-video/seedance-pro-720p',
+      statusPath: taskId => `/v1/ai/image-to-video/seedance-pro-720p/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    seedancePro1080: {
+      id: 'seedancePro1080',
+      label: 'Seedance Pro – 1080p',
+      type: 'video',
+      path: '/v1/ai/image-to-video/seedance-pro-1080p',
+      statusPath: taskId => `/v1/ai/image-to-video/seedance-pro-1080p/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    klingStd21: {
+      id: 'klingStd21',
+      label: 'Kling Std v2.1',
+      type: 'video',
+      path: '/v1/ai/image-to-video/kling-v2-1-std',
+      statusPath: taskId => `/v1/ai/image-to-video/kling-v2-1-std/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    kling21Master: {
+      id: 'kling21Master',
+      label: 'Kling v2.1 Master',
+      type: 'video',
+      path: '/v1/ai/image-to-video/kling-v2-1-master',
+      statusPath: taskId => `/v1/ai/image-to-video/kling-v2-1-master/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    kling25Pro: {
+      id: 'kling25Pro',
+      label: 'Kling v2.5 Pro',
+      type: 'video',
+      path: '/v1/ai/image-to-video/kling-v2-5-pro',
+      statusPath: taskId => `/v1/ai/image-to-video/kling-v2-5-pro/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    pixverse: {
+      id: 'pixverse',
+      label: 'PixVerse',
+      type: 'video',
+      path: '/v1/ai/image-to-video/pixverse',
+      statusPath: taskId => `/v1/ai/image-to-video/pixverse/${taskId}`,
+      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+    },
+    minimax1080: {
+      id: 'minimax1080',
+      label: 'MiniMax Hailuo 02 – 1080p',
+      type: 'video',
+      path: '/v1/ai/image-to-video/minimax-hailuo-02-1080p',
+      statusPath: taskId => `/v1/ai/image-to-video/minimax-hailuo-02-1080p/${taskId}`,
+      buildBody: f => applyVideoExtras({
+        prompt: f.prompt,
+        first_frame_image: f.imageUrl || undefined
+      }, f)
+    },
 
+    latentSync: {
+      id: 'latentSync',
+      label: 'Latent-Sync',
+      type: 'video',
+      path: '/v1/ai/lip-sync/latent-sync',
+      statusPath: taskId => `/v1/ai/lip-sync/latent-sync/${taskId}`,
+      buildBody: f => ({
+        video_url: f.videoUrl,
+        audio_url: f.audioUrl,
+        prompt: f.prompt || undefined
+      })
+    }
   };
   modelConfigMap = MODEL_CONFIG;
 
   const FEATURE_MODELS = {
-    imageGen: ['gemini','imagen3','seedream4','fluxPro11','mystic','getHyperflux','seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg']
+    imageGen: ['gemini','imagen3','seedream4','fluxPro11','mystic','getHyperflux','seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'],
+    videoGen: ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','kling25Pro','pixverse','minimax1080','latentSync']
   };
 
   const STORAGE_KEY = 'freepik_jobs_v1';
@@ -10807,21 +9997,6 @@ body[data-theme="light"] .profile-expiry.expired {
   const geminiSpeechResetBtn = document.getElementById('geminiSpeechReset');
   const geminiSpeechAudio = document.getElementById('geminiSpeechAudio');
   const geminiSpeechDownload = document.getElementById('geminiSpeechDownload');
-
-  const soundFxForm = document.getElementById('soundFxForm');
-  const soundFxPrompt = document.getElementById('soundFxPrompt');
-  const soundFxDuration = document.getElementById('soundFxDuration');
-  const soundFxFormat = document.getElementById('soundFxFormat');
-  const soundFxCategories = document.getElementById('soundFxCategories');
-  const soundFxSeed = document.getElementById('soundFxSeed');
-  const soundFxAdvanced = document.getElementById('soundFxAdvanced');
-  const soundFxStatus = document.getElementById('soundFxStatus');
-  const soundFxSubmitBtn = document.getElementById('soundFxSubmit');
-  const soundFxResetBtn = document.getElementById('soundFxReset');
-  const soundFxAudio = document.getElementById('soundFxAudio');
-  const soundFxDownload = document.getElementById('soundFxDownload');
-  const soundFxMeta = document.getElementById('soundFxMeta');
-  const soundFxResultWrapper = document.getElementById('soundFxResult');
   const geminiVeoForm = document.getElementById('geminiVeoForm');
   const geminiVeoPrompt = document.getElementById('geminiVeoPrompt');
   const geminiVeoDialogue = document.getElementById('geminiVeoDialogue');
@@ -10835,17 +10010,13 @@ body[data-theme="light"] .profile-expiry.expired {
   const defaultGeminiTextTemperature = geminiTextTemperature ? geminiTextTemperature.value : '0.7';
   const defaultGeminiSpeechModel = geminiSpeechModel ? geminiSpeechModel.value : 'gemini-1.5-flash-latest';
   const defaultGeminiSpeechTemperature = geminiSpeechTemperature ? geminiSpeechTemperature.value : '0.3';
-
-  const SOUND_FX_POLL_INTERVAL = 6000;
-  const SOUND_FX_MAX_POLLS = 12;
-  const SOUND_FX_SUCCESS_STATUSES = ['completed', 'succeeded', 'finished', 'ready', 'done'];
-  const SOUND_FX_FAILURE_STATUSES = ['failed', 'error', 'cancelled', 'canceled', 'rejected'];
-  let soundFxPollTimer = null;
-  let soundFxPollAttempts = 0;
-  let soundFxCurrentTaskId = null;
-  let soundFxPreferredMime = 'audio/mpeg';
   const defaultGeminiVeoDuration = geminiVeoDuration ? geminiVeoDuration.value : '6';
   const defaultGeminiVeoAspect = geminiVeoAspect ? geminiVeoAspect.value : '16:9';
+  const videoUrlInput = document.getElementById('videoUrl');
+  const audioUrlInput = document.getElementById('audioUrl');
+  const rowVideoSettings = document.getElementById('rowVideoSettings');
+  const videoDurationSelect = document.getElementById('videoDuration');
+  const videoLayoutSelect = document.getElementById('videoLayout');
   const numImagesInput = document.getElementById('numImages');
   const aspectRatioInput = document.getElementById('aspectRatio');
   const submitBtn = document.getElementById('submitBtn');
@@ -10891,6 +10062,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
   const rowPrompt      = document.getElementById('rowPrompt');
   const rowImageUrl    = document.getElementById('rowImageUrl');
+  const rowVideoAudio  = document.getElementById('rowVideoAudio');
   const rowTIOptions   = document.getElementById('rowTIOptions');
   const fieldsTitle    = document.getElementById('fieldsTitle');
 
@@ -11374,321 +10546,6 @@ body[data-theme="light"] .profile-expiry.expired {
     showInlineStatus(geminiSpeechStatus, '', null);
   }
 
-  function stopSoundFxPolling() {
-    if (soundFxPollTimer) {
-      clearTimeout(soundFxPollTimer);
-      soundFxPollTimer = null;
-    }
-    soundFxPollAttempts = 0;
-    soundFxCurrentTaskId = null;
-  }
-
-  function updateSoundFxMeta(data) {
-    if (!soundFxMeta) return;
-    if (data === null || typeof data === 'undefined') {
-      soundFxMeta.textContent = '';
-      soundFxMeta.hidden = true;
-      return;
-    }
-    let text;
-    if (typeof data === 'string') {
-      text = data;
-    } else {
-      try {
-        text = JSON.stringify(data, null, 2);
-      } catch (err) {
-        text = String(data);
-      }
-    }
-    soundFxMeta.textContent = text;
-    soundFxMeta.hidden = false;
-    if (soundFxResultWrapper) {
-      soundFxResultWrapper.hidden = false;
-    }
-  }
-
-  function clearSoundFxOutput() {
-    if (soundFxAudio) {
-      try {
-        soundFxAudio.pause();
-      } catch (err) {
-        // abaikan
-      }
-      soundFxAudio.removeAttribute('src');
-      soundFxAudio.load();
-      soundFxAudio.hidden = true;
-      soundFxAudio.style.display = 'none';
-    }
-    if (soundFxDownload) {
-      soundFxDownload.hidden = true;
-      soundFxDownload.removeAttribute('href');
-      soundFxDownload.removeAttribute('download');
-    }
-    updateSoundFxMeta(null);
-    if (soundFxResultWrapper) {
-      soundFxResultWrapper.hidden = true;
-    }
-  }
-
-  function resetSoundFxForm() {
-    stopSoundFxPolling();
-    if (soundFxPrompt) soundFxPrompt.value = '';
-    if (soundFxDuration) soundFxDuration.value = '';
-    if (soundFxFormat) {
-      const options = Array.from(soundFxFormat.options || []);
-      if (options.some(opt => opt.value === 'mp3')) {
-        soundFxFormat.value = 'mp3';
-      } else if (options.length) {
-        soundFxFormat.value = options[0].value;
-      } else {
-        soundFxFormat.value = 'mp3';
-      }
-    }
-    if (soundFxCategories) soundFxCategories.value = '';
-    if (soundFxSeed) soundFxSeed.value = '';
-    if (soundFxAdvanced) soundFxAdvanced.value = '';
-    soundFxPreferredMime = 'audio/mpeg';
-    clearSoundFxOutput();
-    showInlineStatus(soundFxStatus, '', null);
-  }
-
-  function guessSoundFxMime(value, fallback = 'audio/mpeg') {
-    if (typeof value === 'string') {
-      const lower = value.toLowerCase();
-      if (lower.startsWith('data:')) {
-        const match = lower.match(/^data:([^;,]+)/);
-        if (match && match[1]) {
-          return match[1];
-        }
-      }
-      if (lower.includes('.wav')) return 'audio/wav';
-      if (lower.includes('.ogg')) return 'audio/ogg';
-      if (lower.includes('.flac')) return 'audio/flac';
-      if (lower.includes('.aac')) return 'audio/aac';
-      if (lower.includes('.m4a')) return 'audio/mp4';
-      if (lower.includes('.mp3') || lower.includes('.mpeg')) return 'audio/mpeg';
-    }
-    return fallback || 'audio/mpeg';
-  }
-
-  function createSoundFxDataUrl(value, mime = 'audio/mpeg') {
-    if (!value || typeof value !== 'string') return null;
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    if (trimmed.startsWith('data:')) {
-      return trimmed;
-    }
-    const normalized = trimmed.replace(/\s+/g, '');
-    if (normalized.length < 32) return null;
-    if (!/^[A-Za-z0-9+/=]+$/.test(normalized)) return null;
-    return `data:${mime || 'audio/mpeg'};base64,${normalized}`;
-  }
-
-  function parseSoundFxResponse(raw, fallbackMime = 'audio/mpeg') {
-    const fallback = fallbackMime || 'audio/mpeg';
-    const result = {
-      taskId: null,
-      status: null,
-      outputs: [],
-      raw,
-    };
-
-    const outputs = [];
-    const seen = new Set();
-    const visited = new WeakSet();
-
-    function pushOutput(url, mime, filename, source) {
-      if (!url) return;
-      const key = `${url}|${mime || ''}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      outputs.push({
-        url,
-        mime: mime || fallback,
-        filename: filename || null,
-        source: source || null,
-      });
-    }
-
-    function considerString(str, source) {
-      if (typeof str !== 'string') return;
-      const trimmed = str.trim();
-      if (!trimmed) return;
-      if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:')) {
-        pushOutput(trimmed, guessSoundFxMime(trimmed, fallback), null, source);
-        return;
-      }
-      const dataUrl = createSoundFxDataUrl(trimmed, fallback);
-      if (dataUrl) {
-        pushOutput(dataUrl, guessSoundFxMime(dataUrl, fallback), null, source);
-      }
-    }
-
-    function collect(value, source) {
-      if (value === null || typeof value === 'undefined') return;
-      if (typeof value === 'string') {
-        considerString(value, source);
-        return;
-      }
-      if (Array.isArray(value)) {
-        value.forEach(item => collect(item, source));
-        return;
-      }
-      if (typeof value !== 'object') return;
-      if (visited.has(value)) return;
-      visited.add(value);
-
-      const filename = value.filename || value.name || value.title || null;
-      const mime = value.mime_type || value.mimetype || value.mime || value.type || value.media_type || null;
-      const nextSource = source || value.source || value.kind || value.type || null;
-
-      const urlCandidate = value.url || value.audio_url || value.download_url || value.preview_url || value.href || value.link || value.file_url;
-      if (typeof urlCandidate === 'string') {
-        pushOutput(urlCandidate, guessSoundFxMime(urlCandidate, mime || fallback), filename, nextSource);
-      }
-
-      const base64Candidate = value.base64 || value.audio_base64 || value.content || value.data || value.file_base64 || value.blob;
-      if (typeof base64Candidate === 'string') {
-        const dataUrl = createSoundFxDataUrl(base64Candidate, mime || fallback);
-        if (dataUrl) {
-          pushOutput(dataUrl, guessSoundFxMime(dataUrl, mime || fallback), filename, nextSource);
-        }
-      }
-
-      const nestedKeys = ['generated', 'results', 'result', 'outputs', 'output', 'assets', 'files', 'file', 'audio', 'audios', 'items', 'media', 'data', 'response', 'variants', 'previews', 'tracks'];
-      nestedKeys.forEach(key => {
-        if (Object.prototype.hasOwnProperty.call(value, key)) {
-          collect(value[key], nextSource || key);
-        }
-      });
-
-      Object.keys(value).forEach(key => {
-        if (nestedKeys.includes(key)) return;
-        const lower = key.toLowerCase();
-        if (lower.includes('url') || lower.includes('audio') || lower.includes('file')) {
-          collect(value[key], nextSource || key);
-        }
-      });
-    }
-
-    if (raw && typeof raw === 'object') {
-      const data = raw && typeof raw.data === 'object' ? raw.data : null;
-      result.taskId = (data && (data.task_id || data.taskId || data.id)) || raw.task_id || raw.taskId || raw.id || null;
-      result.status = (data && (data.status || data.state || data.phase)) || raw.status || raw.state || raw.phase || null;
-
-      collect(data && data.generated, 'generated');
-      collect(raw.generated, 'generated');
-      collect(data && data.assets, 'assets');
-      collect(data && data.audio, 'audio');
-      collect(data && data.audios, 'audio');
-      collect(data && data.output, 'output');
-      collect(data && data.outputs, 'outputs');
-      collect(data && data.result, 'result');
-      collect(data && data.results, 'result');
-      collect(raw.result, 'result');
-      collect(raw.results, 'result');
-      collect(data && data.url, 'url');
-      collect(raw.url, 'url');
-      collect(data && data.audio_url, 'audio_url');
-      collect(raw.audio_url, 'audio_url');
-      collect(data && data.download_url, 'download_url');
-      collect(raw.download_url, 'download_url');
-      collect(data && data.preview_url, 'preview_url');
-      collect(raw.preview_url, 'preview_url');
-      collect(data && data.base64, 'base64');
-      collect(data && data.audio_base64, 'audio_base64');
-
-      if (!outputs.length) {
-        collect(data, 'data');
-        collect(raw, 'root');
-      }
-    } else if (typeof raw === 'string') {
-      considerString(raw, 'raw');
-    }
-
-    result.outputs = outputs;
-    return result;
-  }
-
-  function scheduleSoundFxPolling(taskId, delay = SOUND_FX_POLL_INTERVAL) {
-    if (!taskId || taskId !== soundFxCurrentTaskId) return;
-    if (soundFxPollTimer) {
-      clearTimeout(soundFxPollTimer);
-    }
-    soundFxPollTimer = setTimeout(() => pollSoundFxStatus(taskId), delay);
-  }
-
-  async function pollSoundFxStatus(taskId) {
-    if (!taskId || taskId !== soundFxCurrentTaskId) {
-      return;
-    }
-    soundFxPollAttempts += 1;
-    try {
-      const data = await callFreepikEndpoint({ path: `/v1/sound-effects/${encodeURIComponent(taskId)}`, method: 'GET' });
-      const parsed = parseSoundFxResponse(data, soundFxPreferredMime);
-      if (parsed.raw) {
-        updateSoundFxMeta(parsed.raw);
-      }
-      const status = (parsed.status || '').toString().toLowerCase();
-      if (parsed.outputs.length || SOUND_FX_SUCCESS_STATUSES.includes(status)) {
-        stopSoundFxPolling();
-        applySoundFxOutputs(parsed, 'Sound effect siap diunduh.');
-        return;
-      }
-      if (SOUND_FX_FAILURE_STATUSES.includes(status)) {
-        stopSoundFxPolling();
-        showInlineStatus(soundFxStatus, `Sound effect gagal (${status || 'error'}).`, 'err');
-        return;
-      }
-      if (soundFxPollAttempts >= SOUND_FX_MAX_POLLS) {
-        stopSoundFxPolling();
-        showInlineStatus(soundFxStatus, 'Batas pengecekan status tercapai. Coba lagi beberapa saat.', 'err');
-        return;
-      }
-      showInlineStatus(soundFxStatus, 'Menunggu Freepik memproses sound effect…', 'progress');
-      scheduleSoundFxPolling(taskId);
-    } catch (err) {
-      if (soundFxPollAttempts >= SOUND_FX_MAX_POLLS) {
-        stopSoundFxPolling();
-        showInlineStatus(soundFxStatus, err.message || 'Gagal memeriksa status sound effect.', 'err');
-      } else if (taskId === soundFxCurrentTaskId) {
-        scheduleSoundFxPolling(taskId);
-      }
-    }
-  }
-
-  function applySoundFxOutputs(parsed, successMessage) {
-    if (!parsed) return;
-    if (soundFxResultWrapper) {
-      soundFxResultWrapper.hidden = false;
-    }
-    if (parsed.raw) {
-      updateSoundFxMeta(parsed.raw);
-    }
-    if (!Array.isArray(parsed.outputs) || !parsed.outputs.length) {
-      if (successMessage) {
-        showInlineStatus(soundFxStatus, successMessage, 'ok');
-      }
-      return;
-    }
-    const first = parsed.outputs[0];
-    const mime = first.mime || soundFxPreferredMime || 'audio/mpeg';
-    soundFxPreferredMime = mime;
-    if (soundFxAudio) {
-      soundFxAudio.src = first.url;
-      soundFxAudio.hidden = false;
-      soundFxAudio.style.display = 'block';
-      soundFxAudio.load();
-      soundFxAudio.play().catch(() => {});
-    }
-    if (soundFxDownload) {
-      soundFxDownload.href = first.url;
-      soundFxDownload.hidden = false;
-      soundFxDownload.download = first.filename || `freepik-sfx-${Date.now()}.${mimeToExtension(mime)}`;
-    }
-    showInlineStatus(soundFxStatus, successMessage || 'Sound effect berhasil dibuat.', 'ok');
-  }
-
   function resetGeminiVeoForm() {
     if (geminiVeoPrompt) geminiVeoPrompt.value = '';
     if (geminiVeoDialogue) geminiVeoDialogue.value = '';
@@ -11861,131 +10718,6 @@ body[data-theme="light"] .profile-expiry.expired {
     });
   }
 
-  if (soundFxForm) {
-    soundFxForm.addEventListener('submit', async event => {
-      event.preventDefault();
-      if (!ensureGeminiAccess()) {
-        return;
-      }
-
-      const prompt = soundFxPrompt ? soundFxPrompt.value.trim() : '';
-      if (!prompt) {
-        showInlineStatus(soundFxStatus, 'Deskripsi sound effect wajib diisi.', 'err');
-        if (soundFxPrompt) soundFxPrompt.focus();
-        return;
-      }
-
-      let payload = { prompt };
-
-      const durationRaw = soundFxDuration ? soundFxDuration.value.trim() : '';
-      const durationValue = durationRaw === '' ? NaN : Number(durationRaw);
-      if (!Number.isNaN(durationValue) && durationValue > 0) {
-        payload.duration_seconds = Math.round(durationValue);
-      }
-
-      let formatValue = 'mp3';
-      if (soundFxFormat && soundFxFormat.value) {
-        formatValue = soundFxFormat.value;
-      }
-      if (formatValue) {
-        payload.format = formatValue;
-      }
-      if (formatValue === 'wav') {
-        soundFxPreferredMime = 'audio/wav';
-      } else if (formatValue === 'ogg') {
-        soundFxPreferredMime = 'audio/ogg';
-      } else if (formatValue === 'flac') {
-        soundFxPreferredMime = 'audio/flac';
-      } else if (formatValue === 'aac') {
-        soundFxPreferredMime = 'audio/aac';
-      } else {
-        soundFxPreferredMime = 'audio/mpeg';
-      }
-
-      if (soundFxCategories && soundFxCategories.value.trim() !== '') {
-        const categories = soundFxCategories.value.split(',').map(part => part.trim()).filter(Boolean);
-        if (categories.length) {
-          payload.categories = categories;
-        }
-      }
-
-      if (soundFxSeed && soundFxSeed.value.trim() !== '') {
-        const seedRaw = soundFxSeed.value.trim();
-        const numericSeed = Number(seedRaw);
-        payload.seed = Number.isFinite(numericSeed) ? numericSeed : seedRaw;
-      }
-
-      if (soundFxAdvanced && soundFxAdvanced.value.trim() !== '') {
-        try {
-          const extra = JSON.parse(soundFxAdvanced.value);
-          if (!extra || typeof extra !== 'object' || Array.isArray(extra)) {
-            throw new Error('Advanced options harus berupa objek JSON.');
-          }
-          payload = Object.assign({}, payload, extra);
-        } catch (err) {
-          showInlineStatus(soundFxStatus, err.message || 'Advanced options harus berupa JSON valid.', 'err');
-          if (soundFxAdvanced) soundFxAdvanced.focus();
-          return;
-        }
-      }
-
-      stopSoundFxPolling();
-      clearSoundFxOutput();
-      toggleButtonLoading(soundFxSubmitBtn, true, 'Mengirim…');
-      showInlineStatus(soundFxStatus, 'Mengirim permintaan ke Freepik…', 'progress');
-
-      try {
-        const result = await callFreepikEndpoint({ path: '/v1/sound-effects', method: 'POST', body: payload });
-        if (result && typeof result === 'object') {
-          const parsed = parseSoundFxResponse(result, soundFxPreferredMime);
-          if (parsed.raw) {
-            updateSoundFxMeta(parsed.raw);
-          }
-          if (parsed.outputs.length) {
-            stopSoundFxPolling();
-            applySoundFxOutputs(parsed, 'Sound effect berhasil dibuat.');
-          } else if (parsed.taskId) {
-            soundFxCurrentTaskId = parsed.taskId;
-            soundFxPollAttempts = 0;
-            showInlineStatus(soundFxStatus, 'Permintaan diterima. Menunggu Freepik memproses sound effect…', 'progress');
-            scheduleSoundFxPolling(parsed.taskId);
-          } else {
-            showInlineStatus(soundFxStatus, 'Freepik tidak mengembalikan audio. Cek JSON respons di bawah.', 'err');
-            if (!parsed.raw) {
-              updateSoundFxMeta(result);
-            }
-          }
-        } else if (typeof result === 'string') {
-          const parsed = parseSoundFxResponse(result, soundFxPreferredMime);
-          if (parsed.outputs.length) {
-            stopSoundFxPolling();
-            applySoundFxOutputs(parsed, 'Sound effect berhasil dibuat.');
-          } else {
-            updateSoundFxMeta(result);
-            showInlineStatus(soundFxStatus, 'Freepik tidak mengembalikan audio.', 'err');
-          }
-        } else {
-          showInlineStatus(soundFxStatus, 'Respons Freepik tidak dikenal.', 'err');
-        }
-      } catch (err) {
-        stopSoundFxPolling();
-        showInlineStatus(soundFxStatus, err.message || 'Gagal membuat sound effect.', 'err');
-      } finally {
-        toggleButtonLoading(soundFxSubmitBtn, false);
-      }
-    });
-  }
-
-  if (soundFxResetBtn) {
-    soundFxResetBtn.addEventListener('click', () => {
-      resetSoundFxForm();
-    });
-  }
-
-  if (soundFxForm) {
-    resetSoundFxForm();
-  }
-
   if (geminiVeoForm) {
     geminiVeoForm.addEventListener('submit', async event => {
       event.preventDefault();
@@ -12067,8 +10799,56 @@ body[data-theme="light"] .profile-expiry.expired {
       modelHint.textContent = 'Upscaler: wajib image URL. Prompt opsional.';
     } else if (id === 'removeBg') {
       modelHint.textContent = 'Remove Background: wajib image URL. Response langsung URL hasil (valid 5 menit).';
+    } else if (['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'].includes(id)) {
+      modelHint.textContent = 'Image-to-video: wajib image URL + prompt singkat. Pilih durasi & layout (portrait / landscape / square).';
+    } else if (id === 'latentSync') {
+      modelHint.textContent = 'Latent-Sync: wajib video URL dan audio URL. Prompt opsional.';
     } else {
       modelHint.textContent = 'Isi prompt dan field sesuai model.';
+    }
+  }
+
+  function getVideoDurationMeta(modelId) {
+    return VIDEO_MODEL_DURATION_OPTIONS[modelId] || VIDEO_MODEL_DURATION_OPTIONS._default;
+  }
+
+  function ensureVideoLayoutOptions() {
+    if (!videoLayoutSelect || videoLayoutSelect.dataset.populated) return;
+    videoLayoutSelect.innerHTML = '';
+    VIDEO_LAYOUT_OPTIONS.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      videoLayoutSelect.appendChild(option);
+    });
+    videoLayoutSelect.dataset.populated = '1';
+  }
+
+  function configureVideoControls(modelId) {
+    if (!rowVideoSettings || !videoDurationSelect || !videoLayoutSelect) return;
+    ensureVideoLayoutOptions();
+
+    const meta = getVideoDurationMeta(modelId);
+    const durations = Array.isArray(meta.values) && meta.values.length ? meta.values : getVideoDurationMeta('_default').values;
+
+    videoDurationSelect.innerHTML = '';
+    durations.forEach(sec => {
+      const option = document.createElement('option');
+      option.value = String(sec);
+      option.textContent = `${sec} detik`;
+      videoDurationSelect.appendChild(option);
+    });
+
+    const defaultDuration = meta.default || durations[0] || null;
+    if (defaultDuration) {
+      videoDurationSelect.value = String(defaultDuration);
+    } else if (videoDurationSelect.options.length) {
+      videoDurationSelect.selectedIndex = 0;
+    }
+
+    const layoutDefault = (meta.defaultLayout && VIDEO_LAYOUT_TO_RATIO[meta.defaultLayout]) ? meta.defaultLayout : (videoLayoutSelect.options[0] ? videoLayoutSelect.options[0].value : '');
+    if (layoutDefault) {
+      videoLayoutSelect.value = layoutDefault;
     }
   }
 
@@ -12077,8 +10857,12 @@ body[data-theme="light"] .profile-expiry.expired {
 
     const isT2I = ['gemini','imagen3','seedream4','fluxPro11','mystic','getHyperflux'].includes(id);
     const isEdit = ['seedream4edit','upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg'].includes(id);
+    const isI2V = ['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','kling25Pro','pixverse','minimax1080'].includes(id);
+    const isLip = id === 'latentSync';
 
     rowImageUrl.classList.add('hidden');
+    rowVideoAudio.classList.add('hidden');
+    rowVideoSettings.classList.add('hidden');
     rowTIOptions.classList.add('hidden');
     rowPrompt.classList.remove('hidden');
 
@@ -12089,6 +10873,14 @@ body[data-theme="light"] .profile-expiry.expired {
       fieldsTitle.textContent = 'Image Editing';
       rowImageUrl.classList.remove('hidden');
       if (id === 'removeBg') rowPrompt.classList.add('hidden');
+    } else if (isI2V) {
+      fieldsTitle.textContent = 'Video Gen';
+      rowImageUrl.classList.remove('hidden');
+      rowVideoSettings.classList.remove('hidden');
+      configureVideoControls(id);
+    } else if (isLip) {
+      fieldsTitle.textContent = 'Video Gen (Lipsync)';
+      rowVideoAudio.classList.remove('hidden');
     } else {
       fieldsTitle.textContent = 'Input';
     }
@@ -12118,38 +10910,29 @@ body[data-theme="light"] .profile-expiry.expired {
     const options = modelSelect.querySelectorAll('option');
     let firstVisible = null;
 
-    if (allowed.size) {
-      options.forEach(opt => {
-        const id = opt.value;
-        if (!id) return;
-        if (allowed.has(id)) {
-          opt.disabled = false;
-          opt.hidden = false;
-          if (!firstVisible) firstVisible = opt;
-        } else {
-          opt.disabled = true;
-          opt.hidden = true;
-        }
-      });
-    } else {
-      options.forEach(opt => {
+    options.forEach(opt => {
+      const id = opt.value;
+      if (!id) return;
+      if (allowed.has(id)) {
         opt.disabled = false;
         opt.hidden = false;
-      });
-    }
+        if (!firstVisible) firstVisible = opt;
+      } else {
+        opt.disabled = true;
+        opt.hidden = true;
+      }
+    });
 
     if (firstVisible) {
       modelSelect.value = firstVisible.value;
       setModelHint(firstVisible.value);
-      updateFields();
-    } else if (!allowed.size) {
-      setModelHint(modelSelect.value);
       updateFields();
     }
 
     if (!featureLabel) return;
     let label;
     if (featureKey === 'imageGen') label = 'Image Gen';
+    else if (featureKey === 'videoGen') label = 'Video Gen';
     else label = 'AI Hub';
     featureLabel.textContent = label;
     if (navButtons.length && viewHubSection && viewHubSection.style.display !== 'none') {
@@ -12968,10 +11751,12 @@ body[data-theme="light"] .profile-expiry.expired {
     const formData = {
       prompt: promptInput.value.trim(),
       imageUrl: imageUrlInput.value.trim(),
+      videoUrl: videoUrlInput.value.trim(),
+      audioUrl: audioUrlInput.value.trim(),
+      videoDuration: (videoDurationSelect && videoDurationSelect.value) ? Number(videoDurationSelect.value) : null,
+      videoLayout: videoLayoutSelect && videoLayoutSelect.value ? videoLayoutSelect.value : null,
       numImages: numImagesInput.value ? Number(numImagesInput.value) : null,
-      aspectRatio: aspectRatioInput.value || null,
-      klingNegativePrompt: klingNegativePrompt ? klingNegativePrompt.value.trim() : '',
-      klingCfgScale: klingCfgScale && klingCfgScale.value !== '' ? Number(klingCfgScale.value) : null
+      aspectRatio: aspectRatioInput.value || null
     };
 
     if (formData.imageUrl) {
@@ -12980,8 +11765,23 @@ body[data-theme="light"] .profile-expiry.expired {
         imageUrlInput.value = formData.imageUrl;
       }
     }
+    if (formData.videoUrl) {
+      formData.videoUrl = ensureAbsoluteUrl(formData.videoUrl);
+      if (videoUrlInput) {
+        videoUrlInput.value = formData.videoUrl;
+      }
+    }
+    if (formData.audioUrl) {
+      formData.audioUrl = ensureAbsoluteUrl(formData.audioUrl);
+      if (audioUrlInput) {
+        audioUrlInput.value = formData.audioUrl;
+      }
+    }
+
     const requireImageModels = [
-      'upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg','seedream4edit'
+      'upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg',
+      'wan480','wan720','seedancePro480','seedancePro720','seedancePro1080',
+      'klingStd21','kling25Pro','minimax1080','seedream4edit'
     ];
 
     if (!formData.prompt && ['gemini','imagen3','seedream4','fluxPro11'].includes(modelId)) {
@@ -12990,6 +11790,12 @@ body[data-theme="light"] .profile-expiry.expired {
     if (requireImageModels.includes(modelId) && !formData.imageUrl) {
       throw new Error('Image URL wajib diisi untuk model ini.');
     }
+    if (modelId === 'latentSync') {
+      if (!formData.videoUrl || !formData.audioUrl) {
+        throw new Error('Latent-Sync butuh video URL dan audio URL.');
+      }
+    }
+
     let usedGeminiRefs = null;
     let usedGeminiMode = null;
     if (modelId === 'gemini') {
@@ -13107,6 +11913,19 @@ body[data-theme="light"] .profile-expiry.expired {
           await ensureLocalFiles(job);
         }
         await syncJobToDrive(job);
+        if (job.type === 'video') {
+          const url = (job.localUrls && job.localUrls[0]) ||
+                      (job.generated && job.generated[0]) ||
+                      job.extraUrl || null;
+          if (url) {
+            ugcItems.forEach(it => {
+              if (it.videoJobId === job.id && !it.videoUrl) {
+                it.videoUrl = url;
+              }
+            });
+            renderUgcList();
+          }
+        }
       }
     } catch (err) {
       console.error(err);
@@ -13211,8 +12030,13 @@ body[data-theme="light"] .profile-expiry.expired {
   clearPromptBtn.addEventListener('click', () => {
     promptInput.value = '';
     imageUrlInput.value = '';
+    videoUrlInput.value = '';
+    audioUrlInput.value = '';
     numImagesInput.value = '1';
     aspectRatioInput.value = '';
+    if (videoDurationSelect && modelSelect) {
+      configureVideoControls(modelSelect.value);
+    }
     resetImageUploadArea();
     resetGeminiState(true);
     updateGeminiModeUI(modelSelect && modelSelect.value === 'gemini');
@@ -13326,39 +12150,7 @@ body[data-theme="light"] .profile-expiry.expired {
     });
   }
 
-  if (driveSelectAllCheckbox) {
-    driveSelectAllCheckbox.addEventListener('change', () => {
-      if (!driveFilteredItems.length) {
-        driveSelectAllCheckbox.checked = false;
-        driveSelectAllCheckbox.indeterminate = false;
-        return;
-      }
-
-      const shouldSelect = driveSelectAllCheckbox.checked;
-      driveSelectAllCheckbox.indeterminate = false;
-
-      driveFilteredItems.forEach(item => {
-        const key = driveItemKey(item);
-        if (!key) return;
-        if (shouldSelect) {
-          const target = driveSelectionTarget(item);
-          if (target) {
-            driveSelection.set(key, target);
-          }
-        } else {
-          driveSelection.delete(key);
-        }
-      });
-
-      renderDriveItems();
-    });
-  }
-
-  if (driveDeleteSelectedBtn) {
-    driveDeleteSelectedBtn.addEventListener('click', () => deleteSelectedDriveEntries(driveDeleteSelectedBtn));
-  }
-
-  navButtons = Array.from(document.querySelectorAll('.sidebar-link[data-target], .js-dashboard-nav[data-target]'));
+  navButtons = Array.from(document.querySelectorAll('.sidebar-link[data-target]'));
   viewDashboardSection = document.getElementById('viewDashboard');
   viewDriveSection = document.getElementById('viewDrive');
   viewHubSection = document.getElementById('viewHub');
@@ -13388,11 +12180,7 @@ body[data-theme="light"] .profile-expiry.expired {
     navButtons.forEach(btn => {
       const isHub = btn.dataset.target === 'viewHub';
       const matches = btn.dataset.target === target && (!isHub || (btn.dataset.feature || 'imageGen') === (featureKey || 'imageGen'));
-      if (btn.classList.contains('mobile-bottom-nav__item')) {
-        btn.classList.toggle('is-active', matches);
-      } else {
-        btn.classList.toggle('active', matches);
-      }
+      btn.classList.toggle('active', matches);
     });
   }
 
@@ -14140,9 +12928,6 @@ body[data-theme="light"] .profile-expiry.expired {
   });
 
   const UGC_IDEA_COUNT = 5;
-  const UGC_DEFAULT_FRAMING_TEXT = 'versatile framing';
-  const UGC_DEFAULT_IMAGE_ASPECT_RATIO = 'auto';
-  const UGC_DEFAULT_VIDEO_ASPECT_RATIO = 'landscape_16_9'; // Seedance Pro 1080p expects 16:9 per Freepik docs
 
   const UGC_STYLE_GROUPS = [
     {
@@ -14249,33 +13034,6 @@ body[data-theme="light"] .profile-expiry.expired {
     return null;
   }
 
-  function formatUgcStatus(status) {
-    if (!status) return 'CREATED';
-    const cleaned = String(status).replace(/_/g, ' ').trim();
-    return cleaned ? cleaned.toUpperCase() : 'CREATED';
-  }
-
-  function extractFirstGeneratedUrl(list) {
-    if (!Array.isArray(list)) return null;
-    for (const entry of list) {
-      if (!entry) continue;
-      if (typeof entry === 'string') {
-        const trimmed = entry.trim();
-        if (trimmed) return trimmed;
-        continue;
-      }
-      if (typeof entry !== 'object') continue;
-      const candidates = [entry.url, entry.image_url, entry.preview_url, entry.download_url];
-      for (const candidate of candidates) {
-        if (typeof candidate === 'string') {
-          const trimmed = candidate.trim();
-          if (trimmed) return trimmed;
-        }
-      }
-    }
-    return null;
-  }
-
   function buildUgcReferences() {
     const referenceLimit = 3;
     const productRefs = ugcProductImages
@@ -14304,12 +13062,10 @@ body[data-theme="light"] .profile-expiry.expired {
   }
 
   function buildUgcImagePrompt(basePrompt, styleKey, index) {
-    const style = getUgcStyle(styleKey) || {};
+    const style = getUgcStyle(styleKey);
     const cleaned = (basePrompt || '').trim().replace(/\s+/g, ' ');
     const promptBase = cleaned || 'Product UGC photo shot';
-    const styleLabel = style.label || 'Basic style';
-    const stylePrompt = style.prompt || 'balanced creator storytelling';
-    return `UGC Image #${index}: ${promptBase}. Style focus: ${styleLabel} — ${stylePrompt}. Capture with ${UGC_DEFAULT_FRAMING_TEXT} and authentic creator energy.`;
+    return `UGC Image #${index}: ${promptBase}. Style focus: ${style.label} — ${style.prompt}. Capture in square format with authentic creator energy.`;
   }
 
   function updateUgcStyleActiveState(activeKey) {
@@ -14407,93 +13163,124 @@ body[data-theme="light"] .profile-expiry.expired {
       row.className = 'ugc-row';
       row.dataset.index = item.index;
 
-      const imageStatusLabel = formatUgcStatus(item.status);
-      const isImageReady = !!item.imageUrl;
-      const isImageGenerating = !isImageReady && !finalStatus(item.status);
-      const isImageErrored = finalStatus(item.status) && !isImageReady;
-      const imageCol = document.createElement('div');
-      imageCol.className = 'ugc-column ugc-column-image';
-
-      const imageLabel = document.createElement('div');
-      imageLabel.className = 'ugc-column-label';
-      imageLabel.textContent = 'Image ' + item.index;
-      imageCol.appendChild(imageLabel);
+      const left = document.createElement('div');
+      left.className = 'ugc-media-block';
 
       const imgCard = document.createElement('div');
-      imgCard.className = 'ugc-image-card';
-      imgCard.classList.toggle('is-loading', isImageGenerating);
+      imgCard.className = 'ugc-media-card';
 
-      if (isImageReady) {
+      if (item.imageUrl) {
         const img = document.createElement('img');
         img.src = item.imageUrl;
         img.alt = 'UGC Image ' + item.index;
         img.classList.add('clickable-media');
         img.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
+        imgCard.innerHTML = '';
         imgCard.appendChild(img);
       } else {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'ugc-image-placeholder';
-        if (isImageGenerating) {
-          placeholder.classList.add('is-loading');
-          const spinner = document.createElement('div');
-          spinner.className = 'ugc-loading-spinner';
-          placeholder.appendChild(spinner);
-        }
+        imgCard.innerHTML = '<div><div class=\"ugc-media-title\">Image #' + item.index +
+          '</div><div class=\"ugc-media-status\">Generating... ' + (item.status || 'CREATED') + '</div></div>';
+      }
+
+      const videoCard = document.createElement('div');
+      videoCard.className = 'ugc-video-card';
+      if (item.videoUrl) {
+        videoCard.innerHTML = '';
         const title = document.createElement('div');
-        title.className = 'ugc-placeholder-title';
-        title.textContent = 'Image #' + item.index;
-        placeholder.appendChild(title);
+        title.className = 'ugc-media-title';
+        title.textContent = 'Video ready';
 
-        const status = document.createElement('div');
-        status.className = 'ugc-placeholder-status';
-        if (isImageGenerating) {
-          status.textContent = 'Generating… ' + imageStatusLabel;
-        } else if (isImageErrored) {
-          status.textContent = 'Status: ' + imageStatusLabel + '. Klik Generate UGC ulang.';
-        } else {
-          status.textContent = 'Menunggu hasil Gemini...';
-        }
-        placeholder.appendChild(status);
+        const video = document.createElement('video');
+        video.src = item.videoUrl;
+        video.controls = true;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
 
-        imgCard.appendChild(placeholder);
+        const actions = document.createElement('div');
+        actions.className = 'ugc-video-actions';
+
+        const previewVideoBtn = document.createElement('button');
+        previewVideoBtn.type = 'button';
+        previewVideoBtn.className = 'small secondary';
+        previewVideoBtn.textContent = 'Preview Video';
+        previewVideoBtn.addEventListener('click', () => openAssetPreview(item.videoUrl, 'video'));
+        actions.appendChild(previewVideoBtn);
+
+        const videoDownloadLink = document.createElement('a');
+        videoDownloadLink.href = item.videoUrl;
+        videoDownloadLink.target = '_blank';
+        videoDownloadLink.download = '';
+        videoDownloadLink.className = 'download-link';
+
+        const videoDownloadBtn = document.createElement('button');
+        videoDownloadBtn.type = 'button';
+        videoDownloadBtn.className = 'small';
+        videoDownloadBtn.textContent = 'Download';
+        videoDownloadLink.appendChild(videoDownloadBtn);
+        actions.appendChild(videoDownloadLink);
+
+        const videoSaveBtn = document.createElement('button');
+        videoSaveBtn.type = 'button';
+        videoSaveBtn.className = 'small secondary';
+        videoSaveBtn.textContent = 'Simpan Video';
+        videoSaveBtn.addEventListener('click', () => saveUgcVideoToDrive(item, videoSaveBtn));
+        actions.appendChild(videoSaveBtn);
+
+        videoCard.appendChild(title);
+        videoCard.appendChild(video);
+        videoCard.appendChild(actions);
+      } else if (item.videoJobId) {
+        videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video generating...</div><div class=\"ugc-media-status\">Check status di Queue</div></div>';
+      } else {
+        videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video</div><div class=\"ugc-media-status\">No video yet</div></div>';
       }
 
-      imageCol.appendChild(imgCard);
+      left.appendChild(imgCard);
+      left.appendChild(videoCard);
 
-      const detailCol = document.createElement('div');
-      detailCol.className = 'ugc-column ugc-column-details';
+      const right = document.createElement('div');
+      right.className = 'ugc-right';
 
-      const header = document.createElement('div');
-      header.className = 'ugc-result-header';
-      const title = document.createElement('div');
-      title.className = 'ugc-result-title';
-      title.textContent = 'UGC Image #' + item.index;
-      header.appendChild(title);
+      const pLabel = document.createElement('div');
+      pLabel.className = 'ugc-prompt-label';
+      pLabel.textContent = 'UGC Prompt #' + item.index;
+      const pText = document.createElement('textarea');
+      pText.value = item.prompt || '';
+      pText.rows = 3;
+      pText.addEventListener('input', () => {
+        item.prompt = pText.value;
+      });
 
-      const styleLabel = (item.styleLabel || '').trim();
-      const styleDescription = (item.styleDescription || '').trim();
-      const metaParts = [];
-      if (styleLabel) metaParts.push(styleLabel);
-      if (styleDescription) metaParts.push(styleDescription);
+      const vLabel = document.createElement('div');
+      vLabel.className = 'ugc-prompt-label';
+      vLabel.textContent = 'Video Animation Prompt';
+      const vText = document.createElement('textarea');
+      vText.placeholder = 'contoh: model showing the product with a smile';
+      vText.value = item.videoPrompt || '';
+      vText.rows = 2;
+      vText.addEventListener('input', () => {
+        item.videoPrompt = vText.value;
+      });
 
-      if (metaParts.length) {
-        const meta = document.createElement('div');
-        meta.className = 'ugc-result-subtitle';
-        meta.textContent = 'Generated with ' + metaParts.join(' • ');
-        header.appendChild(meta);
+      const btnRow = document.createElement('div');
+      btnRow.className = 'btn-group';
+
+      const previewImgBtn = document.createElement('button');
+      previewImgBtn.type = 'button';
+      previewImgBtn.className = 'secondary small';
+      previewImgBtn.textContent = 'Preview Image';
+      previewImgBtn.disabled = !item.imageUrl;
+      if (item.imageUrl) {
+        previewImgBtn.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
       }
-
-      detailCol.appendChild(header);
-
-      const downloadGroup = document.createElement('div');
-      downloadGroup.className = 'ugc-download-group';
 
       const dlBtn = document.createElement('button');
       dlBtn.type = 'button';
-      dlBtn.className = 'ugc-download-btn';
+      dlBtn.className = 'small';
       dlBtn.textContent = 'Download Image';
-      dlBtn.disabled = !isImageReady;
-      if (isImageReady) {
+      dlBtn.disabled = !item.imageUrl;
+      if (item.imageUrl) {
         dlBtn.addEventListener('click', () => {
           const a = document.createElement('a');
           a.href = item.imageUrl;
@@ -14503,56 +13290,36 @@ body[data-theme="light"] .profile-expiry.expired {
           document.body.removeChild(a);
         });
       }
-      downloadGroup.appendChild(dlBtn);
-
-      const secondaryActions = document.createElement('div');
-      secondaryActions.className = 'ugc-secondary-actions';
-
-      const previewImgBtn = document.createElement('button');
-      previewImgBtn.type = 'button';
-      previewImgBtn.className = 'ugc-link-btn';
-      previewImgBtn.textContent = 'Preview Image';
-      previewImgBtn.disabled = !isImageReady;
-      if (isImageReady) {
-        previewImgBtn.addEventListener('click', () => openAssetPreview(item.imageUrl, 'image'));
-      }
-      secondaryActions.appendChild(previewImgBtn);
 
       const saveImgBtn = document.createElement('button');
       saveImgBtn.type = 'button';
-      saveImgBtn.className = 'ugc-link-btn';
+      saveImgBtn.className = 'small secondary';
       saveImgBtn.textContent = 'Simpan ke Drive';
-      saveImgBtn.disabled = !isImageReady;
-      if (isImageReady) {
+      saveImgBtn.disabled = !item.imageUrl;
+      if (item.imageUrl) {
         saveImgBtn.addEventListener('click', () => saveUgcImageToDrive(item, saveImgBtn));
       }
-      secondaryActions.appendChild(saveImgBtn);
 
-      downloadGroup.appendChild(secondaryActions);
-      detailCol.appendChild(downloadGroup);
+      const vidBtn = document.createElement('button');
+      vidBtn.type = 'button';
+      vidBtn.className = 'small';
+      vidBtn.textContent = 'Generate Video';
+      vidBtn.disabled = !item.imageUrl;
+      vidBtn.addEventListener('click', () => ugcGenerateVideo(item));
 
-      const promptGroup = document.createElement('div');
-      promptGroup.className = 'ugc-form-group';
+      btnRow.appendChild(previewImgBtn);
+      btnRow.appendChild(dlBtn);
+      btnRow.appendChild(saveImgBtn);
+      btnRow.appendChild(vidBtn);
 
-      const pLabel = document.createElement('label');
-      pLabel.className = 'ugc-field-label';
-      pLabel.textContent = 'UGC Prompt #' + item.index;
-      pLabel.setAttribute('for', 'ugcPrompt' + item.index);
-      const pText = document.createElement('textarea');
-      pText.className = 'ugc-textarea';
-      pText.id = 'ugcPrompt' + item.index;
-      pText.value = item.prompt || '';
-      pText.rows = 3;
-      pText.addEventListener('input', () => {
-        item.prompt = pText.value;
-      });
+      right.appendChild(pLabel);
+      right.appendChild(pText);
+      right.appendChild(vLabel);
+      right.appendChild(vText);
+      right.appendChild(btnRow);
 
-      promptGroup.appendChild(pLabel);
-      promptGroup.appendChild(pText);
-      detailCol.appendChild(promptGroup);
-
-      row.appendChild(imageCol);
-      row.appendChild(detailCol);
+      row.appendChild(left);
+      row.appendChild(right);
 
       ugcList.appendChild(row);
     });
@@ -14568,18 +13335,22 @@ body[data-theme="light"] .profile-expiry.expired {
       try {
         const { status, generated } = await fetchStatus('gemini', item.taskId);
         if (status) item.status = status;
-        const remote = extractFirstGeneratedUrl(generated);
-        if (remote) {
-          item.remoteUrl = remote;
-          if (!item.imageUrl) {
-            try {
-              const local = await cacheUrl(remote);
-              item.imageUrl = local || remote;
-            } catch {
-              item.imageUrl = remote;
-            }
-          }
-        }
+       if (generated && Array.isArray(generated) && generated.length && !item.imageUrl) {
+  const remote = generated[0];
+
+  // SIMPAN URL ASLI DARI FREEPIK (WAJIB)
+  item.remoteUrl = remote;
+
+  try {
+    const local = await cacheUrl(remote);
+    // imageUrl = file di server kamu (buat preview & download)
+    item.imageUrl = local || remote;
+  } catch {
+    item.imageUrl = remote;
+  }
+}
+
+
       } catch (e) {
         item.status = 'ERROR';
       }
@@ -14670,7 +13441,6 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
     const styleKey = (ugcStyleValueInput && ugcStyleValueInput.value) || DEFAULT_UGC_STYLE_KEY;
-    const styleMeta = getUgcStyle(styleKey);
     const brief = ugcBriefInput.value.trim() || 'Product UGC photo shot';
     const requiredCoins = Math.max(1, UGC_IDEA_COUNT * COIN_COST_UGC);
     if (!ensureCoins(requiredCoins)) {
@@ -14684,76 +13454,139 @@ body[data-theme="light"] .profile-expiry.expired {
 
     const cfg = MODEL_CONFIG.gemini;
     const refs = buildUgcReferences();
-    const requestAspectRatio = UGC_DEFAULT_IMAGE_ASPECT_RATIO;
     let successfulIdeas = 0;
 
-    try {
-      for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
-        const prompt = buildUgcImagePrompt(brief, styleKey, i);
-        const item = {
-          index: i,
-          prompt,
-          status: 'CREATED',
-          taskId: null,
-          imageUrl: null,
-          remoteUrl: null,
-          styleKey,
-          styleLabel: styleMeta && styleMeta.label ? styleMeta.label : '',
-          styleDescription: styleMeta && styleMeta.description ? styleMeta.description : ''
-        };
-        ugcItems.push(item);
-        renderUgcList();
+    for (let i = 1; i <= UGC_IDEA_COUNT; i++) {
+      const prompt = buildUgcImagePrompt(brief, styleKey, i);
+      const item = {
+        index: i,
+        prompt,
+        videoPrompt: '',
+        status: 'CREATED',
+        taskId: null,
+        imageUrl: null,
+        videoJobId: null,
+        videoUrl: null
+      };
+      ugcItems.push(item);
+      renderUgcList();
 
-        const body = {
-          prompt,
-          num_images: 1,
-          aspect_ratio: requestAspectRatio
-        };
-        if (refs.length) {
-          body.reference_images = refs.slice();
-        }
-        let success = false;
-        try {
-          const data = await callFreepik(cfg, body, 'POST');
-          if (data && data.data) {
-            item.taskId = data.data.task_id || null;
-            item.status = data.data.status || 'CREATED';
-          }
-          success = true;
-        } catch (e) {
-          console.error(e);
-          item.status = 'ERROR';
-        }
-        if (success) {
-          const normalized = String(item.status || '').toUpperCase();
-          if (normalized !== 'ERROR' && normalized !== 'FAILED') {
-            successfulIdeas += 1;
-          }
-        }
-        renderUgcList();
+      const body = {
+        prompt,
+        num_images: 1,
+        aspect_ratio: 'square_1_1'
+      };
+      if (refs.length) {
+        body.reference_images = refs.slice();
       }
-
-      if (ugcItems.some(s => s.taskId)) startUgcPolling();
-      const coinsToSpend = successfulIdeas * COIN_COST_UGC;
-      if (coinsToSpend > 0) {
-        try {
-          await spendCoins(coinsToSpend);
-        } catch (err) {
-          console.error('Gagal mengurangi koin UGC:', err);
-          alert('Koin tidak dapat dikurangi: ' + err.message);
-          try {
-            await loadAccountState();
-          } catch (loadErr) {
-            console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
-          }
+      let success = false;
+      try {
+        const data = await callFreepik(cfg, body, 'POST');
+        if (data && data.data) {
+          item.taskId = data.data.task_id || null;
+          item.status = data.data.status || 'CREATED';
+        }
+        success = true;
+      } catch (e) {
+        console.error(e);
+        item.status = 'ERROR';
+      }
+      if (success) {
+        const normalized = String(item.status || '').toUpperCase();
+        if (normalized !== 'ERROR' && normalized !== 'FAILED') {
+          successfulIdeas += 1;
         }
       }
-    } finally {
-      ugcGenerateBtn.disabled = accountRestricted();
+      renderUgcList();
     }
+
+    if (ugcItems.some(s => s.taskId)) startUgcPolling();
+    const coinsToSpend = successfulIdeas * COIN_COST_UGC;
+    if (coinsToSpend > 0) {
+      try {
+        await spendCoins(coinsToSpend);
+      } catch (err) {
+        console.error('Gagal mengurangi koin UGC:', err);
+        alert('Koin tidak dapat dikurangi: ' + err.message);
+        try {
+          await loadAccountState();
+        } catch (loadErr) {
+          console.warn('Tidak bisa me-refresh akun setelah gagal mengurangi koin:', loadErr);
+        }
+      }
+    }
+    ugcGenerateBtn.disabled = accountRestricted();
   }
 
   ugcGenerateBtn.addEventListener('click', () => { ugcGenerate(); });
+
+  async function ugcGenerateVideo(item) {
+    if (!featureAvailableForCurrentUser('ugc')) {
+      showFeatureLockedMessage('ugc');
+      return;
+    }
+    // WAJIB: pakai URL asli dari Freepik, bukan path lokal
+    if (!item.remoteUrl || !item.remoteUrl.startsWith('http')) {
+      alert('URL gambar untuk video belum valid.\n' +
+            'Pastikan UGC image sudah COMPLETED, lalu klik Generate Video lagi.');
+      return;
+    }
+
+    const cfg = MODEL_CONFIG.wan720;
+    const body = {
+      prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
+      image: item.remoteUrl,   // <-- PENTING
+      duration: 5,
+      aspect_ratio: 'auto'
+    };
+
+    try {
+      const data = await callFreepik(cfg, body, 'POST');
+      let taskId = null;
+      let status = 'CREATED';
+      let generated = null;
+
+      if (data && data.data) {
+        taskId = data.data.task_id || null;
+        status  = data.data.status   || status;
+        generated = data.data.generated || null;
+      }
+
+      const jobId = uuid();
+      const job = {
+        id: jobId,
+        modelId: 'wan720',
+        type: 'video',
+        taskId,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        status,
+        generated: generated || [],
+        extraUrl: null,
+        prompt: body.prompt || null
+      };
+      jobs.unshift(job);
+      saveJobs();
+      renderJobs();
+      if (taskId && !finalStatus(status)) {
+        startJobProgress(job);
+        startPolling(job);
+      } else {
+        finishJobProgress(job);
+        if (job.generated && job.generated.length) {
+          await ensureLocalFiles(job);
+        }
+        await syncJobToDrive(job);
+      }
+
+      item.videoJobId = jobId;
+      renderUgcList();
+    } catch (e) {
+      console.error(e);
+      alert('Gagal membuat video: ' + e.message);
+    }
+  }
+
 
 const assetPreviewModal = document.getElementById('assetPreviewModal');
 const assetPreviewBody = document.getElementById('assetPreviewBody');
@@ -14795,7 +13628,6 @@ function openAssetPreview(url, type = 'image') {
   }
 
   assetPreviewModal.classList.remove('hidden');
-  assetPreviewModal.classList.add('visible');
   document.body.classList.add('modal-open');
 }
 
@@ -14806,7 +13638,6 @@ function closeAssetPreview() {
     video.pause();
   }
   assetPreviewBody.innerHTML = '';
-  assetPreviewModal.classList.remove('visible');
   assetPreviewModal.classList.add('hidden');
   document.body.classList.remove('modal-open');
   if (assetPreviewDownload) {
