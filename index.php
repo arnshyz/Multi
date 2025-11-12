@@ -9538,6 +9538,44 @@ body[data-theme="light"] .profile-expiry.expired {
     return body;
   }
 
+  const VIDEO_URL_EXTENSION_REGEX = /(\.mp4|\.mov|\.webm|\.mkv|\.avi)(\?.*)?$/i;
+
+  function extractVideoUrlsFromResponse(payload) {
+    const results = [];
+    const seen = new Set();
+
+    const visit = (value, hint = '') => {
+      if (!value) return;
+
+      if (typeof value === 'string') {
+        if (/^https?:\/\//i.test(value)) {
+          const lowerHint = String(hint).toLowerCase();
+          const looksLikeVideo = VIDEO_URL_EXTENSION_REGEX.test(value) || /video|result|url|download/.test(lowerHint);
+          if (looksLikeVideo && !seen.has(value)) {
+            seen.add(value);
+            results.push(value);
+          }
+        }
+        return;
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(item => visit(item, hint));
+        return;
+      }
+
+      if (typeof value === 'object') {
+        Object.entries(value).forEach(([key, val]) => {
+          const nextHint = hint ? `${hint}.${key}` : key;
+          visit(val, nextHint);
+        });
+      }
+    };
+
+    visit(payload);
+    return results;
+  }
+
   // ===== MODEL CONFIG =====
   const MODEL_CONFIG = {
     gemini: {
@@ -9738,6 +9776,7 @@ body[data-theme="light"] .profile-expiry.expired {
       label: 'Kling v2.5 Pro',
       type: 'video',
       path: '/v1/ai/image-to-video/kling-v2-5-pro',
+      videoPath: taskId => `/v1/ai/image-to-video/kling-v2-5-pro/${taskId}/video`,
       statusPath: taskId => `/v1/ai/image-to-video/kling-v2-5-pro/${taskId}`,
       buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
     },
@@ -11231,6 +11270,29 @@ body[data-theme="light"] .profile-expiry.expired {
     return json.data;
   }
 
+  async function fetchModelVideoUrls(cfg, taskId) {
+    if (!cfg || !taskId) return [];
+
+    let path = null;
+    if (typeof cfg.videoPath === 'function') {
+      path = cfg.videoPath(taskId);
+    } else if (typeof cfg.videoPath === 'string' && cfg.videoPath) {
+      path = cfg.videoPath;
+    }
+
+    if (!path) return [];
+
+    try {
+      const response = await callFreepikEndpoint({ path, method: 'GET' });
+      const data = response && response.data ? response.data : response;
+      const urls = extractVideoUrlsFromResponse(data);
+      return urls;
+    } catch (error) {
+      console.error('Gagal mengambil video Kling:', error);
+      return [];
+    }
+  }
+
   function getSelectedWebhookEvents(selectEl) {
     if (!selectEl || !selectEl.options) return [];
     return Array.from(selectEl.options)
@@ -11851,6 +11913,13 @@ body[data-theme="light"] .profile-expiry.expired {
       }
     }
 
+    if ((!generated || !generated.length) && status && status.toUpperCase() === 'COMPLETED' && taskId) {
+      const extraVideoUrls = await fetchModelVideoUrls(cfg, taskId);
+      if (extraVideoUrls.length) {
+        generated = extraVideoUrls;
+      }
+    }
+
     return {
       taskId,
       status,
@@ -11904,6 +11973,20 @@ body[data-theme="light"] .profile-expiry.expired {
       if (job.id === activeJobId) refreshPreview();
 
       if (finalStatus(job.status)) {
+        if (job.status && job.status.toUpperCase() === 'COMPLETED' && (!job.generated || !job.generated.length) && job.taskId) {
+          try {
+            const extraVideoUrls = await fetchModelVideoUrls(cfg, job.taskId);
+            if (extraVideoUrls.length) {
+              job.generated = extraVideoUrls;
+              job.updatedAt = nowIso();
+              saveJobs();
+              renderJobs();
+              if (job.id === activeJobId) refreshPreview();
+            }
+          } catch (fetchErr) {
+            console.error(fetchErr);
+          }
+        }
         finishJobProgress(job);
         if (pollingTimers[job.id]) {
           clearInterval(pollingTimers[job.id]);
