@@ -10659,19 +10659,13 @@ body[data-theme="light"] .profile-expiry.expired {
   function buildKling25ProBody(formData = {}) {
     const payload = applyVideoExtras({ prompt: formData.prompt, image: formData.imageUrl }, formData) || {};
 
-    if (payload.image_url && !payload.image) {
-      payload.image = payload.image_url;
+    if (!payload.image && typeof formData.imageUrl === 'string') {
+      const trimmed = formData.imageUrl.trim();
+      const dataUrlMatch = trimmed.match(/^data:image\/[a-z0-9.+-]+;base64,(.+)$/i);
+      if (dataUrlMatch && dataUrlMatch[1]) {
+        payload.image = dataUrlMatch[1];
+      }
     }
-    delete payload.image_url;
-
-    if (!payload.image && formData.imageUrl) {
-      payload.image = formData.imageUrl;
-    }
-
-    if (payload.first_frame_image_url && !payload.first_frame_image) {
-      payload.first_frame_image = payload.first_frame_image_url;
-    }
-    delete payload.first_frame_image_url;
 
     const allowedDurations = [5, 10];
     let chosenDuration = null;
