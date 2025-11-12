@@ -149,6 +149,19 @@ header {
     transition: opacity 0.2s;
 }
 
+.desktop-menu .accent-link {
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: rgba(90, 71, 215, 0.12);
+    border: 1px solid rgba(90, 71, 215, 0.3);
+    opacity: 1;
+    font-weight: 600;
+}
+
+.desktop-menu .accent-link:hover {
+    background: rgba(90, 71, 215, 0.2);
+}
+
 .desktop-menu a:hover { opacity: 1; }
 
 .nav-actions {
@@ -573,6 +586,15 @@ header {
         padding: 10px 0;
         border-bottom: 1px solid var(--glass-border);
         font-weight: 500;
+    }
+    .mobile-dropdown .accent-link {
+        display: inline-flex;
+        margin-top: 6px;
+        border-bottom: none;
+        border-radius: 999px;
+        border: 1px solid rgba(90, 71, 215, 0.35);
+        padding: 10px 16px;
+        background: rgba(90, 71, 215, 0.15);
     }
     .mobile-dropdown a:last-of-type { border-bottom: none; }
 
