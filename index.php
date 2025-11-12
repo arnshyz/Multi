@@ -5422,6 +5422,25 @@ body[data-theme="light"] .profile-expiry.expired {
       background: var(--card-overlay);
       padding: 10px;
     }
+    .gemini-json-output {
+      margin: 0;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.55);
+      color: var(--muted);
+      font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow: auto;
+      max-height: 260px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .light-mode .gemini-json-output {
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--text);
+    }
     .gemini-video-results {
       display: flex;
       flex-direction: column;
@@ -7974,12 +7993,13 @@ body[data-theme="light"] .profile-expiry.expired {
 <div id="viewAudio" class="gemini-view app-view" hidden>
   <section class="card gemini-hero">
     <div>
-      <h1>Audio Generator (TTS)</h1>
-      <p>Ubah skrip teks menjadi audio natural menggunakan Google Gemini Text-to-Speech.</p>
+      <h1>Audio Generator (TTS &amp; SFX)</h1>
+      <p>Buat narasi dan efek suara custom menggunakan Google Gemini dan Freepik AI.</p>
     </div>
     <div class="gemini-hero-badges">
       <span class="gemini-badge">Google Gemini</span>
-      <span class="gemini-badge gemini-badge--accent">Speech Generation</span>
+      <span class="gemini-badge">Freepik AI</span>
+      <span class="gemini-badge gemini-badge--accent">Speech &amp; Sound</span>
     </div>
   </section>
 
@@ -8059,6 +8079,69 @@ body[data-theme="light"] .profile-expiry.expired {
           <li>Gunakan detail suasana &amp; emosi: <em>"Narasi ramah dengan energi tinggi untuk video promosi."</em></li>
           <li>Atur pengucapan dengan menambahkan catatan di dalam tanda kurung.</li>
           <li>Gunakan referensi suara bila ingin mencocokkan tone tertentu.</li>
+        </ul>
+      </section>
+    </article>
+
+    <article class="card-soft gemini-card">
+      <header class="gemini-card__header">
+        <div>
+          <h2>Sound Effects</h2>
+          <p>Generate efek suara original dari deskripsi teks menggunakan Freepik Sound Effects API.</p>
+        </div>
+      </header>
+      <form id="soundFxForm" class="gemini-form" novalidate>
+        <div class="gemini-field">
+          <label for="soundFxPrompt">Deskripsi Sound Effect</label>
+          <textarea id="soundFxPrompt" rows="4" placeholder="Contoh: Ledakan sinematik dengan gema pendek"></textarea>
+        </div>
+        <div class="gemini-field-row">
+          <div class="gemini-field">
+            <label for="soundFxDuration">Durasi (detik, opsional)</label>
+            <input type="number" id="soundFxDuration" min="1" max="120" step="1" placeholder="5">
+          </div>
+          <div class="gemini-field">
+            <label for="soundFxFormat">Format Audio</label>
+            <select id="soundFxFormat">
+              <option value="mp3" selected>MP3</option>
+              <option value="wav">WAV</option>
+              <option value="ogg">OGG</option>
+            </select>
+          </div>
+        </div>
+        <div class="gemini-field-row">
+          <div class="gemini-field">
+            <label for="soundFxCategories">Kategori (opsional)</label>
+            <input type="text" id="soundFxCategories" placeholder="contoh: cinematic,impact">
+            <p class="muted" style="font-size:10px;margin-top:4px;">Pisahkan dengan koma untuk memilih lebih dari satu kategori.</p>
+          </div>
+          <div class="gemini-field">
+            <label for="soundFxSeed">Seed (opsional)</label>
+            <input type="text" id="soundFxSeed" placeholder="Angka atau teks custom">
+          </div>
+        </div>
+        <div class="gemini-field">
+          <label for="soundFxAdvanced">Advanced Options JSON (opsional)</label>
+          <textarea id="soundFxAdvanced" rows="3" placeholder='{"intensity":"high"}'></textarea>
+          <p class="muted" style="font-size:10px;margin-top:4px;">Opsional: gabungkan pengaturan lanjutan sesuai dokumentasi Freepik.</p>
+        </div>
+        <div class="gemini-actions">
+          <button type="submit" id="soundFxSubmit">Generate Sound Effect</button>
+          <button type="button" class="secondary" id="soundFxReset">Reset</button>
+        </div>
+        <div class="account-form-status" id="soundFxStatus" role="status"></div>
+      </form>
+      <div class="gemini-audio-output" id="soundFxResult">
+        <audio id="soundFxAudio" controls hidden></audio>
+        <a id="soundFxDownload" class="download-link" href="#" download hidden>Download Sound Effect</a>
+        <pre id="soundFxMeta" class="gemini-json-output" hidden></pre>
+      </div>
+      <section class="gemini-guides">
+        <h3>Tips Prompt</h3>
+        <ul>
+          <li>Sertakan aksi, suasana, dan lingkungan: <em>"Dentuman bass futuristik di ruangan logam besar."</em></li>
+          <li>Gunakan kategori untuk membantu model memilih gaya efek, misalnya <code>whoosh</code>, <code>impact</code>, atau <code>ambient</code>.</li>
+          <li>Manfaatkan opsi lanjutan untuk mengatur intensitas, variasi, atau format khusus.</li>
         </ul>
       </section>
     </article>
@@ -8913,6 +8996,7 @@ body[data-theme="light"] .profile-expiry.expired {
     setDisabledState(geminiTextSubmitBtn, restricted);
     setDisabledState(geminiSpeechSubmitBtn, restricted);
     setDisabledState(geminiVeoSubmitBtn, restricted);
+    setDisabledState(soundFxSubmitBtn, restricted);
     refreshTopupConfirm();
   }
 
@@ -11019,6 +11103,21 @@ body[data-theme="light"] .profile-expiry.expired {
   const geminiSpeechResetBtn = document.getElementById('geminiSpeechReset');
   const geminiSpeechAudio = document.getElementById('geminiSpeechAudio');
   const geminiSpeechDownload = document.getElementById('geminiSpeechDownload');
+
+  const soundFxForm = document.getElementById('soundFxForm');
+  const soundFxPrompt = document.getElementById('soundFxPrompt');
+  const soundFxDuration = document.getElementById('soundFxDuration');
+  const soundFxFormat = document.getElementById('soundFxFormat');
+  const soundFxCategories = document.getElementById('soundFxCategories');
+  const soundFxSeed = document.getElementById('soundFxSeed');
+  const soundFxAdvanced = document.getElementById('soundFxAdvanced');
+  const soundFxStatus = document.getElementById('soundFxStatus');
+  const soundFxSubmitBtn = document.getElementById('soundFxSubmit');
+  const soundFxResetBtn = document.getElementById('soundFxReset');
+  const soundFxAudio = document.getElementById('soundFxAudio');
+  const soundFxDownload = document.getElementById('soundFxDownload');
+  const soundFxMeta = document.getElementById('soundFxMeta');
+  const soundFxResultWrapper = document.getElementById('soundFxResult');
   const geminiVeoForm = document.getElementById('geminiVeoForm');
   const geminiVeoPrompt = document.getElementById('geminiVeoPrompt');
   const geminiVeoDialogue = document.getElementById('geminiVeoDialogue');
@@ -11032,6 +11131,15 @@ body[data-theme="light"] .profile-expiry.expired {
   const defaultGeminiTextTemperature = geminiTextTemperature ? geminiTextTemperature.value : '0.7';
   const defaultGeminiSpeechModel = geminiSpeechModel ? geminiSpeechModel.value : 'gemini-1.5-flash-latest';
   const defaultGeminiSpeechTemperature = geminiSpeechTemperature ? geminiSpeechTemperature.value : '0.3';
+
+  const SOUND_FX_POLL_INTERVAL = 6000;
+  const SOUND_FX_MAX_POLLS = 12;
+  const SOUND_FX_SUCCESS_STATUSES = ['completed', 'succeeded', 'finished', 'ready', 'done'];
+  const SOUND_FX_FAILURE_STATUSES = ['failed', 'error', 'cancelled', 'canceled', 'rejected'];
+  let soundFxPollTimer = null;
+  let soundFxPollAttempts = 0;
+  let soundFxCurrentTaskId = null;
+  let soundFxPreferredMime = 'audio/mpeg';
   const defaultGeminiVeoDuration = geminiVeoDuration ? geminiVeoDuration.value : '6';
   const defaultGeminiVeoAspect = geminiVeoAspect ? geminiVeoAspect.value : '16:9';
   const videoUrlInput = document.getElementById('videoUrl');
@@ -11568,6 +11676,321 @@ body[data-theme="light"] .profile-expiry.expired {
     showInlineStatus(geminiSpeechStatus, '', null);
   }
 
+  function stopSoundFxPolling() {
+    if (soundFxPollTimer) {
+      clearTimeout(soundFxPollTimer);
+      soundFxPollTimer = null;
+    }
+    soundFxPollAttempts = 0;
+    soundFxCurrentTaskId = null;
+  }
+
+  function updateSoundFxMeta(data) {
+    if (!soundFxMeta) return;
+    if (data === null || typeof data === 'undefined') {
+      soundFxMeta.textContent = '';
+      soundFxMeta.hidden = true;
+      return;
+    }
+    let text;
+    if (typeof data === 'string') {
+      text = data;
+    } else {
+      try {
+        text = JSON.stringify(data, null, 2);
+      } catch (err) {
+        text = String(data);
+      }
+    }
+    soundFxMeta.textContent = text;
+    soundFxMeta.hidden = false;
+    if (soundFxResultWrapper) {
+      soundFxResultWrapper.hidden = false;
+    }
+  }
+
+  function clearSoundFxOutput() {
+    if (soundFxAudio) {
+      try {
+        soundFxAudio.pause();
+      } catch (err) {
+        // abaikan
+      }
+      soundFxAudio.removeAttribute('src');
+      soundFxAudio.load();
+      soundFxAudio.hidden = true;
+      soundFxAudio.style.display = 'none';
+    }
+    if (soundFxDownload) {
+      soundFxDownload.hidden = true;
+      soundFxDownload.removeAttribute('href');
+      soundFxDownload.removeAttribute('download');
+    }
+    updateSoundFxMeta(null);
+    if (soundFxResultWrapper) {
+      soundFxResultWrapper.hidden = true;
+    }
+  }
+
+  function resetSoundFxForm() {
+    stopSoundFxPolling();
+    if (soundFxPrompt) soundFxPrompt.value = '';
+    if (soundFxDuration) soundFxDuration.value = '';
+    if (soundFxFormat) {
+      const options = Array.from(soundFxFormat.options || []);
+      if (options.some(opt => opt.value === 'mp3')) {
+        soundFxFormat.value = 'mp3';
+      } else if (options.length) {
+        soundFxFormat.value = options[0].value;
+      } else {
+        soundFxFormat.value = 'mp3';
+      }
+    }
+    if (soundFxCategories) soundFxCategories.value = '';
+    if (soundFxSeed) soundFxSeed.value = '';
+    if (soundFxAdvanced) soundFxAdvanced.value = '';
+    soundFxPreferredMime = 'audio/mpeg';
+    clearSoundFxOutput();
+    showInlineStatus(soundFxStatus, '', null);
+  }
+
+  function guessSoundFxMime(value, fallback = 'audio/mpeg') {
+    if (typeof value === 'string') {
+      const lower = value.toLowerCase();
+      if (lower.startsWith('data:')) {
+        const match = lower.match(/^data:([^;,]+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+      if (lower.includes('.wav')) return 'audio/wav';
+      if (lower.includes('.ogg')) return 'audio/ogg';
+      if (lower.includes('.flac')) return 'audio/flac';
+      if (lower.includes('.aac')) return 'audio/aac';
+      if (lower.includes('.m4a')) return 'audio/mp4';
+      if (lower.includes('.mp3') || lower.includes('.mpeg')) return 'audio/mpeg';
+    }
+    return fallback || 'audio/mpeg';
+  }
+
+  function createSoundFxDataUrl(value, mime = 'audio/mpeg') {
+    if (!value || typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('data:')) {
+      return trimmed;
+    }
+    const normalized = trimmed.replace(/\s+/g, '');
+    if (normalized.length < 32) return null;
+    if (!/^[A-Za-z0-9+/=]+$/.test(normalized)) return null;
+    return `data:${mime || 'audio/mpeg'};base64,${normalized}`;
+  }
+
+  function parseSoundFxResponse(raw, fallbackMime = 'audio/mpeg') {
+    const fallback = fallbackMime || 'audio/mpeg';
+    const result = {
+      taskId: null,
+      status: null,
+      outputs: [],
+      raw,
+    };
+
+    const outputs = [];
+    const seen = new Set();
+    const visited = new WeakSet();
+
+    function pushOutput(url, mime, filename, source) {
+      if (!url) return;
+      const key = `${url}|${mime || ''}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      outputs.push({
+        url,
+        mime: mime || fallback,
+        filename: filename || null,
+        source: source || null,
+      });
+    }
+
+    function considerString(str, source) {
+      if (typeof str !== 'string') return;
+      const trimmed = str.trim();
+      if (!trimmed) return;
+      if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:')) {
+        pushOutput(trimmed, guessSoundFxMime(trimmed, fallback), null, source);
+        return;
+      }
+      const dataUrl = createSoundFxDataUrl(trimmed, fallback);
+      if (dataUrl) {
+        pushOutput(dataUrl, guessSoundFxMime(dataUrl, fallback), null, source);
+      }
+    }
+
+    function collect(value, source) {
+      if (value === null || typeof value === 'undefined') return;
+      if (typeof value === 'string') {
+        considerString(value, source);
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach(item => collect(item, source));
+        return;
+      }
+      if (typeof value !== 'object') return;
+      if (visited.has(value)) return;
+      visited.add(value);
+
+      const filename = value.filename || value.name || value.title || null;
+      const mime = value.mime_type || value.mimetype || value.mime || value.type || value.media_type || null;
+      const nextSource = source || value.source || value.kind || value.type || null;
+
+      const urlCandidate = value.url || value.audio_url || value.download_url || value.preview_url || value.href || value.link || value.file_url;
+      if (typeof urlCandidate === 'string') {
+        pushOutput(urlCandidate, guessSoundFxMime(urlCandidate, mime || fallback), filename, nextSource);
+      }
+
+      const base64Candidate = value.base64 || value.audio_base64 || value.content || value.data || value.file_base64 || value.blob;
+      if (typeof base64Candidate === 'string') {
+        const dataUrl = createSoundFxDataUrl(base64Candidate, mime || fallback);
+        if (dataUrl) {
+          pushOutput(dataUrl, guessSoundFxMime(dataUrl, mime || fallback), filename, nextSource);
+        }
+      }
+
+      const nestedKeys = ['generated', 'results', 'result', 'outputs', 'output', 'assets', 'files', 'file', 'audio', 'audios', 'items', 'media', 'data', 'response', 'variants', 'previews', 'tracks'];
+      nestedKeys.forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(value, key)) {
+          collect(value[key], nextSource || key);
+        }
+      });
+
+      Object.keys(value).forEach(key => {
+        if (nestedKeys.includes(key)) return;
+        const lower = key.toLowerCase();
+        if (lower.includes('url') || lower.includes('audio') || lower.includes('file')) {
+          collect(value[key], nextSource || key);
+        }
+      });
+    }
+
+    if (raw && typeof raw === 'object') {
+      const data = raw && typeof raw.data === 'object' ? raw.data : null;
+      result.taskId = (data && (data.task_id || data.taskId || data.id)) || raw.task_id || raw.taskId || raw.id || null;
+      result.status = (data && (data.status || data.state || data.phase)) || raw.status || raw.state || raw.phase || null;
+
+      collect(data && data.generated, 'generated');
+      collect(raw.generated, 'generated');
+      collect(data && data.assets, 'assets');
+      collect(data && data.audio, 'audio');
+      collect(data && data.audios, 'audio');
+      collect(data && data.output, 'output');
+      collect(data && data.outputs, 'outputs');
+      collect(data && data.result, 'result');
+      collect(data && data.results, 'result');
+      collect(raw.result, 'result');
+      collect(raw.results, 'result');
+      collect(data && data.url, 'url');
+      collect(raw.url, 'url');
+      collect(data && data.audio_url, 'audio_url');
+      collect(raw.audio_url, 'audio_url');
+      collect(data && data.download_url, 'download_url');
+      collect(raw.download_url, 'download_url');
+      collect(data && data.preview_url, 'preview_url');
+      collect(raw.preview_url, 'preview_url');
+      collect(data && data.base64, 'base64');
+      collect(data && data.audio_base64, 'audio_base64');
+
+      if (!outputs.length) {
+        collect(data, 'data');
+        collect(raw, 'root');
+      }
+    } else if (typeof raw === 'string') {
+      considerString(raw, 'raw');
+    }
+
+    result.outputs = outputs;
+    return result;
+  }
+
+  function scheduleSoundFxPolling(taskId, delay = SOUND_FX_POLL_INTERVAL) {
+    if (!taskId || taskId !== soundFxCurrentTaskId) return;
+    if (soundFxPollTimer) {
+      clearTimeout(soundFxPollTimer);
+    }
+    soundFxPollTimer = setTimeout(() => pollSoundFxStatus(taskId), delay);
+  }
+
+  async function pollSoundFxStatus(taskId) {
+    if (!taskId || taskId !== soundFxCurrentTaskId) {
+      return;
+    }
+    soundFxPollAttempts += 1;
+    try {
+      const data = await callFreepikEndpoint({ path: `/v1/sound-effects/${encodeURIComponent(taskId)}`, method: 'GET' });
+      const parsed = parseSoundFxResponse(data, soundFxPreferredMime);
+      if (parsed.raw) {
+        updateSoundFxMeta(parsed.raw);
+      }
+      const status = (parsed.status || '').toString().toLowerCase();
+      if (parsed.outputs.length || SOUND_FX_SUCCESS_STATUSES.includes(status)) {
+        stopSoundFxPolling();
+        applySoundFxOutputs(parsed, 'Sound effect siap diunduh.');
+        return;
+      }
+      if (SOUND_FX_FAILURE_STATUSES.includes(status)) {
+        stopSoundFxPolling();
+        showInlineStatus(soundFxStatus, `Sound effect gagal (${status || 'error'}).`, 'err');
+        return;
+      }
+      if (soundFxPollAttempts >= SOUND_FX_MAX_POLLS) {
+        stopSoundFxPolling();
+        showInlineStatus(soundFxStatus, 'Batas pengecekan status tercapai. Coba lagi beberapa saat.', 'err');
+        return;
+      }
+      showInlineStatus(soundFxStatus, 'Menunggu Freepik memproses sound effect…', 'progress');
+      scheduleSoundFxPolling(taskId);
+    } catch (err) {
+      if (soundFxPollAttempts >= SOUND_FX_MAX_POLLS) {
+        stopSoundFxPolling();
+        showInlineStatus(soundFxStatus, err.message || 'Gagal memeriksa status sound effect.', 'err');
+      } else if (taskId === soundFxCurrentTaskId) {
+        scheduleSoundFxPolling(taskId);
+      }
+    }
+  }
+
+  function applySoundFxOutputs(parsed, successMessage) {
+    if (!parsed) return;
+    if (soundFxResultWrapper) {
+      soundFxResultWrapper.hidden = false;
+    }
+    if (parsed.raw) {
+      updateSoundFxMeta(parsed.raw);
+    }
+    if (!Array.isArray(parsed.outputs) || !parsed.outputs.length) {
+      if (successMessage) {
+        showInlineStatus(soundFxStatus, successMessage, 'ok');
+      }
+      return;
+    }
+    const first = parsed.outputs[0];
+    const mime = first.mime || soundFxPreferredMime || 'audio/mpeg';
+    soundFxPreferredMime = mime;
+    if (soundFxAudio) {
+      soundFxAudio.src = first.url;
+      soundFxAudio.hidden = false;
+      soundFxAudio.style.display = 'block';
+      soundFxAudio.load();
+      soundFxAudio.play().catch(() => {});
+    }
+    if (soundFxDownload) {
+      soundFxDownload.href = first.url;
+      soundFxDownload.hidden = false;
+      soundFxDownload.download = first.filename || `freepik-sfx-${Date.now()}.${mimeToExtension(mime)}`;
+    }
+    showInlineStatus(soundFxStatus, successMessage || 'Sound effect berhasil dibuat.', 'ok');
+  }
+
   function resetGeminiVeoForm() {
     if (geminiVeoPrompt) geminiVeoPrompt.value = '';
     if (geminiVeoDialogue) geminiVeoDialogue.value = '';
@@ -11738,6 +12161,131 @@ body[data-theme="light"] .profile-expiry.expired {
     geminiSpeechResetBtn.addEventListener('click', () => {
       resetGeminiSpeechForm();
     });
+  }
+
+  if (soundFxForm) {
+    soundFxForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!ensureGeminiAccess()) {
+        return;
+      }
+
+      const prompt = soundFxPrompt ? soundFxPrompt.value.trim() : '';
+      if (!prompt) {
+        showInlineStatus(soundFxStatus, 'Deskripsi sound effect wajib diisi.', 'err');
+        if (soundFxPrompt) soundFxPrompt.focus();
+        return;
+      }
+
+      let payload = { prompt };
+
+      const durationRaw = soundFxDuration ? soundFxDuration.value.trim() : '';
+      const durationValue = durationRaw === '' ? NaN : Number(durationRaw);
+      if (!Number.isNaN(durationValue) && durationValue > 0) {
+        payload.duration_seconds = Math.round(durationValue);
+      }
+
+      let formatValue = 'mp3';
+      if (soundFxFormat && soundFxFormat.value) {
+        formatValue = soundFxFormat.value;
+      }
+      if (formatValue) {
+        payload.format = formatValue;
+      }
+      if (formatValue === 'wav') {
+        soundFxPreferredMime = 'audio/wav';
+      } else if (formatValue === 'ogg') {
+        soundFxPreferredMime = 'audio/ogg';
+      } else if (formatValue === 'flac') {
+        soundFxPreferredMime = 'audio/flac';
+      } else if (formatValue === 'aac') {
+        soundFxPreferredMime = 'audio/aac';
+      } else {
+        soundFxPreferredMime = 'audio/mpeg';
+      }
+
+      if (soundFxCategories && soundFxCategories.value.trim() !== '') {
+        const categories = soundFxCategories.value.split(',').map(part => part.trim()).filter(Boolean);
+        if (categories.length) {
+          payload.categories = categories;
+        }
+      }
+
+      if (soundFxSeed && soundFxSeed.value.trim() !== '') {
+        const seedRaw = soundFxSeed.value.trim();
+        const numericSeed = Number(seedRaw);
+        payload.seed = Number.isFinite(numericSeed) ? numericSeed : seedRaw;
+      }
+
+      if (soundFxAdvanced && soundFxAdvanced.value.trim() !== '') {
+        try {
+          const extra = JSON.parse(soundFxAdvanced.value);
+          if (!extra || typeof extra !== 'object' || Array.isArray(extra)) {
+            throw new Error('Advanced options harus berupa objek JSON.');
+          }
+          payload = Object.assign({}, payload, extra);
+        } catch (err) {
+          showInlineStatus(soundFxStatus, err.message || 'Advanced options harus berupa JSON valid.', 'err');
+          if (soundFxAdvanced) soundFxAdvanced.focus();
+          return;
+        }
+      }
+
+      stopSoundFxPolling();
+      clearSoundFxOutput();
+      toggleButtonLoading(soundFxSubmitBtn, true, 'Mengirim…');
+      showInlineStatus(soundFxStatus, 'Mengirim permintaan ke Freepik…', 'progress');
+
+      try {
+        const result = await callFreepikEndpoint({ path: '/v1/sound-effects', method: 'POST', body: payload });
+        if (result && typeof result === 'object') {
+          const parsed = parseSoundFxResponse(result, soundFxPreferredMime);
+          if (parsed.raw) {
+            updateSoundFxMeta(parsed.raw);
+          }
+          if (parsed.outputs.length) {
+            stopSoundFxPolling();
+            applySoundFxOutputs(parsed, 'Sound effect berhasil dibuat.');
+          } else if (parsed.taskId) {
+            soundFxCurrentTaskId = parsed.taskId;
+            soundFxPollAttempts = 0;
+            showInlineStatus(soundFxStatus, 'Permintaan diterima. Menunggu Freepik memproses sound effect…', 'progress');
+            scheduleSoundFxPolling(parsed.taskId);
+          } else {
+            showInlineStatus(soundFxStatus, 'Freepik tidak mengembalikan audio. Cek JSON respons di bawah.', 'err');
+            if (!parsed.raw) {
+              updateSoundFxMeta(result);
+            }
+          }
+        } else if (typeof result === 'string') {
+          const parsed = parseSoundFxResponse(result, soundFxPreferredMime);
+          if (parsed.outputs.length) {
+            stopSoundFxPolling();
+            applySoundFxOutputs(parsed, 'Sound effect berhasil dibuat.');
+          } else {
+            updateSoundFxMeta(result);
+            showInlineStatus(soundFxStatus, 'Freepik tidak mengembalikan audio.', 'err');
+          }
+        } else {
+          showInlineStatus(soundFxStatus, 'Respons Freepik tidak dikenal.', 'err');
+        }
+      } catch (err) {
+        stopSoundFxPolling();
+        showInlineStatus(soundFxStatus, err.message || 'Gagal membuat sound effect.', 'err');
+      } finally {
+        toggleButtonLoading(soundFxSubmitBtn, false);
+      }
+    });
+  }
+
+  if (soundFxResetBtn) {
+    soundFxResetBtn.addEventListener('click', () => {
+      resetSoundFxForm();
+    });
+  }
+
+  if (soundFxForm) {
+    resetSoundFxForm();
   }
 
   if (geminiVeoForm) {
