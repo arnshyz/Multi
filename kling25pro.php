@@ -57,151 +57,9 @@ if ($account) {
             </div>
         </header>
 
-        <main class="doc-main">
-            <section class="doc-hero glass-card" aria-labelledby="docOverview">
-                <div>
-                    <h2 id="docOverview">Ringkasan Model</h2>
-                    <p>Kling 2.5 Pro mendukung pembuatan video dengan kualitas premium, cocok untuk konten produk, fashion, dan kampanye UGC. Gunakan parameter tambahan seperti <code>negative_prompt</code> dan <code>cfg_scale</code> untuk memoles hasil akhir.</p>
-                    <ul class="doc-hero-list">
-                        <li>Durasi video tersedia: 5, 8, dan 12 detik.</li>
-                        <li>Video dihasilkan secara asinkron – gunakan <code>task_id</code> untuk polling status.</li>
-                        <li>Endpoint video terpisah: <code>/video</code> untuk mengambil URL MP4 final.</li>
-                    </ul>
-                </div>
-                <div class="doc-hero-meta">
-                    <div class="doc-stat">
-                        <span class="doc-stat-label">HTTP Method</span>
-                        <span class="doc-stat-value">POST</span>
-                    </div>
-                    <div class="doc-stat">
-                        <span class="doc-stat-label">Endpoint</span>
-                        <span class="doc-stat-value">/v1/ai/image-to-video/kling-v2-5-pro</span>
-                    </div>
-                    <div class="doc-stat">
-                        <span class="doc-stat-label">Video Path</span>
-                        <span class="doc-stat-value">{task_id}/video</span>
-                    </div>
-                </div>
-            </section>
-
-            <div class="doc-grid">
-                <section class="doc-section glass-card" aria-labelledby="httpRequest">
-                    <h2 id="httpRequest">HTTP Request</h2>
-                    <div class="endpoint-card">
-                        <span class="method-pill">POST</span>
-                        <code>/v1/ai/image-to-video/kling-v2-5-pro</code>
-                    </div>
-                    <p>Kirim payload JSON ke endpoint di atas untuk memulai proses generasi video.</p>
-                </section>
-
-                <section class="doc-section glass-card" aria-labelledby="httpHeaders">
-                    <h2 id="httpHeaders">Headers</h2>
-                    <ul class="doc-list">
-                        <li><code>Content-Type: application/json</code></li>
-                        <li><code>X-Freepik-API-Key: &lt;API_KEY_AKTIF&gt;</code></li>
-                        <li>Opsional: <code>Accept-Language</code> untuk preferensi bahasa notifikasi webhook.</li>
-                    </ul>
-                </section>
-            </div>
-
-            <section class="doc-section glass-card" aria-labelledby="requestBody">
-                <h2 id="requestBody">Request Body</h2>
-                <table class="doc-table">
-                    <thead>
-                        <tr>
-                            <th>Field</th>
-                            <th>Tipe</th>
-                            <th>Wajib?</th>
-                            <th>Deskripsi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>image</code></td>
-                            <td>string (URL)</td>
-                            <td>Ya</td>
-                            <td>URL gambar publik yang akan dianimasikan.</td>
-                        </tr>
-                        <tr>
-                            <td><code>prompt</code></td>
-                            <td>string</td>
-                            <td>Ya</td>
-                            <td>Instruksi singkat tentang gaya atau adegan video.</td>
-                        </tr>
-                        <tr>
-                            <td><code>negative_prompt</code></td>
-                            <td>string</td>
-                            <td>Tidak</td>
-                            <td>Deskripsi yang ingin dihindari dari hasil.</td>
-                        </tr>
-                        <tr>
-                            <td><code>duration</code></td>
-                            <td>number</td>
-                            <td>Tidak</td>
-                            <td>Lama video dalam detik. Pilihan: 5, 8, atau 12.</td>
-                        </tr>
-                        <tr>
-                            <td><code>cfg_scale</code></td>
-                            <td>number</td>
-                            <td>Tidak</td>
-                            <td>Kontrol kekuatan prompt. Nilai rekomendasi 0.5 – 1.0.</td>
-                        </tr>
-                        <tr>
-                            <td><code>webhook_url</code></td>
-                            <td>string (URL)</td>
-                            <td>Tidak</td>
-                            <td>URL webhook untuk menerima notifikasi ketika video selesai.</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </section>
-
-            <section class="doc-section glass-card" aria-labelledby="exampleRequest">
-                <h2 id="exampleRequest">Contoh Request (PHP cURL)</h2>
-<pre class="code-block"><code class="language-php">&lt;?php
-$curl = curl_init();
-
-curl_setopt_array($curl, [
-  CURLOPT_URL =&gt; 'https://api.freepik.com/v1/ai/image-to-video/kling-v2-5-pro',
-  CURLOPT_RETURNTRANSFER =&gt; true,
-  CURLOPT_CUSTOMREQUEST =&gt; 'POST',
-  CURLOPT_HTTPHEADER =&gt; [
-    'Content-Type: application/json',
-    'X-Freepik-API-Key: &lt;API_KEY_ANDA&gt;',
-  ],
-  CURLOPT_POSTFIELDS =&gt; json_encode([
-    'webhook_url'     =&gt; 'https://example.com/webhook',
-    'image'           =&gt; 'https://example.com/product.jpg',
-    'prompt'          =&gt; 'Product beauty shot with dramatic lighting',
-    'negative_prompt' =&gt; 'motion blur, watermark',
-    'duration'        =&gt; 8,
-    'cfg_scale'       =&gt; 0.7,
-  ]),
-]);
-
-$response = curl_exec($curl);
-$err = curl_error($curl);
-
-curl_close($curl);
-
-echo $err ? 'cURL Error: ' . $err : $response;
-</code></pre>
-                <p class="doc-note"><strong>Tip:</strong> simpan <code>task_id</code> dari response untuk polling status dan mengambil video akhir.</p>
-            </section>
-
-            <section class="doc-section glass-card" aria-labelledby="videoDownload">
-                <h2 id="videoDownload">Mengambil Video Final</h2>
-                <p>Setelah status task berubah menjadi <strong>COMPLETED</strong>, panggil endpoint berikut untuk mendapatkan URL video:</p>
-                <div class="endpoint-card">
-                    <span class="method-pill method-pill--get">GET</span>
-                    <code>/v1/ai/image-to-video/kling-v2-5-pro/{task_id}/video</code>
-                </div>
-                <p>Response akan berisi daftar URL yang dapat diunduh. Pastikan URL disalin atau diunduh sebelum kadaluarsa.</p>
-            </section>
 
             <section class="doc-section glass-card" aria-labelledby="tryIt">
-                <h2 id="tryIt">Coba Langsung</h2>
-                <p>Gunakan form berikut untuk menguji endpoint dengan Freepik API key yang terhubung ke akun Anda.</p>
+
                 <form id="klingForm" class="doc-form" novalidate>
                     <div class="doc-form-grid">
                         <div class="form-field">
@@ -212,8 +70,7 @@ echo $err ? 'cURL Error: ' . $err : $response;
                             <label for="durationInput">Durasi <span>*</span></label>
                             <select id="durationInput" name="duration" required>
                                 <option value="5" selected>5 detik (default)</option>
-                                <option value="8">8 detik</option>
-                                <option value="12">12 detik</option>
+                                <option value="10">10 detik</option>
                             </select>
                         </div>
                         <div class="form-field">
