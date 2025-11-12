@@ -7855,6 +7855,18 @@ body[data-theme="light"] .profile-expiry.expired {
             </div>
           </div>
 
+          <div id="rowKlingNegative" class="hidden" style="margin-top:4px">
+            <label for="klingNegativePrompt">Negative prompt (opsional)</label>
+            <textarea id="klingNegativePrompt" rows="2" placeholder="Contoh: blur, distorsi, glitch"></textarea>
+            <p class="muted" style="font-size:10px;margin-top:4px;">Gunakan untuk menghindari elemen yang tidak diinginkan pada Kling 2.5 Pro.</p>
+          </div>
+
+          <div id="rowKlingCfg" class="hidden" style="margin-top:4px">
+            <label for="klingCfgScale">CFG scale (0 - 1)</label>
+            <input id="klingCfgScale" type="number" min="0" max="1" step="0.05" value="0.5">
+            <p class="muted" style="font-size:10px;margin-top:4px;">Nilai tinggi membuat hasil lebih patuh pada prompt. Default 0.5.</p>
+          </div>
+
           <div id="rowTIOptions" class="field-row hidden" style="margin-top:4px">
             <div>
               <label for="numImages">Jumlah image</label>
@@ -10577,7 +10589,7 @@ body[data-theme="light"] .profile-expiry.expired {
     seedancePro720: { values: [5, 10], default: 5, defaultLayout: 'portrait' },
     seedancePro1080: { values: [5, 10], default: 5, defaultLayout: 'landscape' },
     klingStd21: { values: [5, 8], default: 5, defaultLayout: 'portrait' },
-    kling25Pro: { values: [5, 8, 12], default: 5, defaultLayout: 'landscape' },
+    kling25Pro: { values: [5, 10], default: 5, defaultLayout: 'landscape' },
     minimax1080: { values: [6, 12], default: 6, defaultLayout: 'landscape' },
     _default: { values: [5], default: 5, defaultLayout: 'portrait' }
   };
@@ -10641,6 +10653,80 @@ body[data-theme="light"] .profile-expiry.expired {
     } else if (!payload.aspect_ratio) {
       payload.aspect_ratio = 'auto';
     }
+    return payload;
+  }
+
+  function buildKling25ProBody(formData = {}) {
+    const payload = applyVideoExtras({ prompt: formData.prompt, image: formData.imageUrl }, formData) || {};
+
+    if (payload.image_url && !payload.image) {
+      payload.image = payload.image_url;
+    }
+    delete payload.image_url;
+
+    if (!payload.image && formData.imageUrl) {
+      payload.image = formData.imageUrl;
+    }
+
+    if (payload.first_frame_image_url && !payload.first_frame_image) {
+      payload.first_frame_image = payload.first_frame_image_url;
+    }
+    delete payload.first_frame_image_url;
+
+    const allowedDurations = [5, 10];
+    let chosenDuration = null;
+
+    if (typeof payload.duration === 'number' && Number.isFinite(payload.duration)) {
+      const rounded = Math.round(payload.duration);
+      if (allowedDurations.includes(rounded)) {
+        chosenDuration = rounded;
+      }
+    } else if (typeof payload.duration === 'string') {
+      const parsed = parseInt(payload.duration.trim(), 10);
+      if (allowedDurations.includes(parsed)) {
+        chosenDuration = parsed;
+      }
+    }
+
+    if (chosenDuration === null) {
+      const fallbackRaw = formData && typeof formData.videoDuration !== 'undefined'
+        ? formData.videoDuration
+        : null;
+      const fallback = typeof fallbackRaw === 'string'
+        ? parseInt(fallbackRaw.trim(), 10)
+        : fallbackRaw;
+      if (typeof fallback === 'number' && allowedDurations.includes(fallback)) {
+        chosenDuration = fallback;
+      }
+    }
+
+    payload.duration = chosenDuration !== null ? chosenDuration : allowedDurations[0];
+
+    if (payload.aspect_ratio !== undefined) {
+      delete payload.aspect_ratio;
+    }
+
+    const negative = typeof formData.klingNegativePrompt === 'string'
+      ? formData.klingNegativePrompt.trim()
+      : '';
+    if (negative) {
+      payload.negative_prompt = negative;
+    } else {
+      delete payload.negative_prompt;
+    }
+
+    let cfg = typeof formData.klingCfgScale === 'number' && !Number.isNaN(formData.klingCfgScale)
+      ? formData.klingCfgScale
+      : null;
+    if (cfg === null && typeof payload.cfg_scale === 'number') {
+      cfg = payload.cfg_scale;
+    }
+    if (cfg === null) {
+      cfg = 0.5;
+    }
+    cfg = Math.max(0, Math.min(1, cfg));
+    payload.cfg_scale = Number(cfg.toFixed(2));
+
     return payload;
   }
 
@@ -10845,7 +10931,7 @@ body[data-theme="light"] .profile-expiry.expired {
       type: 'video',
       path: '/v1/ai/image-to-video/kling-v2-5-pro',
       statusPath: taskId => `/v1/ai/image-to-video/kling-v2-5-pro/${taskId}`,
-      buildBody: f => applyVideoExtras({ prompt: f.prompt, image: f.imageUrl }, f)
+      buildBody: f => buildKling25ProBody(f)
     },
     pixverse: {
       id: 'pixverse',
@@ -11145,6 +11231,10 @@ body[data-theme="light"] .profile-expiry.expired {
   const videoUrlInput = document.getElementById('videoUrl');
   const audioUrlInput = document.getElementById('audioUrl');
   const rowVideoSettings = document.getElementById('rowVideoSettings');
+  const rowKlingNegative = document.getElementById('rowKlingNegative');
+  const rowKlingCfg = document.getElementById('rowKlingCfg');
+  const klingNegativePrompt = document.getElementById('klingNegativePrompt');
+  const klingCfgScale = document.getElementById('klingCfgScale');
   const videoDurationSelect = document.getElementById('videoDuration');
   const videoLayoutSelect = document.getElementById('videoLayout');
   const numImagesInput = document.getElementById('numImages');
@@ -12369,7 +12459,9 @@ body[data-theme="light"] .profile-expiry.expired {
       modelHint.textContent = 'Upscaler: wajib image URL. Prompt opsional.';
     } else if (id === 'removeBg') {
       modelHint.textContent = 'Remove Background: wajib image URL. Response langsung URL hasil (valid 5 menit).';
-    } else if (['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling25Pro','minimax1080'].includes(id)) {
+    } else if (id === 'kling25Pro') {
+      modelHint.textContent = 'Kling 2.5 Pro: wajib image URL + prompt. Pilih durasi 5/10 detik, opsional negative prompt & CFG scale (0-1).';
+    } else if (['wan480','wan720','seedancePro480','seedancePro720','seedancePro1080','klingStd21','kling21Master','minimax1080'].includes(id)) {
       modelHint.textContent = 'Image-to-video: wajib image URL + prompt singkat. Pilih durasi & layout (portrait / landscape / square).';
     } else if (id === 'latentSync') {
       modelHint.textContent = 'Latent-Sync: wajib video URL dan audio URL. Prompt opsional.';
@@ -12433,6 +12525,8 @@ body[data-theme="light"] .profile-expiry.expired {
     rowImageUrl.classList.add('hidden');
     rowVideoAudio.classList.add('hidden');
     rowVideoSettings.classList.add('hidden');
+    if (rowKlingNegative) rowKlingNegative.classList.add('hidden');
+    if (rowKlingCfg) rowKlingCfg.classList.add('hidden');
     rowTIOptions.classList.add('hidden');
     rowPrompt.classList.remove('hidden');
 
@@ -12448,6 +12542,13 @@ body[data-theme="light"] .profile-expiry.expired {
       rowImageUrl.classList.remove('hidden');
       rowVideoSettings.classList.remove('hidden');
       configureVideoControls(id);
+      if (id === 'kling25Pro') {
+        if (rowKlingNegative) rowKlingNegative.classList.remove('hidden');
+        if (rowKlingCfg) rowKlingCfg.classList.remove('hidden');
+        if (klingCfgScale && (klingCfgScale.value === '' || Number.isNaN(Number(klingCfgScale.value)))) {
+          klingCfgScale.value = '0.5';
+        }
+      }
     } else if (isLip) {
       fieldsTitle.textContent = 'Video Gen (Lipsync)';
       rowVideoAudio.classList.remove('hidden');
@@ -13326,7 +13427,9 @@ body[data-theme="light"] .profile-expiry.expired {
       videoDuration: (videoDurationSelect && videoDurationSelect.value) ? Number(videoDurationSelect.value) : null,
       videoLayout: videoLayoutSelect && videoLayoutSelect.value ? videoLayoutSelect.value : null,
       numImages: numImagesInput.value ? Number(numImagesInput.value) : null,
-      aspectRatio: aspectRatioInput.value || null
+      aspectRatio: aspectRatioInput.value || null,
+      klingNegativePrompt: klingNegativePrompt ? klingNegativePrompt.value.trim() : '',
+      klingCfgScale: klingCfgScale && klingCfgScale.value !== '' ? Number(klingCfgScale.value) : null
     };
 
     if (formData.imageUrl) {
@@ -13351,7 +13454,7 @@ body[data-theme="light"] .profile-expiry.expired {
     const requireImageModels = [
       'upscalerCreative','upscalePrecV1','upscalePrecV2','removeBg',
       'wan480','wan720','seedancePro480','seedancePro720','seedancePro1080',
-      'klingStd21','kling25Pro','minimax1080','seedream4edit'
+      'klingStd21','kling21Master','kling25Pro','minimax1080','seedream4edit'
     ];
 
     if (!formData.prompt && ['gemini','imagen3','seedream4','fluxPro11'].includes(modelId)) {
@@ -13604,6 +13707,8 @@ body[data-theme="light"] .profile-expiry.expired {
     audioUrlInput.value = '';
     numImagesInput.value = '1';
     aspectRatioInput.value = '';
+    if (klingNegativePrompt) klingNegativePrompt.value = '';
+    if (klingCfgScale) klingCfgScale.value = '0.5';
     if (videoDurationSelect && modelSelect) {
       configureVideoControls(modelSelect.value);
     }
