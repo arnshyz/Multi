@@ -12969,7 +12969,9 @@ body[data-theme="light"] .profile-expiry.expired {
       prompt: promptInput.value.trim(),
       imageUrl: imageUrlInput.value.trim(),
       numImages: numImagesInput.value ? Number(numImagesInput.value) : null,
-      aspectRatio: aspectRatioInput.value || null
+      aspectRatio: aspectRatioInput.value || null,
+      klingNegativePrompt: klingNegativePrompt ? klingNegativePrompt.value.trim() : '',
+      klingCfgScale: klingCfgScale && klingCfgScale.value !== '' ? Number(klingCfgScale.value) : null
     };
 
     if (formData.imageUrl) {
