@@ -209,17 +209,16 @@ echo $err ? 'cURL Error: ' . $err : $response;
                             <input type="url" id="imageInput" name="image" placeholder="https://..." required>
                         </div>
                         <div class="form-field">
-                            <label for="durationInput">Durasi</label>
-                            <select id="durationInput" name="duration">
-                                <option value="">Default (5 detik)</option>
-                                <option value="5">5 detik</option>
+                            <label for="durationInput">Durasi <span>*</span></label>
+                            <select id="durationInput" name="duration" required>
+                                <option value="5" selected>5 detik (default)</option>
                                 <option value="8">8 detik</option>
                                 <option value="12">12 detik</option>
                             </select>
                         </div>
                         <div class="form-field">
-                            <label for="cfgInput">CFG Scale</label>
-                            <input type="number" id="cfgInput" name="cfg_scale" step="0.1" min="0" max="2" placeholder="0.5">
+                            <label for="cfgInput">CFG Scale <span>*</span></label>
+                            <input type="number" id="cfgInput" name="cfg_scale" step="0.1" min="0.1" max="2" value="0.5" required>
                         </div>
                         <div class="form-field">
                             <label for="webhookInput">Webhook URL</label>
@@ -295,6 +294,78 @@ echo $err ? 'cURL Error: ' . $err : $response;
                 }
             }
             return data;
+        }
+
+        function collectValidationMessages(source) {
+            const messages = [];
+            if (source == null) {
+                return messages;
+            }
+
+            const pushMessage = (field, message) => {
+                if (!message) {
+                    return;
+                }
+                const prefix = field ? `${field}: ` : '';
+                messages.push(`${prefix}${message}`);
+            };
+
+            const handleItem = (item) => {
+                if (!item) {
+                    return;
+                }
+                if (typeof item === 'string') {
+                    messages.push(item);
+                    return;
+                }
+                if (typeof item === 'object') {
+                    const field = item.field || (Array.isArray(item.loc) ? item.loc.join('.') : item.loc);
+                    const detail = item.message || item.msg || item.detail || item.error;
+                    if (detail) {
+                        pushMessage(field, detail);
+                        return;
+                    }
+                    Object.entries(item).forEach(([key, value]) => {
+                        if (typeof value === 'string') {
+                            pushMessage(key, value);
+                        }
+                    });
+                }
+            };
+
+            if (Array.isArray(source)) {
+                source.forEach(handleItem);
+                return messages;
+            }
+
+            if (typeof source === 'object') {
+                Object.entries(source).forEach(([key, value]) => {
+                    if (Array.isArray(value)) {
+                        value.forEach(item => {
+                            if (typeof item === 'string') {
+                                pushMessage(key, item);
+                            } else if (item && typeof item === 'object') {
+                                const detail = item.message || item.msg || item.detail || item.error;
+                                if (detail) {
+                                    pushMessage(key, detail);
+                                }
+                            }
+                        });
+                    } else if (typeof value === 'string') {
+                        pushMessage(key, value);
+                    } else if (value && typeof value === 'object') {
+                        const nestedMessages = collectValidationMessages(value);
+                        nestedMessages.forEach(msg => pushMessage(key, msg));
+                    }
+                });
+                return messages;
+            }
+
+            if (typeof source === 'string') {
+                messages.push(source);
+            }
+
+            return messages;
         }
 
         function renderResponse(payload) {
@@ -400,8 +471,33 @@ echo $err ? 'cURL Error: ' . $err : $response;
             }
 
             if (!json.ok) {
-                const message = (json.data && json.data.message) || json.error || 'Permintaan gagal';
-                throw new Error(`HTTP ${json.status}: ${message}`);
+                const status = json.status || 'Error';
+                const rawData = json.data;
+
+                let message = (rawData && typeof rawData === 'object' && (rawData.message || rawData.error || rawData.detail)) || json.error || 'Permintaan gagal';
+                const extraMessages = [];
+
+                if (typeof rawData === 'string') {
+                    extraMessages.push(rawData);
+                } else if (rawData && typeof rawData === 'object') {
+                    ['errors', 'details', 'detail', 'validation_errors'].forEach(key => {
+                        if (key in rawData) {
+                            const extracted = collectValidationMessages(rawData[key]);
+                            extracted.forEach(msg => {
+                                if (msg && !extraMessages.includes(msg)) {
+                                    extraMessages.push(msg);
+                                }
+                            });
+                        }
+                    });
+                }
+
+                if (!message && extraMessages.length) {
+                    message = extraMessages.shift();
+                }
+
+                const detailText = extraMessages.length ? ` (${extraMessages.join('; ')})` : '';
+                throw new Error(`HTTP ${status}: ${message}${detailText}`);
             }
 
             return json.data;
@@ -437,20 +533,19 @@ echo $err ? 'cURL Error: ' . $err : $response;
                     prompt,
                 };
 
+                const allowedDurations = new Set(['5', '8', '12']);
+                const durationValue = allowedDurations.has(durationRaw) ? durationRaw : '5';
+                payload.duration = durationValue;
+
+                let cfgValue = cfgRaw === '' ? 0.5 : Number(cfgRaw);
+                if (Number.isNaN(cfgValue) || cfgValue <= 0) {
+                    setStatus('CFG scale harus berupa angka positif.', 'error');
+                    return;
+                }
+                payload.cfg_scale = Number(cfgValue.toFixed(2));
+
                 if (negative) {
                     payload.negative_prompt = negative;
-                }
-                if (durationRaw) {
-                    const duration = Number(durationRaw);
-                    if (!Number.isNaN(duration) && duration > 0) {
-                        payload.duration = duration;
-                    }
-                }
-                if (cfgRaw) {
-                    const cfg = Number(cfgRaw);
-                    if (!Number.isNaN(cfg)) {
-                        payload.cfg_scale = cfg;
-                    }
                 }
                 if (webhook) {
                     payload.webhook_url = webhook;
