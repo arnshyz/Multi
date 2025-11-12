@@ -10607,22 +10607,23 @@ body[data-theme="light"] .profile-expiry.expired {
     const trimmed = rawValue.trim();
     if (!trimmed) {
       delete target[field];
+      delete target[`${field}_url`];
       return;
     }
 
     const dataUrlMatch = trimmed.match(/^data:image\/[a-z0-9.+-]+;base64,(.+)$/i);
     if (dataUrlMatch && dataUrlMatch[1]) {
       target[field] = dataUrlMatch[1];
-      return;
-    }
-
-    if (/^https?:\/\//i.test(trimmed)) {
-      target[`${field}_url`] = trimmed;
-      delete target[field];
+      delete target[`${field}_url`];
       return;
     }
 
     target[field] = trimmed;
+    if (/^https?:\/\//i.test(trimmed)) {
+      target[`${field}_url`] = trimmed;
+    } else {
+      delete target[`${field}_url`];
+    }
   }
 
   function applyVideoExtras(body, formData = {}) {
