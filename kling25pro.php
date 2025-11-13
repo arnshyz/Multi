@@ -123,14 +123,25 @@ if ($account) {
                 </div>
                 <div class="doc-result" id="videoResult">
                     <div class="doc-result__header">
-                        <h3>Video URLs</h3>
+                        <h3>Hasil Video</h3>
                         <button type="button" class="btn-primary" id="fetchVideoBtn" disabled>Ambil Video</button>
                     </div>
-                    <ul class="doc-video-list" id="videoList"></ul>
-                    <div class="doc-video-preview" id="videoPreview"></div>
+                    <div class="kling-results-empty" id="klingResultsEmpty">Belum ada video yang tersedia. Kirim atau muat task untuk melihat hasilnya.</div>
+                    <div class="kling-results-grid" id="klingResults" aria-live="polite"></div>
                 </div>
             </section>
         </main>
+    </div>
+
+    <div class="kling-preview" id="klingPreviewModal" aria-hidden="true">
+        <div class="kling-preview__dialog" role="dialog" aria-modal="true" aria-labelledby="klingPreviewTitle">
+            <button type="button" class="kling-preview__close" id="klingPreviewClose" aria-label="Tutup preview">&times;</button>
+            <div class="kling-preview__body">
+                <h3 class="kling-preview__title" id="klingPreviewTitle">Preview Video</h3>
+                <div class="kling-preview__content" id="klingPreviewBody"></div>
+            </div>
+            <a href="#" class="kling-preview__download" id="klingPreviewDownload" download target="_blank" rel="noopener">Download Video</a>
+        </div>
     </div>
 
     <script>
@@ -139,8 +150,12 @@ if ($account) {
         const statusEl = document.getElementById('docStatus');
         const responseEl = document.getElementById('responsePayload');
         const fetchVideoBtn = document.getElementById('fetchVideoBtn');
-        const videoList = document.getElementById('videoList');
-        const videoPreview = document.getElementById('videoPreview');
+        const resultsGrid = document.getElementById('klingResults');
+        const resultsEmpty = document.getElementById('klingResultsEmpty');
+        const previewModal = document.getElementById('klingPreviewModal');
+        const previewBody = document.getElementById('klingPreviewBody');
+        const previewClose = document.getElementById('klingPreviewClose');
+        const previewDownload = document.getElementById('klingPreviewDownload');
         const fetchTasksBtn = document.getElementById('fetchTasksBtn');
         const tasksPayloadEl = document.getElementById('tasksPayload');
         const statusForm = document.getElementById('statusForm');
@@ -151,12 +166,380 @@ if ($account) {
         const submitBtn = document.getElementById('submitBtn');
 
         let currentTaskId = null;
+        let lastRequestContext = null;
+        const generatedVideos = [];
+        const DRIVE_ENDPOINT = 'index.php?api=drive';
 
         function setStatus(message, type = 'info') {
             if (!statusEl) return;
             statusEl.textContent = message || '';
             statusEl.dataset.state = type;
         }
+
+        function ensureAbsoluteUrl(url) {
+            if (!url || typeof url !== 'string') {
+                return '';
+            }
+            try {
+                return new URL(url, window.location.origin).href;
+            } catch (err) {
+                return url;
+            }
+        }
+
+        function nowIso() {
+            try {
+                return new Date().toISOString();
+            } catch (err) {
+                return '';
+            }
+        }
+
+        async function persistDriveItems(items) {
+            if (!items || !items.length) {
+                return null;
+            }
+
+            const response = await fetch(DRIVE_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ items })
+            });
+
+            let data = null;
+            try {
+                data = await response.json();
+            } catch (err) {
+                // ignore json parse errors
+            }
+
+            if (!response.ok || !data || data.ok !== true) {
+                const message = data && data.error ? data.error : `Gagal menyimpan drive (status ${response.status})`;
+                throw new Error(message);
+            }
+
+            return data.data && data.data.items ? data.data.items : [];
+        }
+
+        function closePreview() {
+            if (!previewModal) return;
+            previewModal.classList.remove('is-visible');
+            previewModal.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open');
+            if (previewBody) {
+                const playingVideo = previewBody.querySelector('video');
+                if (playingVideo && typeof playingVideo.pause === 'function') {
+                    try {
+                        playingVideo.pause();
+                    } catch (err) {
+                        // ignore pause error
+                    }
+                }
+                previewBody.innerHTML = '';
+            }
+            if (previewDownload) {
+                previewDownload.href = '#';
+                previewDownload.style.display = 'none';
+            }
+        }
+
+        function openPreview(url) {
+            if (!previewModal || !previewBody) return;
+            const absoluteUrl = ensureAbsoluteUrl(url);
+            if (!absoluteUrl) return;
+
+            previewBody.innerHTML = '';
+            const video = document.createElement('video');
+            video.src = absoluteUrl;
+            video.controls = true;
+            video.autoplay = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.className = 'kling-preview__video';
+
+            previewBody.appendChild(video);
+
+            if (previewDownload) {
+                previewDownload.href = absoluteUrl;
+                previewDownload.style.display = 'inline-flex';
+            }
+
+            previewModal.classList.add('is-visible');
+            previewModal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open');
+        }
+
+        function getContextDetails(context = {}) {
+            const fallback = lastRequestContext || {};
+            return {
+                taskId: context.taskId || currentTaskId || fallback.taskId || null,
+                prompt: context.prompt || fallback.prompt || '',
+                negativePrompt: context.negativePrompt || fallback.negativePrompt || '',
+                duration: context.duration != null ? context.duration : (fallback.duration != null ? fallback.duration : null),
+                cfgScale: context.cfgScale != null ? context.cfgScale : (fallback.cfgScale != null ? fallback.cfgScale : null),
+                image: context.image || fallback.image || ''
+            };
+        }
+
+        function renderVideoCards() {
+            if (!resultsGrid || !resultsEmpty) return;
+
+            if (!generatedVideos.length) {
+                resultsGrid.innerHTML = '';
+                resultsEmpty.hidden = false;
+                return;
+            }
+
+            resultsEmpty.hidden = true;
+            resultsGrid.innerHTML = '';
+
+            generatedVideos.forEach((entry, index) => {
+                const card = document.createElement('div');
+                card.className = 'kling-result-card';
+
+                const header = document.createElement('div');
+                header.className = 'kling-result-header';
+
+                const title = document.createElement('div');
+                title.className = 'kling-result-title';
+                title.textContent = `Video ${index + 1}`;
+                header.appendChild(title);
+
+                if (entry.taskId) {
+                    const taskBadge = document.createElement('span');
+                    taskBadge.className = 'kling-result-task';
+                    taskBadge.textContent = entry.taskId;
+                    header.appendChild(taskBadge);
+                }
+
+                card.appendChild(header);
+
+                const media = document.createElement('div');
+                media.className = 'kling-result-media';
+
+                if (entry.image) {
+                    const imageUrl = ensureAbsoluteUrl(entry.image);
+                    if (/^https?:\/\//i.test(imageUrl)) {
+                        const imageCard = document.createElement('div');
+                        imageCard.className = 'kling-thumb-card';
+                        const image = document.createElement('img');
+                        image.src = imageUrl;
+                        image.alt = 'Image prompt reference';
+                        image.loading = 'lazy';
+                        image.className = 'kling-thumb-image';
+                        imageCard.appendChild(image);
+                        media.appendChild(imageCard);
+                    }
+                }
+
+                const videoWrapper = document.createElement('div');
+                videoWrapper.className = 'kling-video-card';
+
+                const video = document.createElement('video');
+                video.src = entry.url;
+                video.controls = true;
+                video.loop = true;
+                video.muted = true;
+                video.playsInline = true;
+                video.preload = 'metadata';
+                video.className = 'kling-result-video';
+                videoWrapper.appendChild(video);
+
+                const actions = document.createElement('div');
+                actions.className = 'kling-result-actions';
+
+                const previewBtn = document.createElement('button');
+                previewBtn.type = 'button';
+                previewBtn.className = 'kling-action-btn kling-action-btn--ghost';
+                previewBtn.textContent = 'Preview';
+                previewBtn.addEventListener('click', () => openPreview(entry.url));
+                actions.appendChild(previewBtn);
+
+                const downloadLink = document.createElement('a');
+                downloadLink.href = entry.url;
+                downloadLink.target = '_blank';
+                downloadLink.rel = 'noopener noreferrer';
+                downloadLink.download = '';
+                downloadLink.className = 'kling-action-btn';
+                downloadLink.textContent = 'Download';
+                actions.appendChild(downloadLink);
+
+                const saveBtn = document.createElement('button');
+                saveBtn.type = 'button';
+                saveBtn.className = 'kling-action-btn kling-action-btn--primary';
+                saveBtn.textContent = entry.saved ? 'Tersimpan ✓' : (entry.saving ? 'Menyimpan…' : 'Simpan ke Drive');
+                saveBtn.disabled = entry.saved || entry.saving;
+                saveBtn.addEventListener('click', () => saveKlingVideoToDrive(entry));
+                actions.appendChild(saveBtn);
+
+                videoWrapper.appendChild(actions);
+                media.appendChild(videoWrapper);
+                card.appendChild(media);
+
+                const meta = document.createElement('div');
+                meta.className = 'kling-result-meta';
+                const metaParts = [];
+                if (entry.duration) {
+                    metaParts.push(`${entry.duration}s`);
+                }
+                if (entry.cfgScale != null) {
+                    metaParts.push(`CFG ${entry.cfgScale}`);
+                }
+                if (metaParts.length) {
+                    meta.textContent = metaParts.join(' • ');
+                    card.appendChild(meta);
+                }
+
+                const prompt = document.createElement('p');
+                prompt.className = 'kling-result-prompt';
+                prompt.textContent = entry.prompt ? entry.prompt : 'Prompt tidak tersedia.';
+                card.appendChild(prompt);
+
+                if (entry.negativePrompt) {
+                    const negative = document.createElement('p');
+                    negative.className = 'kling-result-negative';
+                    negative.textContent = `Negative: ${entry.negativePrompt}`;
+                    card.appendChild(negative);
+                }
+
+                const statusLine = document.createElement('div');
+                statusLine.className = 'kling-result-status';
+                statusLine.dataset.state = entry.error ? 'error' : (entry.saved ? 'success' : (entry.saving ? 'info' : 'muted'));
+                if (entry.error) {
+                    statusLine.textContent = entry.error;
+                } else if (entry.saved) {
+                    statusLine.textContent = entry.savedAt ? `Tersimpan ke drive (${entry.savedAt})` : 'Tersimpan ke drive';
+                } else if (entry.saving) {
+                    statusLine.textContent = 'Menyimpan video ke drive…';
+                } else {
+                    statusLine.textContent = 'Belum disimpan ke drive';
+                }
+                card.appendChild(statusLine);
+
+                resultsGrid.appendChild(card);
+            });
+        }
+
+        function upsertGeneratedVideo(url, context = {}) {
+            if (!url) {
+                return null;
+            }
+
+            const absoluteUrl = ensureAbsoluteUrl(url);
+            if (!/^https?:\/\//i.test(absoluteUrl)) {
+                return null;
+            }
+
+            const details = getContextDetails(context);
+            let entry = generatedVideos.find(item => item.url === absoluteUrl);
+            if (!entry) {
+                entry = {
+                    id: `kling-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    url: absoluteUrl,
+                    taskId: details.taskId,
+                    prompt: details.prompt || '',
+                    negativePrompt: details.negativePrompt || '',
+                    duration: details.duration,
+                    cfgScale: details.cfgScale,
+                    image: details.image || '',
+                    createdAt: nowIso(),
+                    saved: false,
+                    saving: false,
+                    savedAt: null,
+                    error: '',
+                    autoSave: true
+                };
+                generatedVideos.push(entry);
+            } else {
+                entry.taskId = entry.taskId || details.taskId;
+                if (details.prompt) entry.prompt = details.prompt;
+                if (details.negativePrompt) entry.negativePrompt = details.negativePrompt;
+                if (details.duration != null) entry.duration = details.duration;
+                if (details.cfgScale != null) entry.cfgScale = details.cfgScale;
+                if (details.image) entry.image = details.image;
+            }
+
+            return entry;
+        }
+
+        function updateGeneratedVideos(urls, context = {}) {
+            if (Array.isArray(urls)) {
+                urls.forEach(url => upsertGeneratedVideo(url, context));
+            }
+
+            renderVideoCards();
+
+            generatedVideos
+                .filter(entry => entry.autoSave && !entry.saved && !entry.saving)
+                .forEach(entry => saveKlingVideoToDrive(entry, { auto: true }));
+        }
+
+        async function saveKlingVideoToDrive(entry, { auto = false } = {}) {
+            if (!entry || !entry.url) {
+                return;
+            }
+
+            if (entry.saved || entry.saving) {
+                entry.autoSave = false;
+                return;
+            }
+
+            entry.saving = true;
+            entry.error = '';
+            entry.autoSave = false;
+            renderVideoCards();
+
+            const payload = {
+                type: 'video',
+                url: entry.url,
+                model: 'kling-v2-5-pro',
+                prompt: entry.prompt || null,
+                created_at: entry.createdAt || nowIso()
+            };
+
+            const thumb = ensureAbsoluteUrl(entry.image);
+            if (/^https?:\/\//i.test(thumb)) {
+                payload.thumbnail_url = thumb;
+            }
+
+            try {
+                await persistDriveItems([payload]);
+                entry.saved = true;
+                entry.savedAt = nowIso();
+                if (!auto) {
+                    setStatus('Video berhasil disimpan ke drive.', 'success');
+                }
+            } catch (err) {
+                entry.error = err && err.message ? err.message : 'Gagal menyimpan video ke drive.';
+                if (!auto) {
+                    setStatus(entry.error, 'error');
+                } else {
+                    console.warn('Auto-save drive gagal:', err);
+                }
+            } finally {
+                entry.saving = false;
+                renderVideoCards();
+            }
+        }
+
+        if (previewClose) {
+            previewClose.addEventListener('click', closePreview);
+        }
+
+        if (previewModal) {
+            previewModal.addEventListener('click', event => {
+                if (event.target === previewModal) {
+                    closePreview();
+                }
+            });
+        }
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closePreview();
+            }
+        });
 
         function clearOutputs() {
             if (responseEl) {
@@ -168,20 +551,17 @@ if ($account) {
             if (statusPayloadEl) {
                 statusPayloadEl.textContent = '{ }\n';
             }
-            if (videoList) {
-                videoList.innerHTML = '';
-            }
-            if (videoPreview) {
-                videoPreview.innerHTML = '';
-                videoPreview.classList.remove('is-visible');
-            }
+            generatedVideos.length = 0;
+            renderVideoCards();
             if (fetchVideoBtn) {
                 fetchVideoBtn.disabled = true;
             }
             currentTaskId = null;
+            lastRequestContext = null;
             if (statusTaskIdInput) {
                 statusTaskIdInput.value = '';
             }
+            closePreview();
         }
 
         function normalizeData(data) {
@@ -277,64 +657,6 @@ if ($account) {
 
         function renderResponse(payload) {
             renderJson(responseEl, payload);
-        }
-
-        function renderVideos(urls) {
-            if (!videoList) return;
-            videoList.innerHTML = '';
-            if (!Array.isArray(urls) || !urls.length) {
-                const empty = document.createElement('li');
-                empty.className = 'doc-video-empty';
-                empty.textContent = 'Belum ada URL video yang tersedia.';
-                videoList.appendChild(empty);
-                if (videoPreview) {
-                    videoPreview.innerHTML = '';
-                    videoPreview.classList.remove('is-visible');
-                }
-                return;
-            }
-
-            urls.forEach((url, index) => {
-                const item = document.createElement('li');
-                item.className = 'doc-video-item';
-
-                const label = document.createElement('div');
-                label.className = 'doc-video-label';
-                label.textContent = `Video ${index + 1}`;
-                item.appendChild(label);
-
-                const link = document.createElement('a');
-                link.href = url;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.textContent = url;
-                link.className = 'doc-video-link';
-                item.appendChild(link);
-
-                videoList.appendChild(item);
-            });
-
-            if (videoPreview) {
-                const primaryUrl = urls[0];
-                videoPreview.innerHTML = '';
-                if (primaryUrl) {
-                    const heading = document.createElement('div');
-                    heading.className = 'doc-video-preview__label';
-                    heading.textContent = 'Preview Video';
-
-                    const video = document.createElement('video');
-                    video.controls = true;
-                    video.preload = 'metadata';
-                    video.src = primaryUrl;
-                    video.className = 'doc-video-preview__player';
-
-                    videoPreview.appendChild(heading);
-                    videoPreview.appendChild(video);
-                    videoPreview.classList.add('is-visible');
-                } else {
-                    videoPreview.classList.remove('is-visible');
-                }
-            }
         }
 
         function updateStatusTaskId(taskId) {
@@ -486,7 +808,18 @@ if ($account) {
                     payload.webhook_url = webhook;
                 }
 
+                const durationNumber = Number(durationValue);
+                const contextSnapshot = {
+                    prompt,
+                    negativePrompt: negative,
+                    image,
+                    duration: Number.isNaN(durationNumber) ? null : durationNumber,
+                    cfgScale: payload.cfg_scale,
+                    taskId: null
+                };
+
                 clearOutputs();
+                lastRequestContext = contextSnapshot;
                 setStatus('Mengirim permintaan ke Freepik...', 'info');
                 if (submitBtn) {
                     submitBtn.disabled = true;
@@ -507,12 +840,18 @@ if ($account) {
                     if (taskId) {
                         currentTaskId = taskId;
                         updateStatusTaskId(taskId);
+                        if (lastRequestContext) {
+                            lastRequestContext.taskId = taskId;
+                        }
                         if (fetchVideoBtn) {
                             fetchVideoBtn.disabled = false;
                         }
                         setStatus(`Permintaan diterima. Task ID: ${taskId}`, 'success');
                     } else {
                         currentTaskId = null;
+                        if (lastRequestContext) {
+                            lastRequestContext.taskId = null;
+                        }
                         if (fetchVideoBtn) {
                             fetchVideoBtn.disabled = true;
                         }
@@ -549,7 +888,7 @@ if ($account) {
                     const normalized = normalizeData(data);
                     renderResponse(data);
                     const urls = extractVideoUrlsFromResponse(normalized);
-                    renderVideos(urls);
+                    updateGeneratedVideos(urls, { taskId: currentTaskId });
 
                     if (urls.length) {
                         setStatus('URL video berhasil diambil.', 'success');
@@ -561,6 +900,10 @@ if ($account) {
                     console.error('Gagal mengambil video Kling:', error);
                     setStatus(error.message || 'Gagal mengambil video.', 'error');
                     fetchVideoBtn.disabled = false;
+                } finally {
+                    if (fetchVideoBtn) {
+                        fetchVideoBtn.disabled = !currentTaskId;
+                    }
                 }
             });
         }
@@ -625,6 +968,11 @@ if ($account) {
                     if (latestTaskId) {
                         currentTaskId = latestTaskId;
                         updateStatusTaskId(latestTaskId);
+                        if (lastRequestContext) {
+                            lastRequestContext.taskId = latestTaskId;
+                        } else {
+                            lastRequestContext = { taskId: latestTaskId };
+                        }
                         if (fetchVideoBtn) {
                             fetchVideoBtn.disabled = false;
                         }
@@ -632,7 +980,7 @@ if ($account) {
 
                     const urls = extractVideoUrlsFromResponse(normalized);
                     if (urls.length) {
-                        renderVideos(urls);
+                        updateGeneratedVideos(urls, { taskId: currentTaskId });
                     }
                 } catch (error) {
                     console.error('Gagal mengambil status task Kling:', error);

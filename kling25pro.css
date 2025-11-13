@@ -372,36 +372,6 @@ body.kling-doc {
     margin-bottom: 12px;
 }
 
-.doc-video-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 16px;
-}
-
-.doc-video-item {
-    padding: 14px 16px;
-    border-radius: 16px;
-    background: rgba(30, 64, 175, 0.2);
-    border: 1px solid rgba(59, 130, 246, 0.28);
-    word-break: break-all;
-}
-
-.doc-video-label {
-    font-weight: 600;
-    margin-bottom: 6px;
-}
-
-.doc-video-link {
-    color: #bfdbfe;
-    word-break: break-word;
-}
-
-.doc-video-empty {
-    color: rgba(148, 163, 184, 0.9);
-}
-
 .doc-inline-form {
     display: flex;
     gap: 12px;
@@ -425,29 +395,264 @@ body.kling-doc {
     outline-offset: 1px;
 }
 
-.doc-video-preview {
-    margin-top: 18px;
+.kling-results-empty {
     padding: 18px;
+    border-radius: 16px;
+    border: 1px dashed rgba(148, 163, 184, 0.4);
+    background: rgba(15, 23, 42, 0.6);
+    text-align: center;
+    color: rgba(148, 163, 184, 0.9);
+    font-size: 14px;
+}
+
+.kling-results-grid {
+    margin-top: 12px;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.kling-result-card {
     border-radius: 18px;
-    border: 1px solid rgba(59, 130, 246, 0.28);
-    background: rgba(30, 64, 175, 0.18);
-    display: none;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    background: linear-gradient(180deg, rgba(30, 58, 138, 0.45), rgba(15, 23, 42, 0.85));
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 12px 40px rgba(14, 23, 42, 0.45);
+}
+
+.kling-result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.kling-result-title {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.kling-result-task {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(96, 165, 250, 0.45);
+    background: rgba(59, 130, 246, 0.15);
+    color: #bfdbfe;
+    white-space: nowrap;
+}
+
+.kling-result-media {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.kling-thumb-card {
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(30, 41, 59, 0.9);
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kling-thumb-image {
+    width: 100%;
+    border-radius: 10px;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    background: #0f172a;
+}
+
+.kling-video-card {
+    border-radius: 14px;
+    border: 1px solid rgba(96, 165, 250, 0.4);
+    background: rgba(30, 64, 175, 0.3);
+    padding: 12px;
+    display: flex;
     flex-direction: column;
     gap: 12px;
 }
 
-.doc-video-preview.is-visible {
-    display: flex;
-}
-
-.doc-video-preview__label {
-    font-weight: 600;
-}
-
-.doc-video-preview__player {
+.kling-result-video {
     width: 100%;
     border-radius: 12px;
     background: #000;
+    max-height: 320px;
+}
+
+.kling-result-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.kling-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: rgba(30, 41, 59, 0.6);
+    color: #e0f2fe;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.kling-action-btn:hover {
+    background: rgba(59, 130, 246, 0.35);
+    border-color: rgba(96, 165, 250, 0.65);
+    transform: translateY(-1px);
+}
+
+.kling-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.kling-action-btn--primary {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(14, 165, 233, 0.65));
+    border-color: rgba(96, 165, 250, 0.8);
+    color: #0f172a;
+}
+
+.kling-action-btn--ghost {
+    background: rgba(30, 41, 59, 0.45);
+}
+
+.kling-result-meta {
+    font-size: 12px;
+    color: rgba(191, 219, 254, 0.85);
+}
+
+.kling-result-prompt,
+.kling-result-negative {
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(226, 232, 240, 0.95);
+    margin: 0;
+}
+
+.kling-result-negative {
+    color: rgba(148, 163, 184, 0.95);
+}
+
+.kling-result-status {
+    font-size: 12px;
+    color: rgba(148, 163, 184, 0.9);
+}
+
+.kling-result-status[data-state="success"] {
+    color: rgba(134, 239, 172, 0.95);
+}
+
+.kling-result-status[data-state="error"] {
+    color: rgba(248, 113, 113, 0.95);
+}
+
+.kling-result-status[data-state="info"] {
+    color: rgba(129, 140, 248, 0.95);
+}
+
+.kling-preview {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    z-index: 4000;
+}
+
+.kling-preview.is-visible {
+    display: flex;
+}
+
+.kling-preview__dialog {
+    background: rgba(15, 23, 42, 0.98);
+    border-radius: 20px;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    box-shadow: 0 24px 60px rgba(8, 47, 73, 0.65);
+    width: min(720px, 100%);
+    max-width: 100%;
+    padding: 24px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.kling-preview__close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(30, 41, 59, 0.8);
+    border: none;
+    color: #e2e8f0;
+    font-size: 24px;
+    line-height: 1;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.kling-preview__close:hover {
+    background: rgba(59, 130, 246, 0.65);
+    color: #0f172a;
+}
+
+.kling-preview__body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.kling-preview__title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.kling-preview__content {
+    width: 100%;
+}
+
+.kling-preview__video {
+    width: 100%;
+    border-radius: 16px;
+    background: #000;
+}
+
+.kling-preview__download {
+    display: none;
+    align-self: flex-start;
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(96, 165, 250, 0.65);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(14, 165, 233, 0.7));
+    color: #0f172a;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.kling-preview__download:hover {
+    background: linear-gradient(135deg, rgba(96, 165, 250, 1), rgba(14, 165, 233, 0.9));
+}
+
+body.modal-open {
+    overflow: hidden;
 }
 
 .sr-only {
@@ -493,5 +698,17 @@ body.kling-doc {
 
     .doc-actions {
         flex-wrap: wrap;
+    }
+
+    .kling-result-media {
+        grid-template-columns: 1fr;
+    }
+
+    .kling-result-card {
+        padding: 16px;
+    }
+
+    .kling-preview__dialog {
+        padding: 20px;
     }
 }
