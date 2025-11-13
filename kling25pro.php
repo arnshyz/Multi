@@ -210,6 +210,16 @@ if ($account) {
         const generatedVideos = [];
         const autoVideoFetch = new Map();
         const DRIVE_ENDPOINT = 'index.php?api=drive';
+        const STATUS_POLL_INTERVAL = 4500;
+        let statusPollTimer = null;
+        let statusPollTaskId = null;
+        let statusPollInflight = false;
+        let statusProgressHideTimeout = null;
+        const statusProgressAnim = {
+            timer: null,
+            taskId: null,
+            value: 0
+        };
 
         function setStatus(message, type = 'info') {
             if (!statusEl) return;
@@ -408,6 +418,177 @@ if ($account) {
             };
         }
 
+        function hideStatusProgressBar() {
+            if (!statusProgress) {
+                return;
+            }
+            statusProgress.hidden = true;
+            statusProgress.dataset.state = 'idle';
+            if (statusProgressFill) {
+                statusProgressFill.style.width = '0%';
+            }
+            if (statusProgressText) {
+                statusProgressText.textContent = '0%';
+            }
+        }
+
+        function setStatusProgressValue(value, label) {
+            if (!statusProgress) {
+                return;
+            }
+
+            const numeric = Math.max(0, Math.min(100, Number(value) || 0));
+            if (statusProgressHideTimeout) {
+                clearTimeout(statusProgressHideTimeout);
+                statusProgressHideTimeout = null;
+            }
+
+            statusProgress.hidden = false;
+            statusProgress.dataset.state = numeric >= 100 ? 'complete' : 'running';
+
+            if (statusProgressFill) {
+                statusProgressFill.style.width = `${numeric}%`;
+            }
+            if (statusProgressText) {
+                statusProgressText.textContent = label || `${Math.round(numeric)}%`;
+            }
+
+            statusProgressAnim.value = numeric;
+        }
+
+        function resetStatusProgress() {
+            if (statusProgressAnim.timer) {
+                clearInterval(statusProgressAnim.timer);
+                statusProgressAnim.timer = null;
+            }
+            statusProgressAnim.taskId = null;
+            statusProgressAnim.value = 0;
+            if (statusProgressHideTimeout) {
+                clearTimeout(statusProgressHideTimeout);
+                statusProgressHideTimeout = null;
+            }
+            hideStatusProgressBar();
+        }
+
+        function ensureStatusProgressAnimation(taskId) {
+            if (!statusProgress) {
+                return;
+            }
+
+            if (!taskId) {
+                resetStatusProgress();
+                return;
+            }
+
+            if (statusProgressAnim.taskId !== taskId) {
+                if (statusProgressAnim.timer) {
+                    clearInterval(statusProgressAnim.timer);
+                }
+                statusProgressAnim.timer = null;
+                statusProgressAnim.taskId = taskId;
+                statusProgressAnim.value = 8;
+            } else if (!statusProgressAnim.value || statusProgressAnim.value < 8) {
+                statusProgressAnim.value = 8;
+            }
+
+            setStatusProgressValue(statusProgressAnim.value, `${Math.round(statusProgressAnim.value)}%`);
+
+            if (!statusProgressAnim.timer) {
+                statusProgressAnim.timer = setInterval(() => {
+                    if (!statusProgressAnim.taskId || statusProgressAnim.taskId !== taskId) {
+                        resetStatusProgress();
+                        return;
+                    }
+                    const next = Math.min(92, (statusProgressAnim.value || 0) + (Math.random() * 6 + 4));
+                    statusProgressAnim.value = next;
+                    setStatusProgressValue(next, `${Math.round(next)}%`);
+                }, 1600);
+            }
+        }
+
+        function syncStatusProgressValue(value, label, { final = false, taskId = null } = {}) {
+            if (!statusProgress) {
+                return;
+            }
+
+            if (statusProgressAnim.timer) {
+                clearInterval(statusProgressAnim.timer);
+                statusProgressAnim.timer = null;
+            }
+
+            if (taskId) {
+                statusProgressAnim.taskId = taskId;
+            }
+
+            setStatusProgressValue(value, label);
+
+            if (final) {
+                statusProgressAnim.taskId = null;
+                statusProgressHideTimeout = setTimeout(() => {
+                    hideStatusProgressBar();
+                }, 1500);
+            }
+        }
+
+        function stopStatusPolling(taskId = null) {
+            if (statusPollTimer) {
+                clearInterval(statusPollTimer);
+                statusPollTimer = null;
+            }
+            if (!taskId || statusPollTaskId === taskId) {
+                statusPollTaskId = null;
+            }
+            statusPollInflight = false;
+        }
+
+        function startStatusPolling(taskId, { immediate = false } = {}) {
+            if (!taskId) {
+                return;
+            }
+
+            if (statusPollTaskId === taskId && statusPollTimer) {
+                return;
+            }
+
+            if (statusPollTimer) {
+                clearInterval(statusPollTimer);
+                statusPollTimer = null;
+            }
+
+            statusPollTaskId = taskId;
+
+            const poll = async () => {
+                if (!statusPollTaskId || statusPollTaskId !== taskId) {
+                    return;
+                }
+                if (statusPollInflight) {
+                    return;
+                }
+
+                statusPollInflight = true;
+                try {
+                    const data = await callFreepikEndpoint({
+                        path: `/v1/ai/image-to-video/kling-v2-5-pro/${encodeURIComponent(taskId)}`,
+                        method: 'GET'
+                    });
+
+                    renderJson(statusPayloadEl, data);
+                    const normalized = normalizeData(data);
+                    handleTaskStatus(normalized, { source: 'poll', taskId });
+                } catch (err) {
+                    console.warn('Gagal polling status Kling:', err);
+                } finally {
+                    statusPollInflight = false;
+                }
+            };
+
+            if (immediate) {
+                poll();
+            }
+
+            statusPollTimer = setInterval(poll, STATUS_POLL_INTERVAL);
+        }
+
         function clearStatusPreviewMedia() {
             if (!statusPreview) {
                 return;
@@ -444,9 +625,8 @@ if ($account) {
             if (statusMeta) {
                 statusMeta.textContent = 'Mulai dengan mengirim task baru atau cek status task.';
             }
-            if (statusProgress) {
-                statusProgress.hidden = true;
-            }
+            resetStatusProgress();
+            stopStatusPolling();
             if (statusQueue) {
                 statusQueue.textContent = 'Tidak ada antrean aktif.';
                 statusQueue.dataset.active = 'false';
@@ -482,18 +662,21 @@ if ($account) {
                 statusMeta.textContent = snapshot.message || (snapshot.final ? 'Task selesai. Ambil video di bawah.' : 'Pantau progres task secara otomatis.');
             }
 
-            if (statusProgress) {
-                if (snapshot.progress && typeof snapshot.progress.value === 'number') {
-                    statusProgress.hidden = false;
-                    if (statusProgressFill) {
-                        statusProgressFill.style.width = `${snapshot.progress.value}%`;
-                    }
-                    if (statusProgressText) {
-                        statusProgressText.textContent = snapshot.progress.label || `${Math.round(snapshot.progress.value)}%`;
-                    }
-                } else {
-                    statusProgress.hidden = true;
-                }
+            if (snapshot.progress && typeof snapshot.progress.value === 'number') {
+                syncStatusProgressValue(snapshot.progress.value, snapshot.progress.label, {
+                    final: !!snapshot.final,
+                    taskId: snapshot.taskId || statusProgressAnim.taskId || null
+                });
+            } else if (!snapshot.final && snapshot.taskId) {
+                ensureStatusProgressAnimation(snapshot.taskId);
+            } else if (snapshot.final) {
+                const finalValue = snapshot.progress && typeof snapshot.progress.value === 'number'
+                    ? snapshot.progress.value
+                    : 100;
+                const finalLabel = snapshot.progress && snapshot.progress.label ? snapshot.progress.label : `${Math.round(finalValue)}%`;
+                syncStatusProgressValue(finalValue, finalLabel, { final: true, taskId: snapshot.taskId || null });
+            } else {
+                resetStatusProgress();
             }
 
             if (statusQueue) {
@@ -681,6 +864,17 @@ if ($account) {
                 }
             } else if (snapshot.taskId) {
                 autoVideoFetch.delete(snapshot.taskId);
+            }
+
+            if (snapshot.taskId) {
+                if (snapshot.final) {
+                    stopStatusPolling(snapshot.taskId);
+                } else {
+                    const shouldImmediate = context && context.source === 'create';
+                    startStatusPolling(snapshot.taskId, { immediate: shouldImmediate });
+                }
+            } else if (snapshot.final) {
+                stopStatusPolling();
             }
 
             return { snapshot, entries };
