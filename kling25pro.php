@@ -126,6 +126,32 @@ if ($account) {
                         <h3>Hasil Video</h3>
                         <button type="button" class="btn-primary" id="fetchVideoBtn" disabled>Ambil Video</button>
                     </div>
+                    <div class="kling-status-card" id="klingStatusCard">
+                        <div class="kling-status-card__header">
+                            <div>
+                                <span class="kling-status-card__label">Status &amp; Preview</span>
+                                <h4 class="kling-status-card__title" id="klingStatusTitle">Belum ada task aktif</h4>
+                            </div>
+                            <button type="button" class="kling-status-clear" id="klingStatusClear" hidden>Clear preview</button>
+                        </div>
+                        <div class="kling-status-card__body">
+                            <div class="kling-status-state">
+                                <span class="kling-status-badge" id="klingStatusBadge" data-state="idle">Idle</span>
+                                <span class="kling-status-meta" id="klingStatusMeta">Mulai dengan mengirim task baru atau cek status task.</span>
+                            </div>
+                            <div class="kling-status-progress" id="klingStatusProgress" hidden>
+                                <div class="kling-status-progress__bar">
+                                    <span class="kling-status-progress__fill" id="klingStatusProgressFill" style="width: 0%"></span>
+                                </div>
+                                <div class="kling-status-progress__text" id="klingStatusProgressText">0%</div>
+                            </div>
+                            <div class="kling-status-queue" id="klingStatusQueue">Tidak ada antrean aktif.</div>
+                            <div class="kling-status-preview" id="klingStatusPreview">
+                                <div class="kling-status-preview__empty">Belum ada preview video.</div>
+                            </div>
+                            <div class="kling-status-actions" id="klingStatusActions"></div>
+                        </div>
+                    </div>
                     <div class="kling-results-empty" id="klingResultsEmpty">Belum ada video yang tersedia. Kirim atau muat task untuk melihat hasilnya.</div>
                     <div class="kling-results-grid" id="klingResults" aria-live="polite"></div>
                 </div>
@@ -164,11 +190,36 @@ if ($account) {
         const statusSubmitBtn = document.getElementById('statusSubmitBtn');
         const resetBtn = document.getElementById('resetBtn');
         const submitBtn = document.getElementById('submitBtn');
+        const statusCard = document.getElementById('klingStatusCard');
+        const statusTitle = document.getElementById('klingStatusTitle');
+        const statusBadge = document.getElementById('klingStatusBadge');
+        const statusMeta = document.getElementById('klingStatusMeta');
+        const statusProgress = document.getElementById('klingStatusProgress');
+        const statusProgressFill = document.getElementById('klingStatusProgressFill');
+        const statusProgressText = document.getElementById('klingStatusProgressText');
+        const statusQueue = document.getElementById('klingStatusQueue');
+        const statusPreview = document.getElementById('klingStatusPreview');
+        const statusActions = document.getElementById('klingStatusActions');
+        const statusClearBtn = document.getElementById('klingStatusClear');
 
         let currentTaskId = null;
         let lastRequestContext = null;
+        let statusPreviewEntryId = null;
+        let lastStatusSnapshot = null;
+        let webhookChannel = null;
         const generatedVideos = [];
+        const autoVideoFetch = new Map();
         const DRIVE_ENDPOINT = 'index.php?api=drive';
+        const STATUS_POLL_INTERVAL = 4500;
+        let statusPollTimer = null;
+        let statusPollTaskId = null;
+        let statusPollInflight = false;
+        let statusProgressHideTimeout = null;
+        const statusProgressAnim = {
+            timer: null,
+            taskId: null,
+            value: 0
+        };
 
         function setStatus(message, type = 'info') {
             if (!statusEl) return;
@@ -193,6 +244,714 @@ if ($account) {
             } catch (err) {
                 return '';
             }
+        }
+
+        function formatDisplayDate(value) {
+            if (!value) {
+                return '';
+            }
+
+            try {
+                const date = value instanceof Date ? value : new Date(value);
+                if (Number.isNaN(date.getTime())) {
+                    return typeof value === 'string' ? value : '';
+                }
+
+                return date.toLocaleString('id-ID', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (err) {
+                return typeof value === 'string' ? value : '';
+            }
+        }
+
+        function isFinalStatus(value) {
+            if (!value) {
+                return false;
+            }
+            const normalized = String(value).toUpperCase();
+            return ['COMPLETE', 'COMPLETED', 'SUCCEEDED', 'SUCCESS', 'FAILED', 'FAILURE', 'ERROR', 'CANCELLED', 'CANCELED'].includes(normalized);
+        }
+
+        function determineBadgeState(status, { final = false } = {}) {
+            const normalized = status ? String(status).toUpperCase() : '';
+            if (!normalized) {
+                return 'idle';
+            }
+            if (['FAILED', 'FAILURE', 'ERROR', 'CANCELLED', 'CANCELED'].includes(normalized)) {
+                return 'error';
+            }
+            if (['COMPLETE', 'COMPLETED', 'SUCCEEDED', 'SUCCESS'].includes(normalized)) {
+                return 'success';
+            }
+            if (['QUEUED', 'QUEUING', 'QUEUE', 'WAITING'].includes(normalized)) {
+                return 'warning';
+            }
+            if (final) {
+                return 'success';
+            }
+            return 'progress';
+        }
+
+        function parseProgressValue(source) {
+            if (!source || typeof source !== 'object') {
+                return null;
+            }
+
+            const candidates = [];
+            ['progress', 'progress_percent', 'progressPercent', 'progress_percentage', 'percentage', 'percent'].forEach(key => {
+                if (source[key] != null && source[key] !== '') {
+                    candidates.push(source[key]);
+                }
+            });
+
+            if (source.metrics && typeof source.metrics === 'object') {
+                const metrics = source.metrics;
+                ['progress', 'percent', 'percentage'].forEach(key => {
+                    if (metrics[key] != null && metrics[key] !== '') {
+                        candidates.push(metrics[key]);
+                    }
+                });
+            }
+
+            let progress = null;
+            for (const candidate of candidates) {
+                if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+                    progress = candidate;
+                    break;
+                }
+                const parsed = Number(candidate);
+                if (!Number.isNaN(parsed)) {
+                    progress = parsed;
+                    break;
+                }
+            }
+
+            if (progress == null) {
+                return null;
+            }
+
+            if (progress <= 1) {
+                progress = progress * 100;
+            }
+
+            progress = Math.max(0, Math.min(100, progress));
+            return {
+                value: progress,
+                label: `${Math.round(progress)}%`
+            };
+        }
+
+        function formatSecondsToDisplay(value) {
+            const seconds = Number(value);
+            if (!Number.isFinite(seconds) || seconds <= 0) {
+                return '';
+            }
+            if (seconds < 60) {
+                return `${Math.round(seconds)} detik`;
+            }
+            const minutes = seconds / 60;
+            if (minutes < 60) {
+                return `${Math.round(minutes)} menit`;
+            }
+            const hours = minutes / 60;
+            return `${hours.toFixed(1)} jam`;
+        }
+
+        function buildQueueSummary(source) {
+            if (!source || typeof source !== 'object') {
+                return { summary: '', active: false };
+            }
+
+            const queueSources = [];
+            ['queue', 'queue_info', 'queueStatus', 'queue_status', 'status_details'].forEach(key => {
+                if (source[key] && typeof source[key] === 'object') {
+                    queueSources.push(source[key]);
+                }
+            });
+
+            const details = {};
+            queueSources.forEach(item => {
+                if (!item || typeof item !== 'object') {
+                    return;
+                }
+                Object.entries(item).forEach(([key, value]) => {
+                    if (details[key] == null) {
+                        details[key] = value;
+                    }
+                });
+            });
+
+            const pieces = [];
+            const status = details.status || details.state || source.queue_status || source.queueState;
+            if (status) {
+                pieces.push(String(status).toUpperCase());
+            }
+
+            const position = details.position ?? details.queue_position ?? source.queue_position ?? source.queuePosition ?? source.position;
+            if (position != null && position !== '') {
+                pieces.push(`Posisi #${position}`);
+            }
+
+            const etaSeconds = details.eta_seconds ?? details.eta ?? details.wait_time ?? source.eta ?? source.wait_time;
+            const etaText = formatSecondsToDisplay(etaSeconds);
+            if (etaText) {
+                pieces.push(`ETA ${etaText}`);
+            }
+
+            const estimatedStart = details.starts_in ?? details.start_in ?? null;
+            const estimatedStartText = formatSecondsToDisplay(estimatedStart);
+            if (estimatedStartText) {
+                pieces.push(`Mulai dalam ${estimatedStartText}`);
+            }
+
+            const queueActive = pieces.length > 0 || (status && String(status).toUpperCase() !== 'IDLE');
+            const summary = pieces.length ? `Job aktif — ${pieces.join(' • ')}` : (queueActive ? 'Job aktif. Menunggu giliran eksekusi.' : 'Tidak ada antrean aktif.');
+
+            return {
+                summary,
+                active: queueActive
+            };
+        }
+
+        function hideStatusProgressBar() {
+            if (!statusProgress) {
+                return;
+            }
+            statusProgress.hidden = true;
+            statusProgress.dataset.state = 'idle';
+            if (statusProgressFill) {
+                statusProgressFill.style.width = '0%';
+            }
+            if (statusProgressText) {
+                statusProgressText.textContent = '0%';
+            }
+        }
+
+        function setStatusProgressValue(value, label) {
+            if (!statusProgress) {
+                return;
+            }
+
+            const numeric = Math.max(0, Math.min(100, Number(value) || 0));
+            if (statusProgressHideTimeout) {
+                clearTimeout(statusProgressHideTimeout);
+                statusProgressHideTimeout = null;
+            }
+
+            statusProgress.hidden = false;
+            statusProgress.dataset.state = numeric >= 100 ? 'complete' : 'running';
+
+            if (statusProgressFill) {
+                statusProgressFill.style.width = `${numeric}%`;
+            }
+            if (statusProgressText) {
+                statusProgressText.textContent = label || `${Math.round(numeric)}%`;
+            }
+
+            statusProgressAnim.value = numeric;
+        }
+
+        function resetStatusProgress() {
+            if (statusProgressAnim.timer) {
+                clearInterval(statusProgressAnim.timer);
+                statusProgressAnim.timer = null;
+            }
+            statusProgressAnim.taskId = null;
+            statusProgressAnim.value = 0;
+            if (statusProgressHideTimeout) {
+                clearTimeout(statusProgressHideTimeout);
+                statusProgressHideTimeout = null;
+            }
+            hideStatusProgressBar();
+        }
+
+        function ensureStatusProgressAnimation(taskId) {
+            if (!statusProgress) {
+                return;
+            }
+
+            if (!taskId) {
+                resetStatusProgress();
+                return;
+            }
+
+            if (statusProgressAnim.taskId !== taskId) {
+                if (statusProgressAnim.timer) {
+                    clearInterval(statusProgressAnim.timer);
+                }
+                statusProgressAnim.timer = null;
+                statusProgressAnim.taskId = taskId;
+                statusProgressAnim.value = 8;
+            } else if (!statusProgressAnim.value || statusProgressAnim.value < 8) {
+                statusProgressAnim.value = 8;
+            }
+
+            setStatusProgressValue(statusProgressAnim.value, `${Math.round(statusProgressAnim.value)}%`);
+
+            if (!statusProgressAnim.timer) {
+                statusProgressAnim.timer = setInterval(() => {
+                    if (!statusProgressAnim.taskId || statusProgressAnim.taskId !== taskId) {
+                        resetStatusProgress();
+                        return;
+                    }
+                    const next = Math.min(92, (statusProgressAnim.value || 0) + (Math.random() * 6 + 4));
+                    statusProgressAnim.value = next;
+                    setStatusProgressValue(next, `${Math.round(next)}%`);
+                }, 1600);
+            }
+        }
+
+        function syncStatusProgressValue(value, label, { final = false, taskId = null } = {}) {
+            if (!statusProgress) {
+                return;
+            }
+
+            if (statusProgressAnim.timer) {
+                clearInterval(statusProgressAnim.timer);
+                statusProgressAnim.timer = null;
+            }
+
+            if (taskId) {
+                statusProgressAnim.taskId = taskId;
+            }
+
+            setStatusProgressValue(value, label);
+
+            if (final) {
+                statusProgressAnim.taskId = null;
+                statusProgressHideTimeout = setTimeout(() => {
+                    hideStatusProgressBar();
+                }, 1500);
+            }
+        }
+
+        function stopStatusPolling(taskId = null) {
+            if (statusPollTimer) {
+                clearInterval(statusPollTimer);
+                statusPollTimer = null;
+            }
+            if (!taskId || statusPollTaskId === taskId) {
+                statusPollTaskId = null;
+            }
+            statusPollInflight = false;
+        }
+
+        function startStatusPolling(taskId, { immediate = false } = {}) {
+            if (!taskId) {
+                return;
+            }
+
+            if (statusPollTaskId === taskId && statusPollTimer) {
+                return;
+            }
+
+            if (statusPollTimer) {
+                clearInterval(statusPollTimer);
+                statusPollTimer = null;
+            }
+
+            statusPollTaskId = taskId;
+
+            const poll = async () => {
+                if (!statusPollTaskId || statusPollTaskId !== taskId) {
+                    return;
+                }
+                if (statusPollInflight) {
+                    return;
+                }
+
+                statusPollInflight = true;
+                try {
+                    const data = await callFreepikEndpoint({
+                        path: `/v1/ai/image-to-video/kling-v2-5-pro/${encodeURIComponent(taskId)}`,
+                        method: 'GET'
+                    });
+
+                    renderJson(statusPayloadEl, data);
+                    const normalized = normalizeData(data);
+                    handleTaskStatus(normalized, { source: 'poll', taskId });
+                } catch (err) {
+                    console.warn('Gagal polling status Kling:', err);
+                } finally {
+                    statusPollInflight = false;
+                }
+            };
+
+            if (immediate) {
+                poll();
+            }
+
+            statusPollTimer = setInterval(poll, STATUS_POLL_INTERVAL);
+        }
+
+        function clearStatusPreviewMedia() {
+            if (!statusPreview) {
+                return;
+            }
+            const video = statusPreview.querySelector('video');
+            if (video && typeof video.pause === 'function') {
+                try {
+                    video.pause();
+                } catch (err) {
+                    // ignore
+                }
+            }
+            statusPreview.innerHTML = '<div class="kling-status-preview__empty">Belum ada preview video.</div>';
+            if (statusActions) {
+                statusActions.innerHTML = '';
+            }
+            statusPreviewEntryId = null;
+            if (statusClearBtn) {
+                statusClearBtn.hidden = true;
+            }
+        }
+
+        function resetStatusPreview() {
+            if (!statusCard) {
+                return;
+            }
+            if (statusTitle) {
+                statusTitle.textContent = 'Belum ada task aktif';
+            }
+            if (statusBadge) {
+                statusBadge.textContent = 'Idle';
+                statusBadge.dataset.state = 'idle';
+            }
+            if (statusMeta) {
+                statusMeta.textContent = 'Mulai dengan mengirim task baru atau cek status task.';
+            }
+            resetStatusProgress();
+            stopStatusPolling();
+            if (statusQueue) {
+                statusQueue.textContent = 'Tidak ada antrean aktif.';
+                statusQueue.dataset.active = 'false';
+            }
+            clearStatusPreviewMedia();
+            lastStatusSnapshot = null;
+        }
+
+        function refreshStatusPreviewEntry() {
+            if (!statusPreviewEntryId) {
+                return;
+            }
+            const entry = generatedVideos.find(item => item.id === statusPreviewEntryId);
+            renderStatusPreviewEntry(entry || null);
+        }
+
+        function renderStatusSnapshot(snapshot = {}) {
+            if (!statusCard) {
+                return;
+            }
+
+            if (statusTitle) {
+                statusTitle.textContent = snapshot.taskId ? `Task ${snapshot.taskId}` : 'Status task';
+            }
+
+            if (statusBadge) {
+                const badgeState = determineBadgeState(snapshot.status, { final: snapshot.final });
+                statusBadge.dataset.state = badgeState;
+                statusBadge.textContent = snapshot.status ? String(snapshot.status).toUpperCase() : 'UNKNOWN';
+            }
+
+            if (statusMeta) {
+                statusMeta.textContent = snapshot.message || (snapshot.final ? 'Task selesai. Ambil video di bawah.' : 'Pantau progres task secara otomatis.');
+            }
+
+            if (snapshot.progress && typeof snapshot.progress.value === 'number') {
+                syncStatusProgressValue(snapshot.progress.value, snapshot.progress.label, {
+                    final: !!snapshot.final,
+                    taskId: snapshot.taskId || statusProgressAnim.taskId || null
+                });
+            } else if (!snapshot.final && snapshot.taskId) {
+                ensureStatusProgressAnimation(snapshot.taskId);
+            } else if (snapshot.final) {
+                const finalValue = snapshot.progress && typeof snapshot.progress.value === 'number'
+                    ? snapshot.progress.value
+                    : 100;
+                const finalLabel = snapshot.progress && snapshot.progress.label ? snapshot.progress.label : `${Math.round(finalValue)}%`;
+                syncStatusProgressValue(finalValue, finalLabel, { final: true, taskId: snapshot.taskId || null });
+            } else {
+                resetStatusProgress();
+            }
+
+            if (statusQueue) {
+                statusQueue.textContent = snapshot.queueSummary || 'Tidak ada antrean aktif.';
+                statusQueue.dataset.active = snapshot.queueActive ? 'true' : 'false';
+            }
+
+            if (statusClearBtn) {
+                statusClearBtn.hidden = !statusPreviewEntryId;
+            }
+
+            statusCard.dataset.state = snapshot.final ? 'final' : 'active';
+        }
+
+        function renderStatusPreviewEntry(entry) {
+            if (!statusPreview) {
+                return;
+            }
+
+            if (!entry) {
+                clearStatusPreviewMedia();
+                return;
+            }
+
+            statusPreviewEntryId = entry.id;
+            statusPreview.innerHTML = '';
+
+            const video = document.createElement('video');
+            video.src = entry.url;
+            video.controls = true;
+            video.loop = true;
+            video.autoplay = true;
+            video.muted = true;
+            video.playsInline = true;
+            video.className = 'kling-status-preview__video';
+            statusPreview.appendChild(video);
+
+            if (statusActions) {
+                statusActions.innerHTML = '';
+
+                const previewBtn = document.createElement('button');
+                previewBtn.type = 'button';
+                previewBtn.className = 'kling-ugc-button kling-ugc-button--ghost';
+                previewBtn.textContent = 'Preview';
+                previewBtn.addEventListener('click', () => openPreview(entry.url));
+                statusActions.appendChild(previewBtn);
+
+                const copyBtn = document.createElement('button');
+                copyBtn.type = 'button';
+                copyBtn.className = 'kling-ugc-button kling-ugc-button--ghost';
+                copyBtn.textContent = 'Copy Link';
+                copyBtn.addEventListener('click', async () => {
+                    try {
+                        await attemptCopyToClipboard(entry.url);
+                        setStatus('Link video berhasil disalin.', 'success');
+                    } catch (err) {
+                        console.error('Gagal menyalin link video:', err);
+                        setStatus('Tidak dapat menyalin link video.', 'error');
+                    }
+                });
+                statusActions.appendChild(copyBtn);
+
+                const downloadLink = document.createElement('a');
+                downloadLink.href = entry.url;
+                downloadLink.target = '_blank';
+                downloadLink.rel = 'noopener noreferrer';
+                downloadLink.download = '';
+                downloadLink.className = 'kling-ugc-button';
+                downloadLink.textContent = 'Download';
+                statusActions.appendChild(downloadLink);
+
+                const saveBtn = document.createElement('button');
+                saveBtn.type = 'button';
+                saveBtn.className = 'kling-ugc-button kling-ugc-button--primary';
+                if (entry.saved) {
+                    saveBtn.textContent = 'Tersimpan ✓';
+                    saveBtn.disabled = true;
+                } else if (entry.saving) {
+                    saveBtn.textContent = 'Menyimpan…';
+                    saveBtn.disabled = true;
+                } else {
+                    saveBtn.textContent = 'Simpan ke Drive';
+                }
+                saveBtn.addEventListener('click', () => saveKlingVideoToDrive(entry));
+                statusActions.appendChild(saveBtn);
+            }
+
+            if (statusClearBtn) {
+                statusClearBtn.hidden = false;
+            }
+        }
+
+        async function attemptCopyToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+            return new Promise((resolve, reject) => {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    if (successful) {
+                        resolve();
+                    } else {
+                        reject(new Error('Clipboard tidak tersedia'));
+                    }
+                } catch (err) {
+                    document.body.removeChild(textarea);
+                    reject(err);
+                }
+            });
+        }
+
+        function buildStatusSnapshot(payload, context = {}) {
+            if (!payload || typeof payload !== 'object') {
+                return null;
+            }
+
+            const normalized = normalizeData(payload) || {};
+            const taskId = context.taskId || normalized.task_id || normalized.taskId || normalized.id || currentTaskId || null;
+            const status = normalized.status || normalized.state || normalized.task_status || normalized.result_status || null;
+            let progress = parseProgressValue(normalized);
+            const queueDetails = buildQueueSummary(normalized);
+
+            const message = normalized.message
+                || normalized.status_message
+                || normalized.detail
+                || normalized.reason
+                || normalized.error
+                || '';
+
+            let urls = extractVideoUrlsFromResponse(normalized);
+            if ((!urls || !urls.length) && Array.isArray(normalized.generated)) {
+                urls = extractVideoUrlsFromResponse(normalized.generated);
+            }
+
+            const final = isFinalStatus(status) || (urls && urls.length > 0);
+
+            if ((!progress || typeof progress.value !== 'number' || progress.value < 99) && final) {
+                progress = { value: 100, label: '100%' };
+            }
+
+            return {
+                taskId,
+                status,
+                progress,
+                queueSummary: queueDetails.summary,
+                queueActive: queueDetails.active,
+                message,
+                previewUrls: urls || [],
+                final,
+                source: context.source || 'manual'
+            };
+        }
+
+        function handleTaskStatus(payload, context = {}) {
+            const snapshot = buildStatusSnapshot(payload, context);
+            if (!snapshot) {
+                return { snapshot: null, entries: [] };
+            }
+
+            lastStatusSnapshot = snapshot;
+            renderStatusSnapshot(snapshot);
+
+            let entries = [];
+            if (snapshot.previewUrls && snapshot.previewUrls.length) {
+                const details = getContextDetails({ taskId: snapshot.taskId });
+                entries = updateGeneratedVideos(snapshot.previewUrls, details);
+                if (entries.length) {
+                    renderStatusPreviewEntry(entries[0]);
+                }
+                if (snapshot.taskId) {
+                    autoVideoFetch.delete(snapshot.taskId);
+                }
+            } else if (snapshot.final) {
+                refreshStatusPreviewEntry();
+                if (snapshot.taskId) {
+                    scheduleAutoVideoFetch(snapshot.taskId);
+                }
+            } else if (snapshot.taskId) {
+                autoVideoFetch.delete(snapshot.taskId);
+            }
+
+            if (snapshot.taskId) {
+                if (snapshot.final) {
+                    stopStatusPolling(snapshot.taskId);
+                } else {
+                    const shouldImmediate = context && context.source === 'create';
+                    startStatusPolling(snapshot.taskId, { immediate: shouldImmediate });
+                }
+            } else if (snapshot.final) {
+                stopStatusPolling();
+            }
+
+            return { snapshot, entries };
+        }
+
+        function scheduleAutoVideoFetch(taskId) {
+            if (!taskId) {
+                return;
+            }
+
+            const existing = autoVideoFetch.get(taskId);
+            if (existing && (existing.fetching || existing.completed)) {
+                return;
+            }
+
+            autoVideoFetch.set(taskId, { fetching: false, completed: false });
+
+            fetchVideoForTask(taskId, { auto: true }).catch(err => {
+                console.warn('Auto fetch video Kling gagal:', err);
+            });
+        }
+
+        function processWebhookPayload(payload) {
+            if (!payload) {
+                return;
+            }
+
+            let data = payload;
+            if (payload.data && typeof payload.data === 'object') {
+                data = payload.data;
+            }
+
+            if (data.model && !/kling/i.test(String(data.model))) {
+                return;
+            }
+
+            const taskId = data.task_id || data.taskId || payload.task_id || payload.taskId || currentTaskId || null;
+            const result = handleTaskStatus(data, { source: 'webhook', taskId });
+
+            if (result && result.entries && result.entries.length) {
+                setStatus('Webhook menerima hasil video terbaru.', 'success');
+            } else if (result && result.snapshot && result.snapshot.status) {
+                setStatus(`Webhook update: status ${String(result.snapshot.status).toUpperCase()}.`, 'info');
+            }
+        }
+
+        function setupWebhookListeners() {
+            try {
+                webhookChannel = new BroadcastChannel('freepik:kling-webhook');
+                webhookChannel.addEventListener('message', event => {
+                    if (!event) {
+                        return;
+                    }
+                    const { data } = event;
+                    if (!data) {
+                        return;
+                    }
+                    if (data.type && !String(data.type).toLowerCase().includes('kling')) {
+                        return;
+                    }
+                    processWebhookPayload(data.payload || data);
+                });
+            } catch (err) {
+                console.warn('BroadcastChannel tidak tersedia untuk webhook Kling:', err);
+            }
+
+            window.addEventListener('message', event => {
+                if (!event || !event.data) {
+                    return;
+                }
+                const payload = event.data;
+                if (payload && payload.__klingWebhook) {
+                    processWebhookPayload(payload.data || payload.payload || payload);
+                }
+            });
+
+            window.klingWebhookDebug = processWebhookPayload;
         }
 
         async function persistDriveItems(items) {
@@ -295,46 +1054,37 @@ if ($account) {
             resultsGrid.innerHTML = '';
 
             generatedVideos.forEach((entry, index) => {
-                const card = document.createElement('div');
-                card.className = 'kling-result-card';
+                const row = document.createElement('div');
+                row.className = 'kling-ugc-row';
 
-                const header = document.createElement('div');
-                header.className = 'kling-result-header';
+                const mediaColumn = document.createElement('div');
+                mediaColumn.className = 'kling-ugc-media';
 
-                const title = document.createElement('div');
-                title.className = 'kling-result-title';
-                title.textContent = `Video ${index + 1}`;
-                header.appendChild(title);
-
-                if (entry.taskId) {
-                    const taskBadge = document.createElement('span');
-                    taskBadge.className = 'kling-result-task';
-                    taskBadge.textContent = entry.taskId;
-                    header.appendChild(taskBadge);
+                const imageCard = document.createElement('div');
+                imageCard.className = 'kling-ugc-image-card';
+                const imageUrl = ensureAbsoluteUrl(entry.image);
+                if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+                    const img = document.createElement('img');
+                    img.src = imageUrl;
+                    img.alt = 'Image prompt reference';
+                    img.loading = 'lazy';
+                    img.className = 'kling-ugc-thumb';
+                    imageCard.appendChild(img);
+                } else {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'kling-ugc-placeholder';
+                    placeholder.innerHTML = 'Tidak ada image reference<br><span>Tambahkan URL gambar untuk melihat thumbnail.</span>';
+                    imageCard.appendChild(placeholder);
                 }
+                mediaColumn.appendChild(imageCard);
 
-                card.appendChild(header);
+                const videoCard = document.createElement('div');
+                videoCard.className = 'kling-ugc-video-card';
 
-                const media = document.createElement('div');
-                media.className = 'kling-result-media';
-
-                if (entry.image) {
-                    const imageUrl = ensureAbsoluteUrl(entry.image);
-                    if (/^https?:\/\//i.test(imageUrl)) {
-                        const imageCard = document.createElement('div');
-                        imageCard.className = 'kling-thumb-card';
-                        const image = document.createElement('img');
-                        image.src = imageUrl;
-                        image.alt = 'Image prompt reference';
-                        image.loading = 'lazy';
-                        image.className = 'kling-thumb-image';
-                        imageCard.appendChild(image);
-                        media.appendChild(imageCard);
-                    }
-                }
-
-                const videoWrapper = document.createElement('div');
-                videoWrapper.className = 'kling-video-card';
+                const videoTitle = document.createElement('div');
+                videoTitle.className = 'kling-ugc-media-title';
+                videoTitle.textContent = 'Video Kling';
+                videoCard.appendChild(videoTitle);
 
                 const video = document.createElement('video');
                 video.src = entry.url;
@@ -343,16 +1093,16 @@ if ($account) {
                 video.muted = true;
                 video.playsInline = true;
                 video.preload = 'metadata';
-                video.className = 'kling-result-video';
-                videoWrapper.appendChild(video);
+                video.className = 'kling-ugc-video';
+                videoCard.appendChild(video);
 
                 const actions = document.createElement('div');
-                actions.className = 'kling-result-actions';
+                actions.className = 'kling-ugc-actions';
 
                 const previewBtn = document.createElement('button');
                 previewBtn.type = 'button';
-                previewBtn.className = 'kling-action-btn kling-action-btn--ghost';
-                previewBtn.textContent = 'Preview';
+                previewBtn.className = 'kling-ugc-button kling-ugc-button--ghost';
+                previewBtn.textContent = 'Preview Video';
                 previewBtn.addEventListener('click', () => openPreview(entry.url));
                 actions.appendChild(previewBtn);
 
@@ -361,64 +1111,121 @@ if ($account) {
                 downloadLink.target = '_blank';
                 downloadLink.rel = 'noopener noreferrer';
                 downloadLink.download = '';
-                downloadLink.className = 'kling-action-btn';
+                downloadLink.className = 'kling-ugc-button';
                 downloadLink.textContent = 'Download';
                 actions.appendChild(downloadLink);
 
                 const saveBtn = document.createElement('button');
                 saveBtn.type = 'button';
-                saveBtn.className = 'kling-action-btn kling-action-btn--primary';
+                saveBtn.className = 'kling-ugc-button kling-ugc-button--primary';
                 saveBtn.textContent = entry.saved ? 'Tersimpan ✓' : (entry.saving ? 'Menyimpan…' : 'Simpan ke Drive');
                 saveBtn.disabled = entry.saved || entry.saving;
                 saveBtn.addEventListener('click', () => saveKlingVideoToDrive(entry));
                 actions.appendChild(saveBtn);
 
-                videoWrapper.appendChild(actions);
-                media.appendChild(videoWrapper);
-                card.appendChild(media);
+                videoCard.appendChild(actions);
+                mediaColumn.appendChild(videoCard);
 
-                const meta = document.createElement('div');
-                meta.className = 'kling-result-meta';
-                const metaParts = [];
+                row.appendChild(mediaColumn);
+
+                const infoColumn = document.createElement('div');
+                infoColumn.className = 'kling-ugc-info';
+
+                const header = document.createElement('div');
+                header.className = 'kling-ugc-header';
+
+                const title = document.createElement('div');
+                title.className = 'kling-ugc-title';
+                title.textContent = `Video ${index + 1}`;
+                header.appendChild(title);
+
+                if (entry.taskId) {
+                    const badge = document.createElement('span');
+                    badge.className = 'kling-ugc-badge';
+                    badge.textContent = entry.taskId;
+                    header.appendChild(badge);
+                }
+
+                infoColumn.appendChild(header);
+
+                const chipGroup = document.createElement('div');
+                chipGroup.className = 'kling-ugc-chip-group';
                 if (entry.duration) {
-                    metaParts.push(`${entry.duration}s`);
+                    const chip = document.createElement('span');
+                    chip.className = 'kling-ugc-chip';
+                    chip.textContent = `${entry.duration}s`;
+                    chipGroup.appendChild(chip);
                 }
                 if (entry.cfgScale != null) {
-                    metaParts.push(`CFG ${entry.cfgScale}`);
+                    const chip = document.createElement('span');
+                    chip.className = 'kling-ugc-chip';
+                    chip.textContent = `CFG ${entry.cfgScale}`;
+                    chipGroup.appendChild(chip);
                 }
-                if (metaParts.length) {
-                    meta.textContent = metaParts.join(' • ');
-                    card.appendChild(meta);
+                if (entry.createdAt) {
+                    const createdText = formatDisplayDate(entry.createdAt);
+                    if (createdText) {
+                        const chip = document.createElement('span');
+                        chip.className = 'kling-ugc-chip';
+                        chip.textContent = `Dibuat ${createdText}`;
+                        chipGroup.appendChild(chip);
+                    }
+                }
+                if (chipGroup.children.length) {
+                    infoColumn.appendChild(chipGroup);
                 }
 
-                const prompt = document.createElement('p');
-                prompt.className = 'kling-result-prompt';
-                prompt.textContent = entry.prompt ? entry.prompt : 'Prompt tidak tersedia.';
-                card.appendChild(prompt);
+                const promptBlock = document.createElement('div');
+                promptBlock.className = 'kling-ugc-block';
+                const promptLabel = document.createElement('div');
+                promptLabel.className = 'kling-ugc-label';
+                promptLabel.textContent = 'Prompt';
+                const promptText = document.createElement('div');
+                promptText.className = 'kling-ugc-text';
+                if (entry.prompt) {
+                    promptText.textContent = entry.prompt;
+                } else {
+                    promptText.textContent = 'Prompt tidak tersedia.';
+                    promptText.classList.add('is-muted');
+                }
+                promptBlock.appendChild(promptLabel);
+                promptBlock.appendChild(promptText);
+                infoColumn.appendChild(promptBlock);
 
                 if (entry.negativePrompt) {
-                    const negative = document.createElement('p');
-                    negative.className = 'kling-result-negative';
-                    negative.textContent = `Negative: ${entry.negativePrompt}`;
-                    card.appendChild(negative);
+                    const negativeBlock = document.createElement('div');
+                    negativeBlock.className = 'kling-ugc-block';
+                    const negativeLabel = document.createElement('div');
+                    negativeLabel.className = 'kling-ugc-label';
+                    negativeLabel.textContent = 'Negative Prompt';
+                    const negativeText = document.createElement('div');
+                    negativeText.className = 'kling-ugc-text';
+                    negativeText.textContent = entry.negativePrompt;
+                    negativeBlock.appendChild(negativeLabel);
+                    negativeBlock.appendChild(negativeText);
+                    infoColumn.appendChild(negativeBlock);
                 }
 
                 const statusLine = document.createElement('div');
-                statusLine.className = 'kling-result-status';
+                statusLine.className = 'kling-ugc-status';
                 statusLine.dataset.state = entry.error ? 'error' : (entry.saved ? 'success' : (entry.saving ? 'info' : 'muted'));
                 if (entry.error) {
                     statusLine.textContent = entry.error;
                 } else if (entry.saved) {
-                    statusLine.textContent = entry.savedAt ? `Tersimpan ke drive (${entry.savedAt})` : 'Tersimpan ke drive';
+                    const savedText = formatDisplayDate(entry.savedAt);
+                    statusLine.textContent = savedText ? `Tersimpan ke drive (${savedText})` : 'Tersimpan ke drive';
                 } else if (entry.saving) {
                     statusLine.textContent = 'Menyimpan video ke drive…';
                 } else {
                     statusLine.textContent = 'Belum disimpan ke drive';
                 }
-                card.appendChild(statusLine);
+                infoColumn.appendChild(statusLine);
 
-                resultsGrid.appendChild(card);
+                row.appendChild(infoColumn);
+                resultsGrid.appendChild(row);
             });
+
+            refreshStatusPreviewEntry();
         }
 
         function upsertGeneratedVideo(url, context = {}) {
@@ -464,8 +1271,14 @@ if ($account) {
         }
 
         function updateGeneratedVideos(urls, context = {}) {
+            const entries = [];
             if (Array.isArray(urls)) {
-                urls.forEach(url => upsertGeneratedVideo(url, context));
+                urls.forEach(url => {
+                    const entry = upsertGeneratedVideo(url, context);
+                    if (entry) {
+                        entries.push(entry);
+                    }
+                });
             }
 
             renderVideoCards();
@@ -473,6 +1286,8 @@ if ($account) {
             generatedVideos
                 .filter(entry => entry.autoSave && !entry.saved && !entry.saving)
                 .forEach(entry => saveKlingVideoToDrive(entry, { auto: true }));
+
+            return entries;
         }
 
         async function saveKlingVideoToDrive(entry, { auto = false } = {}) {
@@ -520,6 +1335,7 @@ if ($account) {
             } finally {
                 entry.saving = false;
                 renderVideoCards();
+                refreshStatusPreviewEntry();
             }
         }
 
@@ -531,6 +1347,15 @@ if ($account) {
             previewModal.addEventListener('click', event => {
                 if (event.target === previewModal) {
                     closePreview();
+                }
+            });
+        }
+
+        if (statusClearBtn) {
+            statusClearBtn.addEventListener('click', () => {
+                clearStatusPreviewMedia();
+                if (lastStatusSnapshot) {
+                    renderStatusSnapshot(lastStatusSnapshot);
                 }
             });
         }
@@ -553,6 +1378,7 @@ if ($account) {
             }
             generatedVideos.length = 0;
             renderVideoCards();
+            resetStatusPreview();
             if (fetchVideoBtn) {
                 fetchVideoBtn.disabled = true;
             }
@@ -720,11 +1546,42 @@ if ($account) {
 
             const text = await res.text();
             let json;
-            try {
-                json = JSON.parse(text);
-            } catch (err) {
-                console.error('Response bukan JSON valid:', text);
-                throw new Error('Server mengembalikan respon non-JSON.');
+            const trimmed = typeof text === 'string' ? text.trim() : '';
+
+            if (trimmed) {
+                try {
+                    json = JSON.parse(trimmed);
+                } catch (err) {
+                    const firstBrace = trimmed.indexOf('{');
+                    const lastBrace = trimmed.lastIndexOf('}');
+                    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                        const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+                        try {
+                            json = JSON.parse(candidate);
+                        } catch (innerErr) {
+                            console.warn('Gagal parse JSON dari kandidat substring:', candidate);
+                        }
+                    }
+
+                    if (!json) {
+                        console.warn('Response bukan JSON valid:', trimmed);
+                        json = {
+                            ok: false,
+                            status: res.status,
+                            error: 'Server mengembalikan respon non-JSON.',
+                            data: trimmed
+                        };
+                    }
+                }
+            }
+
+            if (!json) {
+                json = {
+                    ok: false,
+                    status: res.status,
+                    error: 'Server tidak mengembalikan data.',
+                    data: null
+                };
             }
 
             if (!json.ok) {
@@ -836,6 +1693,7 @@ if ($account) {
                     renderResponse(data);
                     const normalized = normalizeData(data);
                     const taskId = normalized && (normalized.task_id || normalized.taskId || null);
+                    handleTaskStatus(normalized, { source: 'create', taskId });
 
                     if (taskId) {
                         currentTaskId = taskId;
@@ -869,42 +1727,86 @@ if ($account) {
             });
         }
 
-        if (fetchVideoBtn) {
-            fetchVideoBtn.addEventListener('click', async () => {
-                if (!currentTaskId) {
+        async function fetchVideoForTask(taskId, { auto = false } = {}) {
+            if (!taskId) {
+                if (!auto) {
                     setStatus('Task ID belum tersedia. Kirim request terlebih dahulu.', 'error');
-                    return;
                 }
+                return null;
+            }
 
+            let autoMarker = null;
+            if (auto) {
+                autoMarker = autoVideoFetch.get(taskId) || { fetching: false, completed: false };
+                if (autoMarker.fetching || autoMarker.completed) {
+                    return null;
+                }
+                autoMarker = { ...autoMarker, fetching: true };
+                autoVideoFetch.set(taskId, autoMarker);
+            }
+
+            if (!auto) {
                 setStatus('Mengambil URL video...', 'info');
+            }
+
+            if (fetchVideoBtn && !auto) {
                 fetchVideoBtn.disabled = true;
+            }
 
-                try {
-                    const data = await callFreepikEndpoint({
-                        path: `/v1/ai/image-to-video/kling-v2-5-pro/${encodeURIComponent(currentTaskId)}/video`,
-                        method: 'GET'
-                    });
+            try {
+                const data = await callFreepikEndpoint({
+                    path: `/v1/ai/image-to-video/kling-v2-5-pro/${encodeURIComponent(taskId)}/video`,
+                    method: 'GET'
+                });
 
-                    const normalized = normalizeData(data);
-                    renderResponse(data);
-                    const urls = extractVideoUrlsFromResponse(normalized);
-                    updateGeneratedVideos(urls, { taskId: currentTaskId });
+                const normalized = normalizeData(data);
+                renderResponse(data);
+                const result = handleTaskStatus(normalized, { source: auto ? 'auto-video' : 'video', taskId });
+                const hasUrls = result && result.entries && result.entries.length;
 
-                    if (urls.length) {
-                        setStatus('URL video berhasil diambil.', 'success');
+                if (hasUrls) {
+                    if (auto) {
+                        autoVideoFetch.set(taskId, { fetching: false, completed: true });
+                        setStatus('Video selesai diproses dan dimuat otomatis.', 'success');
                     } else {
-                        setStatus('Video belum tersedia, coba lagi beberapa saat lagi.', 'warning');
+                        setStatus('URL video berhasil diambil.', 'success');
+                    }
+                } else if (!auto) {
+                    setStatus('Video belum tersedia, coba lagi beberapa saat lagi.', 'warning');
+                    if (fetchVideoBtn) {
                         fetchVideoBtn.disabled = false;
                     }
-                } catch (error) {
-                    console.error('Gagal mengambil video Kling:', error);
-                    setStatus(error.message || 'Gagal mengambil video.', 'error');
-                    fetchVideoBtn.disabled = false;
-                } finally {
-                    if (fetchVideoBtn) {
-                        fetchVideoBtn.disabled = !currentTaskId;
-                    }
                 }
+
+                return hasUrls;
+            } catch (error) {
+                console.error('Gagal mengambil video Kling:', error);
+                if (!auto) {
+                    setStatus(error.message || 'Gagal mengambil video.', 'error');
+                } else {
+                    setStatus('Gagal memuat video otomatis. Silakan ambil manual.', 'error');
+                }
+                if (fetchVideoBtn && !auto) {
+                    fetchVideoBtn.disabled = false;
+                }
+                if (auto) {
+                    autoVideoFetch.set(taskId, { fetching: false, completed: false });
+                }
+                throw error;
+            } finally {
+                if (auto) {
+                    const marker = autoVideoFetch.get(taskId) || {};
+                    autoVideoFetch.set(taskId, { ...marker, fetching: false });
+                }
+                if (fetchVideoBtn && !auto) {
+                    fetchVideoBtn.disabled = !currentTaskId;
+                }
+            }
+        }
+
+        if (fetchVideoBtn) {
+            fetchVideoBtn.addEventListener('click', () => {
+                fetchVideoForTask(currentTaskId, { auto: false });
             });
         }
 
@@ -978,10 +1880,7 @@ if ($account) {
                         }
                     }
 
-                    const urls = extractVideoUrlsFromResponse(normalized);
-                    if (urls.length) {
-                        updateGeneratedVideos(urls, { taskId: currentTaskId });
-                    }
+                    handleTaskStatus(normalized, { source: 'status', taskId: latestTaskId || taskId });
                 } catch (error) {
                     console.error('Gagal mengambil status task Kling:', error);
                     setStatus(error.message || 'Gagal mengambil status task.', 'error');
@@ -993,6 +1892,7 @@ if ($account) {
             });
         }
 
+        setupWebhookListeners();
         clearOutputs();
     })();
     </script>
