@@ -208,6 +208,7 @@ if ($account) {
         let lastStatusSnapshot = null;
         let webhookChannel = null;
         const generatedVideos = [];
+        const autoVideoFetch = new Map();
         const DRIVE_ENDPOINT = 'index.php?api=drive';
 
         function setStatus(message, type = 'info') {
@@ -620,7 +621,7 @@ if ($account) {
             const normalized = normalizeData(payload) || {};
             const taskId = context.taskId || normalized.task_id || normalized.taskId || normalized.id || currentTaskId || null;
             const status = normalized.status || normalized.state || normalized.task_status || normalized.result_status || null;
-            const progress = parseProgressValue(normalized);
+            let progress = parseProgressValue(normalized);
             const queueDetails = buildQueueSummary(normalized);
 
             const message = normalized.message
@@ -636,6 +637,10 @@ if ($account) {
             }
 
             const final = isFinalStatus(status) || (urls && urls.length > 0);
+
+            if ((!progress || typeof progress.value !== 'number' || progress.value < 99) && final) {
+                progress = { value: 100, label: '100%' };
+            }
 
             return {
                 taskId,
@@ -666,11 +671,36 @@ if ($account) {
                 if (entries.length) {
                     renderStatusPreviewEntry(entries[0]);
                 }
+                if (snapshot.taskId) {
+                    autoVideoFetch.delete(snapshot.taskId);
+                }
             } else if (snapshot.final) {
                 refreshStatusPreviewEntry();
+                if (snapshot.taskId) {
+                    scheduleAutoVideoFetch(snapshot.taskId);
+                }
+            } else if (snapshot.taskId) {
+                autoVideoFetch.delete(snapshot.taskId);
             }
 
             return { snapshot, entries };
+        }
+
+        function scheduleAutoVideoFetch(taskId) {
+            if (!taskId) {
+                return;
+            }
+
+            const existing = autoVideoFetch.get(taskId);
+            if (existing && (existing.fetching || existing.completed)) {
+                return;
+            }
+
+            autoVideoFetch.set(taskId, { fetching: false, completed: false });
+
+            fetchVideoForTask(taskId, { auto: true }).catch(err => {
+                console.warn('Auto fetch video Kling gagal:', err);
+            });
         }
 
         function processWebhookPayload(payload) {
@@ -1472,42 +1502,86 @@ if ($account) {
             });
         }
 
-        if (fetchVideoBtn) {
-            fetchVideoBtn.addEventListener('click', async () => {
-                if (!currentTaskId) {
+        async function fetchVideoForTask(taskId, { auto = false } = {}) {
+            if (!taskId) {
+                if (!auto) {
                     setStatus('Task ID belum tersedia. Kirim request terlebih dahulu.', 'error');
-                    return;
                 }
+                return null;
+            }
 
+            let autoMarker = null;
+            if (auto) {
+                autoMarker = autoVideoFetch.get(taskId) || { fetching: false, completed: false };
+                if (autoMarker.fetching || autoMarker.completed) {
+                    return null;
+                }
+                autoMarker = { ...autoMarker, fetching: true };
+                autoVideoFetch.set(taskId, autoMarker);
+            }
+
+            if (!auto) {
                 setStatus('Mengambil URL video...', 'info');
+            }
+
+            if (fetchVideoBtn && !auto) {
                 fetchVideoBtn.disabled = true;
+            }
 
-                try {
-                    const data = await callFreepikEndpoint({
-                        path: `/v1/ai/image-to-video/kling-v2-5-pro/${encodeURIComponent(currentTaskId)}/video`,
-                        method: 'GET'
-                    });
+            try {
+                const data = await callFreepikEndpoint({
+                    path: `/v1/ai/image-to-video/kling-v2-5-pro/${encodeURIComponent(taskId)}/video`,
+                    method: 'GET'
+                });
 
-                    const normalized = normalizeData(data);
-                    renderResponse(data);
-                    const result = handleTaskStatus(normalized, { source: 'video', taskId: currentTaskId });
-                    const hasUrls = result && result.entries && result.entries.length;
+                const normalized = normalizeData(data);
+                renderResponse(data);
+                const result = handleTaskStatus(normalized, { source: auto ? 'auto-video' : 'video', taskId });
+                const hasUrls = result && result.entries && result.entries.length;
 
-                    if (hasUrls) {
-                        setStatus('URL video berhasil diambil.', 'success');
+                if (hasUrls) {
+                    if (auto) {
+                        autoVideoFetch.set(taskId, { fetching: false, completed: true });
+                        setStatus('Video selesai diproses dan dimuat otomatis.', 'success');
                     } else {
-                        setStatus('Video belum tersedia, coba lagi beberapa saat lagi.', 'warning');
+                        setStatus('URL video berhasil diambil.', 'success');
+                    }
+                } else if (!auto) {
+                    setStatus('Video belum tersedia, coba lagi beberapa saat lagi.', 'warning');
+                    if (fetchVideoBtn) {
                         fetchVideoBtn.disabled = false;
                     }
-                } catch (error) {
-                    console.error('Gagal mengambil video Kling:', error);
-                    setStatus(error.message || 'Gagal mengambil video.', 'error');
-                    fetchVideoBtn.disabled = false;
-                } finally {
-                    if (fetchVideoBtn) {
-                        fetchVideoBtn.disabled = !currentTaskId;
-                    }
                 }
+
+                return hasUrls;
+            } catch (error) {
+                console.error('Gagal mengambil video Kling:', error);
+                if (!auto) {
+                    setStatus(error.message || 'Gagal mengambil video.', 'error');
+                } else {
+                    setStatus('Gagal memuat video otomatis. Silakan ambil manual.', 'error');
+                }
+                if (fetchVideoBtn && !auto) {
+                    fetchVideoBtn.disabled = false;
+                }
+                if (auto) {
+                    autoVideoFetch.set(taskId, { fetching: false, completed: false });
+                }
+                throw error;
+            } finally {
+                if (auto) {
+                    const marker = autoVideoFetch.get(taskId) || {};
+                    autoVideoFetch.set(taskId, { ...marker, fetching: false });
+                }
+                if (fetchVideoBtn && !auto) {
+                    fetchVideoBtn.disabled = !currentTaskId;
+                }
+            }
+        }
+
+        if (fetchVideoBtn) {
+            fetchVideoBtn.addEventListener('click', () => {
+                fetchVideoForTask(currentTaskId, { auto: false });
             });
         }
 
