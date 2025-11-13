@@ -195,6 +195,29 @@ if ($account) {
             }
         }
 
+        function formatDisplayDate(value) {
+            if (!value) {
+                return '';
+            }
+
+            try {
+                const date = value instanceof Date ? value : new Date(value);
+                if (Number.isNaN(date.getTime())) {
+                    return typeof value === 'string' ? value : '';
+                }
+
+                return date.toLocaleString('id-ID', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (err) {
+                return typeof value === 'string' ? value : '';
+            }
+        }
+
         async function persistDriveItems(items) {
             if (!items || !items.length) {
                 return null;
@@ -295,46 +318,37 @@ if ($account) {
             resultsGrid.innerHTML = '';
 
             generatedVideos.forEach((entry, index) => {
-                const card = document.createElement('div');
-                card.className = 'kling-result-card';
+                const row = document.createElement('div');
+                row.className = 'kling-ugc-row';
 
-                const header = document.createElement('div');
-                header.className = 'kling-result-header';
+                const mediaColumn = document.createElement('div');
+                mediaColumn.className = 'kling-ugc-media';
 
-                const title = document.createElement('div');
-                title.className = 'kling-result-title';
-                title.textContent = `Video ${index + 1}`;
-                header.appendChild(title);
-
-                if (entry.taskId) {
-                    const taskBadge = document.createElement('span');
-                    taskBadge.className = 'kling-result-task';
-                    taskBadge.textContent = entry.taskId;
-                    header.appendChild(taskBadge);
+                const imageCard = document.createElement('div');
+                imageCard.className = 'kling-ugc-image-card';
+                const imageUrl = ensureAbsoluteUrl(entry.image);
+                if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+                    const img = document.createElement('img');
+                    img.src = imageUrl;
+                    img.alt = 'Image prompt reference';
+                    img.loading = 'lazy';
+                    img.className = 'kling-ugc-thumb';
+                    imageCard.appendChild(img);
+                } else {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'kling-ugc-placeholder';
+                    placeholder.innerHTML = 'Tidak ada image reference<br><span>Tambahkan URL gambar untuk melihat thumbnail.</span>';
+                    imageCard.appendChild(placeholder);
                 }
+                mediaColumn.appendChild(imageCard);
 
-                card.appendChild(header);
+                const videoCard = document.createElement('div');
+                videoCard.className = 'kling-ugc-video-card';
 
-                const media = document.createElement('div');
-                media.className = 'kling-result-media';
-
-                if (entry.image) {
-                    const imageUrl = ensureAbsoluteUrl(entry.image);
-                    if (/^https?:\/\//i.test(imageUrl)) {
-                        const imageCard = document.createElement('div');
-                        imageCard.className = 'kling-thumb-card';
-                        const image = document.createElement('img');
-                        image.src = imageUrl;
-                        image.alt = 'Image prompt reference';
-                        image.loading = 'lazy';
-                        image.className = 'kling-thumb-image';
-                        imageCard.appendChild(image);
-                        media.appendChild(imageCard);
-                    }
-                }
-
-                const videoWrapper = document.createElement('div');
-                videoWrapper.className = 'kling-video-card';
+                const videoTitle = document.createElement('div');
+                videoTitle.className = 'kling-ugc-media-title';
+                videoTitle.textContent = 'Video Kling';
+                videoCard.appendChild(videoTitle);
 
                 const video = document.createElement('video');
                 video.src = entry.url;
@@ -343,16 +357,16 @@ if ($account) {
                 video.muted = true;
                 video.playsInline = true;
                 video.preload = 'metadata';
-                video.className = 'kling-result-video';
-                videoWrapper.appendChild(video);
+                video.className = 'kling-ugc-video';
+                videoCard.appendChild(video);
 
                 const actions = document.createElement('div');
-                actions.className = 'kling-result-actions';
+                actions.className = 'kling-ugc-actions';
 
                 const previewBtn = document.createElement('button');
                 previewBtn.type = 'button';
-                previewBtn.className = 'kling-action-btn kling-action-btn--ghost';
-                previewBtn.textContent = 'Preview';
+                previewBtn.className = 'kling-ugc-button kling-ugc-button--ghost';
+                previewBtn.textContent = 'Preview Video';
                 previewBtn.addEventListener('click', () => openPreview(entry.url));
                 actions.appendChild(previewBtn);
 
@@ -361,63 +375,118 @@ if ($account) {
                 downloadLink.target = '_blank';
                 downloadLink.rel = 'noopener noreferrer';
                 downloadLink.download = '';
-                downloadLink.className = 'kling-action-btn';
+                downloadLink.className = 'kling-ugc-button';
                 downloadLink.textContent = 'Download';
                 actions.appendChild(downloadLink);
 
                 const saveBtn = document.createElement('button');
                 saveBtn.type = 'button';
-                saveBtn.className = 'kling-action-btn kling-action-btn--primary';
+                saveBtn.className = 'kling-ugc-button kling-ugc-button--primary';
                 saveBtn.textContent = entry.saved ? 'Tersimpan ✓' : (entry.saving ? 'Menyimpan…' : 'Simpan ke Drive');
                 saveBtn.disabled = entry.saved || entry.saving;
                 saveBtn.addEventListener('click', () => saveKlingVideoToDrive(entry));
                 actions.appendChild(saveBtn);
 
-                videoWrapper.appendChild(actions);
-                media.appendChild(videoWrapper);
-                card.appendChild(media);
+                videoCard.appendChild(actions);
+                mediaColumn.appendChild(videoCard);
 
-                const meta = document.createElement('div');
-                meta.className = 'kling-result-meta';
-                const metaParts = [];
+                row.appendChild(mediaColumn);
+
+                const infoColumn = document.createElement('div');
+                infoColumn.className = 'kling-ugc-info';
+
+                const header = document.createElement('div');
+                header.className = 'kling-ugc-header';
+
+                const title = document.createElement('div');
+                title.className = 'kling-ugc-title';
+                title.textContent = `Video ${index + 1}`;
+                header.appendChild(title);
+
+                if (entry.taskId) {
+                    const badge = document.createElement('span');
+                    badge.className = 'kling-ugc-badge';
+                    badge.textContent = entry.taskId;
+                    header.appendChild(badge);
+                }
+
+                infoColumn.appendChild(header);
+
+                const chipGroup = document.createElement('div');
+                chipGroup.className = 'kling-ugc-chip-group';
                 if (entry.duration) {
-                    metaParts.push(`${entry.duration}s`);
+                    const chip = document.createElement('span');
+                    chip.className = 'kling-ugc-chip';
+                    chip.textContent = `${entry.duration}s`;
+                    chipGroup.appendChild(chip);
                 }
                 if (entry.cfgScale != null) {
-                    metaParts.push(`CFG ${entry.cfgScale}`);
+                    const chip = document.createElement('span');
+                    chip.className = 'kling-ugc-chip';
+                    chip.textContent = `CFG ${entry.cfgScale}`;
+                    chipGroup.appendChild(chip);
                 }
-                if (metaParts.length) {
-                    meta.textContent = metaParts.join(' • ');
-                    card.appendChild(meta);
+                if (entry.createdAt) {
+                    const createdText = formatDisplayDate(entry.createdAt);
+                    if (createdText) {
+                        const chip = document.createElement('span');
+                        chip.className = 'kling-ugc-chip';
+                        chip.textContent = `Dibuat ${createdText}`;
+                        chipGroup.appendChild(chip);
+                    }
+                }
+                if (chipGroup.children.length) {
+                    infoColumn.appendChild(chipGroup);
                 }
 
-                const prompt = document.createElement('p');
-                prompt.className = 'kling-result-prompt';
-                prompt.textContent = entry.prompt ? entry.prompt : 'Prompt tidak tersedia.';
-                card.appendChild(prompt);
+                const promptBlock = document.createElement('div');
+                promptBlock.className = 'kling-ugc-block';
+                const promptLabel = document.createElement('div');
+                promptLabel.className = 'kling-ugc-label';
+                promptLabel.textContent = 'Prompt';
+                const promptText = document.createElement('div');
+                promptText.className = 'kling-ugc-text';
+                if (entry.prompt) {
+                    promptText.textContent = entry.prompt;
+                } else {
+                    promptText.textContent = 'Prompt tidak tersedia.';
+                    promptText.classList.add('is-muted');
+                }
+                promptBlock.appendChild(promptLabel);
+                promptBlock.appendChild(promptText);
+                infoColumn.appendChild(promptBlock);
 
                 if (entry.negativePrompt) {
-                    const negative = document.createElement('p');
-                    negative.className = 'kling-result-negative';
-                    negative.textContent = `Negative: ${entry.negativePrompt}`;
-                    card.appendChild(negative);
+                    const negativeBlock = document.createElement('div');
+                    negativeBlock.className = 'kling-ugc-block';
+                    const negativeLabel = document.createElement('div');
+                    negativeLabel.className = 'kling-ugc-label';
+                    negativeLabel.textContent = 'Negative Prompt';
+                    const negativeText = document.createElement('div');
+                    negativeText.className = 'kling-ugc-text';
+                    negativeText.textContent = entry.negativePrompt;
+                    negativeBlock.appendChild(negativeLabel);
+                    negativeBlock.appendChild(negativeText);
+                    infoColumn.appendChild(negativeBlock);
                 }
 
                 const statusLine = document.createElement('div');
-                statusLine.className = 'kling-result-status';
+                statusLine.className = 'kling-ugc-status';
                 statusLine.dataset.state = entry.error ? 'error' : (entry.saved ? 'success' : (entry.saving ? 'info' : 'muted'));
                 if (entry.error) {
                     statusLine.textContent = entry.error;
                 } else if (entry.saved) {
-                    statusLine.textContent = entry.savedAt ? `Tersimpan ke drive (${entry.savedAt})` : 'Tersimpan ke drive';
+                    const savedText = formatDisplayDate(entry.savedAt);
+                    statusLine.textContent = savedText ? `Tersimpan ke drive (${savedText})` : 'Tersimpan ke drive';
                 } else if (entry.saving) {
                     statusLine.textContent = 'Menyimpan video ke drive…';
                 } else {
                     statusLine.textContent = 'Belum disimpan ke drive';
                 }
-                card.appendChild(statusLine);
+                infoColumn.appendChild(statusLine);
 
-                resultsGrid.appendChild(card);
+                row.appendChild(infoColumn);
+                resultsGrid.appendChild(row);
             });
         }
 
