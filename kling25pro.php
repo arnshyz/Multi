@@ -1546,11 +1546,42 @@ if ($account) {
 
             const text = await res.text();
             let json;
-            try {
-                json = JSON.parse(text);
-            } catch (err) {
-                console.error('Response bukan JSON valid:', text);
-                throw new Error('Server mengembalikan respon non-JSON.');
+            const trimmed = typeof text === 'string' ? text.trim() : '';
+
+            if (trimmed) {
+                try {
+                    json = JSON.parse(trimmed);
+                } catch (err) {
+                    const firstBrace = trimmed.indexOf('{');
+                    const lastBrace = trimmed.lastIndexOf('}');
+                    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                        const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+                        try {
+                            json = JSON.parse(candidate);
+                        } catch (innerErr) {
+                            console.warn('Gagal parse JSON dari kandidat substring:', candidate);
+                        }
+                    }
+
+                    if (!json) {
+                        console.warn('Response bukan JSON valid:', trimmed);
+                        json = {
+                            ok: false,
+                            status: res.status,
+                            error: 'Server mengembalikan respon non-JSON.',
+                            data: trimmed
+                        };
+                    }
+                }
+            }
+
+            if (!json) {
+                json = {
+                    ok: false,
+                    status: res.status,
+                    error: 'Server tidak mengembalikan data.',
+                    data: null
+                };
             }
 
             if (!json.ok) {
