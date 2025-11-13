@@ -3,6 +3,11 @@ require_once __DIR__ . '/auth.php';
 
 auth_session_start();
 
+if (isset($_GET['api'])) {
+    require_once __DIR__ . '/index.php';
+    exit;
+}
+
 if (!auth_is_logged_in()) {
     header('Location: index.php');
     exit;
@@ -171,6 +176,8 @@ if ($account) {
     </div>
 
     <script>
+    const FREEPIK_PROXY_ENDPOINT = '<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES); ?>?api=freepik';
+    const DRIVE_ENDPOINT = '<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES); ?>?api=drive';
     (() => {
         const form = document.getElementById('klingForm');
         const statusEl = document.getElementById('docStatus');
@@ -209,7 +216,6 @@ if ($account) {
         let webhookChannel = null;
         const generatedVideos = [];
         const autoVideoFetch = new Map();
-        const DRIVE_ENDPOINT = 'index.php?api=drive';
         const STATUS_POLL_INTERVAL = 4500;
         let statusPollTimer = null;
         let statusPollTaskId = null;
@@ -1538,10 +1544,11 @@ if ($account) {
                 payload.body = body;
             }
 
-            const res = await fetch('index.php?api=freepik', {
+            const res = await fetch(FREEPIK_PROXY_ENDPOINT, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                credentials: 'same-origin'
             });
 
             const text = await res.text();
