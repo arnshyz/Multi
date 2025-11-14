@@ -13308,11 +13308,19 @@ body[data-theme="light"] .profile-expiry.expired {
       seedanceBtn.disabled = !item.imageUrl;
       seedanceBtn.addEventListener('click', () => ugcGenerateVideo(item, 'seedancePro1080'));
 
+      const upscaleBtn = document.createElement('button');
+      upscaleBtn.type = 'button';
+      upscaleBtn.className = 'small secondary';
+      upscaleBtn.textContent = 'Upscale Precision V2';
+      upscaleBtn.disabled = !item.remoteUrl;
+      upscaleBtn.addEventListener('click', () => ugcUpscaleImage(item));
+
       btnRow.appendChild(previewImgBtn);
       btnRow.appendChild(dlBtn);
       btnRow.appendChild(saveImgBtn);
       btnRow.appendChild(vidBtn);
       btnRow.appendChild(seedanceBtn);
+      btnRow.appendChild(upscaleBtn);
 
       right.appendChild(pLabel);
       right.appendChild(pText);
@@ -13590,6 +13598,92 @@ body[data-theme="light"] .profile-expiry.expired {
     } catch (e) {
       console.error(e);
       alert('Gagal membuat video: ' + e.message);
+    }
+  }
+
+  async function ugcUpscaleImage(item) {
+    if (!featureAvailableForCurrentUser('ugc')) {
+      showFeatureLockedMessage('ugc');
+      return;
+    }
+    if (!item.remoteUrl || !item.remoteUrl.startsWith('http')) {
+      alert('URL gambar untuk upscale belum valid.\n' +
+            'Pastikan UGC image sudah COMPLETED sebelum melakukan upscale.');
+      return;
+    }
+
+    const cfg = MODEL_CONFIG.upscalePrecV2;
+    if (!cfg) {
+      alert('Konfigurasi model upscale tidak ditemukan.');
+      return;
+    }
+
+    const payload = {
+      imageUrl: item.remoteUrl,
+      prompt: item.prompt || undefined
+    };
+
+    try {
+      const body = cfg.buildBody(payload);
+      const data = await callFreepik(cfg, body, 'POST');
+
+      let taskId = null;
+      let status = 'CREATED';
+      let generated = null;
+      let extraUrl = null;
+
+      if (data && data.data) {
+        taskId = data.data.task_id || null;
+        status  = data.data.status   || status;
+        generated = data.data.generated || null;
+      } else if (data && typeof data === 'object') {
+        if (Array.isArray(data.generated)) {
+          generated = data.generated;
+          status = 'COMPLETED';
+        } else if (data.url || data.high_resolution || data.preview) {
+          extraUrl = data.url || data.high_resolution || data.preview || null;
+          generated = [];
+          if (extraUrl) {
+            generated.push(extraUrl);
+          }
+          status = 'COMPLETED';
+        }
+      }
+
+      const jobId = uuid();
+      const job = {
+        id: jobId,
+        modelId: cfg.id,
+        type: cfg.type,
+        taskId,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        status,
+        generated: generated || [],
+        extraUrl,
+        prompt: payload.prompt || null
+      };
+
+      jobs.unshift(job);
+      saveJobs();
+      renderJobs();
+
+      if (taskId && !finalStatus(status)) {
+        startJobProgress(job);
+        startPolling(job);
+      } else {
+        finishJobProgress(job);
+        if (job.generated && job.generated.length) {
+          await ensureLocalFiles(job);
+        }
+        await syncJobToDrive(job);
+      }
+
+      item.upscaleJobId = jobId;
+      renderUgcList();
+    } catch (e) {
+      console.error(e);
+      alert('Gagal melakukan upscale: ' + e.message);
     }
   }
 
