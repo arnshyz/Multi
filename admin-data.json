@@ -4,6 +4,71 @@
     "meta": {
         "rollingIndex": 0
     },
+    "platform": {
+        "maintenance": {
+            "active": false,
+            "message": "Mohon maaf website kita masih dalam perbaikan untuk menambah fitur terbaru",
+            "updated_at": "2025-11-09T09:30:22+00:00"
+        },
+        "generators": {
+            "imageGen": {
+                "key": "imageGen",
+                "label": "Image Generator",
+                "description": "Generate image assets dari prompt teks.",
+                "enabled": true,
+                "updated_at": "2025-11-08T14:15:51+00:00"
+            },
+            "imageEdit": {
+                "key": "imageEdit",
+                "label": "Image Editing",
+                "description": "Edit dan upscale image menggunakan Freepik tools.",
+                "enabled": true,
+                "updated_at": "2025-11-08T14:15:51+00:00"
+            },
+            "videoGen": {
+                "key": "videoGen",
+                "label": "Video Generator",
+                "description": "Buat video otomatis dari prompt dan referensi.",
+                "enabled": true,
+                "updated_at": "2025-11-10T05:02:45+00:00"
+            },
+            "flashPhotoEdit": {
+                "key": "flashPhotoEdit",
+                "label": "Flash Photo Edit",
+                "description": "Studio Flash 2.5 multi referensi.",
+                "enabled": false,
+                "updated_at": "2025-11-09T08:46:59+00:00"
+            },
+            "lipsync": {
+                "key": "lipsync",
+                "label": "Lipsync Studio",
+                "description": "Sinkronisasi bibir otomatis dari video dan audio.",
+                "enabled": true,
+                "updated_at": "2025-11-08T14:15:51+00:00"
+            },
+            "filmmaker": {
+                "key": "filmmaker",
+                "label": "Filmmaker",
+                "description": "Generator rangkaian scene sinematik.",
+                "enabled": true,
+                "updated_at": "2025-11-08T14:15:51+00:00"
+            },
+            "ugc": {
+                "key": "ugc",
+                "label": "UGC Tool",
+                "description": "Generator ide konten UGC dan animasi.",
+                "enabled": true,
+                "updated_at": "2025-11-08T14:15:51+00:00"
+            },
+            "audioGen": {
+                "key": "audioGen",
+                "label": "Audio Generator",
+                "description": "Konversi teks menjadi audio natural (TTS).",
+                "enabled": false,
+                "updated_at": "2025-11-08T15:04:26+00:00"
+            }
+        }
+    },
     "auth": {
         "username": "admin",
         "password_hash": "$2y$12$8d6CiI0X1xIzaIPxtm6gWujpCv.nUoI6RxiX8MDqq9jia83DeQqGm",
@@ -12,661 +77,1201 @@
     "accounts": [
         {
             "id": "account-default-admin",
-            "username": "adminlubis",
-            "email": "lubiskarismaa@gmail.com",
+            "username": "admin",
+            "email": "",
             "role": "admin",
             "display_name": "Administrator",
-            "password_hash": "$2y$10$n8RWpmd.pWrC7Bjd7zlcO.0V7XKhu4Zf7MkilDsLm.4ZSqhI0tJ9K",
-            "freepik_api_key": "admin",
-            "subscription": "gm",
-            "coins": 9999999999993,
+            "password_hash": "$2y$10$uHJnM/Fk1KAGWXI.t.VSNu7YgqowGNXr2wwsyXGDwII1BJ.BVsrtm",
+            "freepik_api_key": null,
+            "subscription": "pro",
+            "coins": 99999999998739,
             "is_banned": false,
             "is_blocked": false,
             "theme": "dark",
-            "avatar_url": "https://akay.web.id/generated/upload_20251107_074848_e1d78736.png",
-            "created_at": "2025-11-06T17:02:21+00:00",
-            "updated_at": "2025-11-07T13:23:40+00:00",
-            "last_login_at": "2025-11-07T10:28:02+00:00",
-            "last_login_ip": "112.215.153.58",
+            "avatar_url": null,
+            "created_at": "2025-11-08T14:15:58+00:00",
+            "updated_at": "2025-11-14T01:22:01+00:00",
+            "last_login_at": "2025-11-13T04:08:45+00:00",
+            "last_login_ip": "182.8.125.69",
             "ip_history": [
                 {
-                    "ip": "112.215.153.58",
-                    "timestamp": "2025-11-07T10:28:02+00:00",
+                    "ip": "182.8.125.69",
+                    "timestamp": "2025-11-13T04:08:45+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T10:26:22+00:00",
+                    "ip": "182.8.98.83",
+                    "timestamp": "2025-11-12T15:55:01+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T09:54:22+00:00",
+                    "ip": "182.8.98.83",
+                    "timestamp": "2025-11-12T10:04:27+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T08:50:46+00:00",
+                    "ip": "182.5.199.9",
+                    "timestamp": "2025-11-12T07:39:44+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T08:37:06+00:00",
+                    "ip": "182.5.199.9",
+                    "timestamp": "2025-11-12T05:42:08+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T08:10:24+00:00",
+                    "ip": "182.8.98.83",
+                    "timestamp": "2025-11-12T00:43:36+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T07:46:45+00:00",
+                    "ip": "182.8.98.83",
+                    "timestamp": "2025-11-11T18:08:16+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T06:34:25+00:00",
+                    "ip": "182.8.98.84",
+                    "timestamp": "2025-11-11T15:52:32+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T05:58:46+00:00",
+                    "ip": "203.78.123.76",
+                    "timestamp": "2025-11-11T11:52:41+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T04:26:51+00:00",
+                    "ip": "182.8.98.84",
+                    "timestamp": "2025-11-11T02:42:40+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T04:22:19+00:00",
+                    "ip": "182.8.98.84",
+                    "timestamp": "2025-11-11T01:44:34+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-06T21:21:26+00:00",
+                    "ip": "112.215.243.122",
+                    "timestamp": "2025-11-10T10:03:00+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-06T21:16:16+00:00",
+                    "ip": "112.215.237.76",
+                    "timestamp": "2025-11-10T09:18:49+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-06T20:10:25+00:00",
+                    "ip": "140.213.246.181",
+                    "timestamp": "2025-11-10T08:55:14+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-06T19:40:18+00:00",
+                    "ip": "140.213.246.181",
+                    "timestamp": "2025-11-10T08:55:06+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.125.19",
-                    "timestamp": "2025-11-06T17:19:46+00:00",
+                    "ip": "140.213.246.181",
+                    "timestamp": "2025-11-10T08:55:05+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.125.19",
-                    "timestamp": "2025-11-06T17:04:59+00:00",
+                    "ip": "36.90.174.181",
+                    "timestamp": "2025-11-10T07:17:40+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "140.213.246.155",
+                    "timestamp": "2025-11-10T05:35:43+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "140.213.244.206",
+                    "timestamp": "2025-11-10T04:06:21+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "140.213.48.4",
+                    "timestamp": "2025-11-09T13:37:02+00:00",
                     "type": "login"
                 }
             ],
             "source": "default",
+            "generation_count": 740,
+            "last_generation_at": "2025-11-14T01:22:01+00:00",
+            "drive_items": [
+                {
+                    "id": "drive_6915825ade9833.76750916",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_070147_5284cd4b.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_070147_5284cd4b.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T07:01:38.745Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_070147_5284cd4b.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-7d42b7aa-71c0-4705-aa32-b5dcbfba43ec_result.png?token=exp=1763020897~hmac=9a3d4d4bb45f219630345cf8c91e4137a60aea5db2dc564b6540aa0f857764a2&size=stable"
+                },
+                {
+                    "id": "drive_69157f4b750005.34189387",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064843_aefc80eb.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064843_aefc80eb.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:48:32.694Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_064843_aefc80eb.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-6f208ffb-d591-4b9e-9244-e67eb8cf6c54_result.png?token=exp=1763020108~hmac=ce0d9a2a856fe541b85e7b45f0b6e213e29b0bf8e4f120279ad2e4b7dc560f08&size=stable"
+                },
+                {
+                    "id": "drive_69157ef4093735.34663815",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064716_f9390060.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064716_f9390060.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:47:07.883Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_064716_f9390060.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-3a48dbef-a1b0-4dee-8888-f8d656bcea99_result.png?token=exp=1763020024~hmac=c4a4c24e9973c04588ed802f4cbbff93e5ea0d2665c3d16ce030e8f331c66a89&size=stable"
+                },
+                {
+                    "id": "drive_69157eb54f04f5.22299605",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064613_6591a1f5.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064613_6591a1f5.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:46:05.171Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_064613_6591a1f5.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-a486b718-e227-499e-90b7-3d566a1fb9be_result.png?token=exp=1763019964~hmac=4da1ce1097ed54ef5f0f142ea4ded40e30c384662004e4c60404b120d4b6f8ac&size=stable"
+                },
+                {
+                    "id": "drive_69157d9baf3c01.36448839",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064131_6c8fc289.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064131_6c8fc289.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:41:23.569Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_064131_6c8fc289.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-727b6be2-a97d-4566-88bd-2a9d8842b3ea_result.png?token=exp=1763019681~hmac=99503366f6efd192c5ab1548712abfb668025c0db6a0ea91cbf526ea393495ce&size=stable"
+                },
+                {
+                    "id": "drive_69157d4a6b1c32.09382749",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064010_e590455c.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064010_e590455c.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:39:58.684Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_064010_e590455c.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-69a9a302-369d-4b09-8d39-4aaeedd5bd42_result.png?token=exp=1763019598~hmac=25f56dbc7784f40ebe327dbcd9c0e0e3e5f2dc92504512a9d3855a21eb4cbdc0&size=stable"
+                },
+                {
+                    "id": "drive_69157d4351f474.80282533",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064003_7fd8af37.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_064003_7fd8af37.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:39:51.495Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_064003_7fd8af37.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-5d3e038c-a7e7-4a61-962e-e59a94a7afb8_result.png?token=exp=1763019588~hmac=8d204f69c0189d1632bfd5bb8839d70012d6192e4913d978b4e4efdae239c1eb&size=stable"
+                },
+                {
+                    "id": "drive_69157cf40fdc40.24532943",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_063844_43c19aa8.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_063844_43c19aa8.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:38:35.919Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_063844_43c19aa8.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-96125516-74b8-4674-8a16-592aa23fc65b_result.png?token=exp=1763019516~hmac=48956359ebdf629dd6872b8297f042fabaff3e9ec10123b1c681e0be377a7e79&size=stable"
+                },
+                {
+                    "id": "drive_691578d27f1144.19295053",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_062110_a15fd8fe.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_062110_a15fd8fe.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:20:58.377Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_062110_a15fd8fe.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-e68cc313-63a2-4d47-9c63-4f02b76cf212_result.png?token=exp=1763018448~hmac=b0996ceb95edfe3fe1c7cfbd3d520453e2ad686579e85913cbd62086513740f7&size=stable"
+                },
+                {
+                    "id": "drive_6915783a4138a6.88033085",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061834_c94825a6.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061834_c94825a6.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:18:26.127Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_061834_c94825a6.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-8c8450a5-751e-4a44-b243-2b0162ec82d6_result.png?token=exp=1763018303~hmac=2f2d3440f7a8b4fb22aaf2203ed56c38352c6bd257a1e0987a19079f6a6f7e8e&size=stable"
+                },
+                {
+                    "id": "drive_691577ec0618e2.95976132",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061716_35bd5459.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061716_35bd5459.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:17:07.890Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_061716_35bd5459.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-72a8ece3-a294-4461-997d-92d2d43c5861_result.png?token=exp=1763018227~hmac=d9681a0eb8de7effdfc68296759378896a5a6fa947d1e6abbdb9db09e6fbfeb0&size=stable"
+                },
+                {
+                    "id": "drive_691577b2caeb63.19050175",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061618_47ff3d9f.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061618_47ff3d9f.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:16:10.705Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_061618_47ff3d9f.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-e487f863-1fb6-4b8a-80a0-9ad8e3161b07_result.png?token=exp=1763018167~hmac=02608d745db67ab1339918fd8cf47783b0e591dc898d18d12fbffe3d92d25049&size=stable"
+                },
+                {
+                    "id": "drive_691577806fdf38.46630999",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061528_b42f8ab6.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061528_b42f8ab6.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:15:20.332Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_061528_b42f8ab6.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-002f993d-dfc0-4721-b47d-71b70923616b_result.png?token=exp=1763018119~hmac=f3fcd009b8965b1859e127132b3ecb8118ee7947982bea438db206af5b2b6a63&size=stable"
+                },
+                {
+                    "id": "drive_691576fbb6ee73.64770239",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061315_c87d07c9.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_061315_c87d07c9.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:13:04.468Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_061315_c87d07c9.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-8025c12f-2f7d-4b8b-8863-6bae6e96fe8c_result.png?token=exp=1763017928~hmac=1d5b71aa89edbb2b4e52501bad3e7fe04bff22f71e840b06c645c1669b7e503e&size=stable"
+                },
+                {
+                    "id": "drive_69157576996c03.43179643",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_060647_5146b5f1.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_060647_5146b5f1.png",
+                    "model": "upscalePrecV2",
+                    "prompt": "best quality, masterpiece, highres, photorealistic, intricate details, extremely detailed, perfect anatomy, studio lighting",
+                    "created_at": "2025-11-13T06:06:38.504Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_060647_5146b5f1.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-e5478fb7-a502-4c89-bc75-5a0dde6855ad_result.png?token=exp=1763017590~hmac=dd36e9dd8cd15ae0ed9ec34f793def89c621e6bee2664cfda1c3a34d992723a3&size=stable"
+                },
+                {
+                    "id": "drive_691574e07587a2.29068352",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_060416_f7c75562.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_060416_f7c75562.png",
+                    "model": "upscalePrecV2",
+                    "prompt": null,
+                    "created_at": "2025-11-13T06:04:08.368Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_060416_f7c75562.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-c59a1023-e445-440c-b99f-aabb5b2479ca_result.png?token=exp=1763017447~hmac=9c828296093603192e1beee1bda8ee7752f9090ad954fd498544e4ad247ba866&size=stable"
+                },
+                {
+                    "id": "drive_6915749f1e7418.94849394",
+                    "type": "image",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_060311_9967a1ea.png",
+                    "thumbnail_url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_060311_9967a1ea.png",
+                    "model": "upscalePrecV2",
+                    "prompt": null,
+                    "created_at": "2025-11-13T06:03:03.003Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_060311_9967a1ea.png",
+                    "source_url": "https://cdn-magnific.freepik.com/upscaler-precision-v2-b1c8231d-f7a8-44e3-82f8-32c95d8d3c5d_result.png?token=exp=1763017384~hmac=cd14e9855fcb2f9ed2fab1ff6ac86ef80ff5fb39ccb67e59b185fbb000f433df&size=stable"
+                },
+                {
+                    "id": "drive_69156f641fe771.60725510",
+                    "type": "video",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_054052_c8e85a00.mp4",
+                    "thumbnail_url": null,
+                    "model": "wan720",
+                    "prompt": "UGC video animation for image #2",
+                    "created_at": "2025-11-13T05:40:44.035Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_054052_c8e85a00.mp4",
+                    "source_url": "https://cdn-magnific.freepik.com/wan_v22_399f4253-8122-43ed-b9bc-08966d7f56d6.mp4?token=exp=1763016042~hmac=47262921f48f9a5ab3f299f0dc91508265dead428aaa42faf8b3c3dc0dbedec6"
+                },
+                {
+                    "id": "drive_69156e3728fef0.18620549",
+                    "type": "video",
+                    "url": "https://ai.akay.web.id/generated/account-default-admin/drive_20251113_053551_74996a73.mp4",
+                    "thumbnail_url": null,
+                    "model": "wan720",
+                    "prompt": "model menunjukan dress nya",
+                    "created_at": "2025-11-13T05:35:43.079Z",
+                    "storage_path": "generated/account-default-admin/drive_20251113_053551_74996a73.mp4",
+                    "source_url": "https://cdn-magnific.freepik.com/wan_v22_5ce98861-c33f-4f21-813f-3891f56d8394.mp4?token=exp=1763015744~hmac=d373022a2a8202ab88af6d3c4867cc56871e72535ca201c028602fe08b4b221c"
+                }
+            ],
+            "pro_expires_at": "2040-12-31T05:16:00+00:00"
+        },
+        {
+            "id": "acct_690f650e4f20d6.04864876",
+            "username": "wibiso",
+            "display_name": "Wibi Tretes",
+            "email": "",
+            "role": "user",
+            "password_hash": "$2y$10$otieyV/xPlze.w5Dg.qUMeB/glB9ABHV1WB1UAOckB2rgAh6ZhCzy",
+            "freepik_api_key": null,
+            "subscription": "pro",
+            "coins": 4998,
+            "is_banned": false,
+            "is_blocked": false,
+            "theme": "dark",
+            "avatar_url": null,
+            "created_at": "2025-11-08T15:43:10+00:00",
+            "updated_at": "2025-11-11T17:29:39+00:00",
+            "last_login_at": "2025-11-08T16:27:57+00:00",
+            "last_login_ip": "36.90.174.181",
+            "ip_history": [
+                {
+                    "ip": "36.90.174.181",
+                    "timestamp": "2025-11-08T16:27:57+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "203.78.112.211",
+                    "timestamp": "2025-11-08T16:04:08+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "36.90.174.181",
+                    "timestamp": "2025-11-08T15:43:26+00:00",
+                    "type": "login"
+                }
+            ],
+            "source": "admin",
+            "generation_count": 2,
+            "last_generation_at": "2025-11-08T16:06:58+00:00",
+            "drive_items": [
+                {
+                    "id": "drive_690f6bca7da441.17468796",
+                    "type": "video",
+                    "url": "https://akay.web.id/generated/acct-690f650e4f20d6-04864876/drive_20251108_161155_9a2d7be5.mp4",
+                    "thumbnail_url": null,
+                    "model": "wan480",
+                    "prompt": "Sedang berjoget geol geol",
+                    "created_at": "2025-11-08T16:11:54.444Z",
+                    "storage_path": "generated/acct-690f650e4f20d6-04864876/drive_20251108_161155_9a2d7be5.mp4",
+                    "source_url": "https://cdn-magnific.freepik.com/wan_v22_498cf769-87a6-429e-94a5-67f8f70d4036.mp4?token=exp=1762621693~hmac=4ae8a27a69d042d857152bd1aed124553377c85dd217acd9e613f02af55bdb61"
+                },
+                {
+                    "id": "drive_690f6a3f4380d6.86288505",
+                    "type": "image",
+                    "url": "https://akay.web.id/generated/acct-690f650e4f20d6-04864876/drive_20251108_160519_7adac88e.png",
+                    "thumbnail_url": "https://akay.web.id/generated/acct-690f650e4f20d6-04864876/drive_20251108_160519_7adac88e.png",
+                    "model": "gemini",
+                    "prompt": "Wanita cantik indonesia umur 25 tahun with massive brust luar biasa besar",
+                    "created_at": "2025-11-08T16:05:19.157Z",
+                    "storage_path": "generated/acct-690f650e4f20d6-04864876/drive_20251108_160519_7adac88e.png",
+                    "source_url": "https://cdn-magnific.freepik.com/result_NANO_BANANA_2b1a3939-acf1-4d28-9b12-90ef054e1e4b_0.png?token=exp=1762621510~hmac=052f9ef71f0ed84a97171755c4e5dc17d2c61f413cc05d1c82998c52cf538e96&size=stable"
+                }
+            ],
+            "pro_expires_at": "2025-12-30T17:29:00+00:00"
+        },
+        {
+            "id": "acct_690f6e3b745db1.23368112",
+            "username": "tester",
+            "display_name": "tester",
+            "email": "",
+            "role": "user",
+            "password_hash": "$2y$10$KdP6XHdK3e0JxNtWuUBvyuWUKcx4Ubjyq6yvvzV86apbxZYkICoC6",
+            "freepik_api_key": null,
+            "subscription": "free",
+            "coins": 24,
+            "is_banned": false,
+            "is_blocked": false,
+            "theme": "dark",
+            "avatar_url": null,
+            "created_at": "2025-11-08T16:22:19+00:00",
+            "updated_at": "2025-11-08T16:23:24+00:00",
+            "last_login_at": "2025-11-08T16:22:43+00:00",
+            "last_login_ip": "203.78.113.183",
+            "ip_history": [
+                {
+                    "ip": "203.78.113.183",
+                    "timestamp": "2025-11-08T16:22:43+00:00",
+                    "type": "login"
+                }
+            ],
+            "source": "admin",
+            "generation_count": 1,
+            "last_generation_at": "2025-11-08T16:23:09+00:00",
+            "drive_items": [
+                {
+                    "id": "drive_690f6e7b85b901.61007764",
+                    "type": "image",
+                    "url": "https://akay.web.id/generated/acct-690f6e3b745db1-23368112/drive_20251108_162324_0afc2188.png",
+                    "thumbnail_url": "https://akay.web.id/generated/acct-690f6e3b745db1-23368112/drive_20251108_162324_0afc2188.png",
+                    "model": "gemini",
+                    "prompt": "Wanita cantik indonesia",
+                    "created_at": "2025-11-08T16:23:23.442Z",
+                    "storage_path": "generated/acct-690f6e3b745db1-23368112/drive_20251108_162324_0afc2188.png",
+                    "source_url": "https://cdn-magnific.freepik.com/result_NANO_BANANA_ef5ac7f8-ffd8-44ab-bb7c-fafaf7970248_0.png?token=exp=1762622597~hmac=64c7375862771d3804d081f0257ff2c351d207ab9bb9f3ac0b7876ad7c1839f4&size=stable"
+                }
+            ],
+            "pro_expires_at": null
+        },
+        {
+            "id": "acct_691065607ed4d4.65780554",
+            "username": "dima",
+            "email": "dima@akay.web.id",
+            "role": "user",
+            "display_name": "Dima",
+            "password_hash": "$2y$10$JzI0.W7jWXairpaezLkXfOtY/O7XsBl/BL1wdb5iblsIfPffBNUJe",
+            "freepik_api_key": null,
+            "subscription": "free",
+            "coins": 20,
+            "is_banned": false,
+            "is_blocked": false,
+            "theme": "dark",
+            "avatar_url": null,
+            "created_at": "2025-11-09T09:56:48+00:00",
+            "updated_at": "2025-11-09T10:04:28+00:00",
+            "last_login_at": "2025-11-09T09:59:38+00:00",
+            "last_login_ip": "203.78.112.132",
+            "ip_history": [
+                {
+                    "ip": "203.78.112.132",
+                    "timestamp": "2025-11-09T09:59:38+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "203.78.112.132",
+                    "timestamp": "2025-11-09T09:57:00+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "203.78.112.132",
+                    "timestamp": "2025-11-09T09:56:48+00:00",
+                    "type": "register"
+                }
+            ],
+            "source": "register",
+            "pro_expires_at": null,
+            "generation_count": 6,
+            "last_generation_at": "2025-11-09T10:04:28+00:00",
             "drive_items": []
         },
         {
-            "id": "acct_690cd545b88eb3.54906339",
-            "username": "tester",
-            "display_name": "Tester",
-            "email": "",
+            "id": "acct_69109054081210.07035530",
+            "username": "wibiicrot",
+            "email": "bakolonlineshop1@gmail.com",
             "role": "user",
-            "password_hash": "$2y$10$3k2AZn0jL/Cm16InkHoJdOJ85wXK3C7ILZXKgtoQB66HaQFiCwM0S",
+            "display_name": "Wibiicrot",
+            "password_hash": "$2y$10$SGEn6M9cPCgiwBKCgJ3yQOGKBSQqcdj3OYUjDGTlD1DbjlbprLM2y",
             "freepik_api_key": null,
-            "subscription": "tester",
+            "subscription": "free",
             "coins": 25,
             "is_banned": false,
             "is_blocked": false,
             "theme": "dark",
             "avatar_url": null,
-            "created_at": "2025-11-06T17:05:09+00:00",
-            "updated_at": "2025-11-07T13:31:53+00:00",
-            "last_login_at": "2025-11-07T13:31:53+00:00",
-            "last_login_ip": "182.8.122.139",
+            "created_at": "2025-11-09T13:00:04+00:00",
+            "updated_at": "2025-11-09T13:00:04+00:00",
+            "last_login_at": null,
+            "last_login_ip": null,
             "ip_history": [
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T13:31:53+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T13:30:01+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T12:34:41+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T07:59:46+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T07:29:33+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T05:58:33+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-06T22:08:32+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-06T19:40:41+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-06T19:04:25+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.125.19",
-                    "timestamp": "2025-11-06T17:07:24+00:00",
-                    "type": "login"
+                    "ip": "114.5.103.201",
+                    "timestamp": "2025-11-09T13:00:04+00:00",
+                    "type": "register"
                 }
             ],
-            "source": "admin",
+            "source": "register",
+            "pro_expires_at": null,
+            "generation_count": 0,
+            "last_generation_at": null,
             "drive_items": []
         },
         {
-            "id": "acct_690d8f7cb50bd1.70810469",
-            "username": "qolbi",
-            "display_name": "OBIK TRETES",
-            "email": "qolbi@akay.web.id",
+            "id": "acct_6910bac20ff555.24863063",
+            "username": "jvkg",
+            "email": "kgkgiguvigiffkj@gmail.com",
             "role": "user",
-            "password_hash": "$2y$10$FeySnP3suUf.1DAYmPI.7ORkom8PfZbDCCKyPyYeeLAK7s5mCWY26",
+            "display_name": "Jvkg",
+            "password_hash": "$2y$10$fzvthaQ2cHx1SGyujEhxR.MuxDwGL4itJAeqLnNTEsMCO4V3GCBSy",
             "freepik_api_key": null,
-            "subscription": "pro",
-            "coins": 25,
+            "subscription": "free",
+            "coins": 20,
             "is_banned": false,
             "is_blocked": false,
-            "theme": "light",
-            "avatar_url": "https://akay.web.id/generated/upload_20251107_072900_1c811b93.png",
-            "created_at": "2025-11-07T06:19:40+00:00",
-            "updated_at": "2025-11-07T08:12:03+00:00",
-            "last_login_at": "2025-11-07T07:28:53+00:00",
-            "last_login_ip": "182.8.122.139",
+            "theme": "dark",
+            "avatar_url": null,
+            "created_at": "2025-11-09T16:01:06+00:00",
+            "updated_at": "2025-11-09T16:21:25+00:00",
+            "last_login_at": "2025-11-09T16:21:25+00:00",
+            "last_login_ip": "180.253.165.9",
             "ip_history": [
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T07:28:53+00:00",
+                    "ip": "180.253.165.9",
+                    "timestamp": "2025-11-09T16:21:25+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T06:54:58+00:00",
+                    "ip": "180.253.165.9",
+                    "timestamp": "2025-11-09T16:01:12+00:00",
                     "type": "login"
+                },
+                {
+                    "ip": "180.253.165.9",
+                    "timestamp": "2025-11-09T16:01:11+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "180.253.165.9",
+                    "timestamp": "2025-11-09T16:01:06+00:00",
+                    "type": "register"
                 }
             ],
-            "source": "admin",
+            "source": "register",
+            "pro_expires_at": null,
+            "generation_count": 5,
+            "last_generation_at": "2025-11-09T16:02:33+00:00",
             "drive_items": []
         },
         {
-            "id": "acct_690d967e1bb3c1.15866320",
-            "username": "wibiso",
-            "display_name": "WIBI TRETES",
-            "email": "",
+            "id": "acct_6910bebf1bf1f4.32515868",
+            "username": "dhevon",
+            "email": "dhevonnadhiv@gmail.com",
             "role": "user",
-            "password_hash": "$2y$10$8BUQIcJQ.Nzcuw9kErHMx.e1euhVcS8bcHzKo8uEFidOTRJfvwflG",
+            "display_name": "Dhevon",
+            "password_hash": "$2y$10$7OVcVCFDZolLANTz3umH4uu3DP/PJGG9pgGZT9ifsIapT6ThH32Rq",
             "freepik_api_key": null,
             "subscription": "pro",
-            "coins": 4996,
+            "coins": 50,
             "is_banned": false,
             "is_blocked": false,
-            "theme": "light",
-            "avatar_url": "https://akay.web.id/generated/upload_20251107_072836_45c750d5.png",
-            "created_at": "2025-11-07T06:49:34+00:00",
-            "updated_at": "2025-11-07T13:29:27+00:00",
-            "last_login_at": "2025-11-07T13:28:04+00:00",
-            "last_login_ip": "182.8.122.139",
+            "theme": "dark",
+            "avatar_url": null,
+            "created_at": "2025-11-09T16:18:07+00:00",
+            "updated_at": "2025-11-10T05:05:45+00:00",
+            "last_login_at": "2025-11-09T16:18:14+00:00",
+            "last_login_ip": "114.5.103.201",
             "ip_history": [
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T13:28:04+00:00",
+                    "ip": "114.5.103.201",
+                    "timestamp": "2025-11-09T16:18:14+00:00",
                     "type": "login"
                 },
                 {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T07:19:30+00:00",
-                    "type": "login"
+                    "ip": "114.5.103.201",
+                    "timestamp": "2025-11-09T16:18:07+00:00",
+                    "type": "register"
                 }
             ],
-            "source": "admin",
-            "drive_items": [
-                {
-                    "id": "drive_690df43741d631.76630228",
-                    "type": "image",
-                    "url": "https://cdn-magnific.freepik.com/result_NANO_BANANA_d9bb8db8-93dc-4855-b29c-35aa89386d45_0.png?token=exp=1762525760~hmac=5e31f825ea2e594a4b06d442a3ffdf7c2b247002dbe26fa8cd21fd6493a7c9de&size=stable",
-                    "thumbnail_url": null,
-                    "model": "gemini",
-                    "prompt": "Seekor monyet sedang bersama wanita muda indonesia yang cantik",
-                    "created_at": "2025-11-07T13:29:27.126Z"
-                }
-            ]
+            "source": "register",
+            "pro_expires_at": "2025-11-30T05:05:00+00:00",
+            "generation_count": 0,
+            "last_generation_at": null,
+            "drive_items": []
         },
         {
-            "id": "acct_690da786e070a7.79100422",
-            "username": "tamu",
-            "display_name": "Viewer",
-            "email": "",
+            "id": "acct_69116f865e7bd8.42489548",
+            "username": "lubis",
+            "display_name": "Lubis K",
+            "email": "lubis@akay.web.id",
             "role": "user",
-            "password_hash": "$2y$10$mTcfviQqgqzqUCIXD4bR8eAGHwz.Uxspz4ZVJiiXX1pJkdEBlz5L2",
+            "password_hash": "$2y$10$NW9DSljmeOZUZnUQ2kbbleFLgtC4iJX6DPxI4JBgrjDjcC7nkD0sO",
             "freepik_api_key": null,
-            "subscription": "tamu",
-            "coins": 0,
+            "subscription": "pro",
+            "pro_expires_at": "2025-12-31T04:52:00+00:00",
+            "coins": 25000,
             "is_banned": false,
             "is_blocked": false,
             "theme": "light",
-            "avatar_url": "https://akay.web.id/generated/upload_20251107_080339_969d97af.jpg",
-            "created_at": "2025-11-07T08:02:14+00:00",
-            "updated_at": "2025-11-07T10:28:27+00:00",
-            "last_login_at": "2025-11-07T10:28:27+00:00",
-            "last_login_ip": "103.242.104.117",
+            "avatar_url": null,
+            "created_at": "2025-11-10T04:52:22+00:00",
+            "updated_at": "2025-11-10T05:06:25+00:00",
+            "last_login_at": "2025-11-10T04:56:14+00:00",
+            "last_login_ip": "112.215.153.233",
             "ip_history": [
                 {
-                    "ip": "103.242.104.117",
-                    "timestamp": "2025-11-07T10:28:27+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "140.213.218.115",
-                    "timestamp": "2025-11-07T09:40:23+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T08:36:33+00:00",
-                    "type": "login"
-                },
-                {
-                    "ip": "182.8.122.139",
-                    "timestamp": "2025-11-07T08:02:25+00:00",
+                    "ip": "112.215.153.233",
+                    "timestamp": "2025-11-10T04:56:14+00:00",
                     "type": "login"
                 }
             ],
             "source": "admin",
+            "generation_count": 0,
+            "last_generation_at": null,
+            "drive_items": []
+        },
+        {
+            "id": "acct_6913748ab2bf12.08937380",
+            "username": "kontol",
+            "email": "kontol@kontol.com",
+            "role": "user",
+            "display_name": "Kontol",
+            "password_hash": "$2y$10$F/PHlu30CbkwSWZi.OkZguqFMCWG485UoVO0hfQo1xTKZBRhw90jC",
+            "freepik_api_key": null,
+            "subscription": "free",
+            "coins": 20,
+            "is_banned": false,
+            "is_blocked": false,
+            "theme": "dark",
+            "avatar_url": null,
+            "created_at": "2025-11-11T17:38:18+00:00",
+            "updated_at": "2025-11-11T17:39:22+00:00",
+            "last_login_at": "2025-11-11T17:38:23+00:00",
+            "last_login_ip": "182.8.98.83",
+            "ip_history": [
+                {
+                    "ip": "182.8.98.83",
+                    "timestamp": "2025-11-11T17:38:23+00:00",
+                    "type": "login"
+                },
+                {
+                    "ip": "182.8.98.83",
+                    "timestamp": "2025-11-11T17:38:18+00:00",
+                    "type": "register"
+                }
+            ],
+            "source": "register",
+            "pro_expires_at": null,
+            "generation_count": 5,
+            "last_generation_at": "2025-11-11T17:39:22+00:00",
             "drive_items": []
         }
     ],
-    "platform": {
-        "maintenance": {
-            "active": false,
-            "message": "Tunggu sebentar. Kami segera kembali!",
-            "updated_at": "2025-11-07T05:58:53+00:00"
-        },
-        "generators": {
-            "imageGen": {
-                "key": "imageGen",
-                "label": "Image Generator",
-                "description": "Generate image assets dari prompt teks.",
-                "enabled": true,
-                "updated_at": "2024-01-01T00:00:00Z"
-            },
-            "imageEdit": {
-                "key": "imageEdit",
-                "label": "Image Editing",
-                "description": "Edit dan upscale image menggunakan Freepik tools.",
-                "enabled": true,
-                "updated_at": "2024-01-01T00:00:00Z"
-            },
-            "videoGen": {
-                "key": "videoGen",
-                "label": "Video Generator",
-                "description": "Buat video otomatis dari prompt dan referensi.",
-                "enabled": true,
-                "updated_at": "2025-11-06T17:08:12+00:00"
-            },
-            "lipsync": {
-                "key": "lipsync",
-                "label": "Lipsync Studio",
-                "description": "Sinkronisasi bibir otomatis dari video dan audio.",
-                "enabled": true,
-                "updated_at": "2024-01-01T00:00:00Z"
-            },
-            "filmmaker": {
-                "key": "filmmaker",
-                "label": "Filmmaker",
-                "description": "Generator rangkaian scene sinematik.",
-                "enabled": true,
-                "updated_at": "2025-11-06T17:09:19+00:00"
-            },
-            "ugc": {
-                "key": "ugc",
-                "label": "UGC Tool",
-                "description": "Generator ide konten UGC dan animasi.",
-                "enabled": true,
-                "updated_at": "2024-01-01T00:00:00Z"
-            }
-        }
-    },
     "security": {
         "ipChecks": [
             {
                 "type": "login",
-                "timestamp": "2025-11-07T13:31:53+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
+                "timestamp": "2025-11-13T04:08:45+00:00",
+                "ip": "182.8.125.69",
+                "username": "admin",
+                "role": "admin"
             },
             {
                 "type": "login",
-                "timestamp": "2025-11-07T13:30:01+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
+                "timestamp": "2025-11-12T15:55:01+00:00",
+                "ip": "182.8.98.83",
+                "username": "admin",
+                "role": "admin"
             },
             {
                 "type": "login",
-                "timestamp": "2025-11-07T13:28:04+00:00",
-                "ip": "182.8.122.139",
-                "username": "wibiso",
-                "role": "user"
+                "timestamp": "2025-11-12T10:04:27+00:00",
+                "ip": "182.8.98.83",
+                "username": "admin",
+                "role": "admin"
             },
             {
                 "type": "login",
-                "timestamp": "2025-11-07T12:34:41+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
+                "timestamp": "2025-11-12T07:39:44+00:00",
+                "ip": "182.5.199.9",
+                "username": "admin",
+                "role": "admin"
             },
             {
                 "type": "login",
-                "timestamp": "2025-11-07T10:28:27+00:00",
-                "ip": "103.242.104.117",
-                "username": "tamu",
-                "role": "user"
+                "timestamp": "2025-11-12T05:42:08+00:00",
+                "ip": "182.5.199.9",
+                "username": "admin",
+                "role": "admin"
             },
             {
                 "type": "login",
-                "timestamp": "2025-11-07T10:28:02+00:00",
-                "ip": "112.215.153.58",
+                "timestamp": "2025-11-12T00:43:36+00:00",
+                "ip": "182.8.98.83",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-11T18:08:16+00:00",
+                "ip": "182.8.98.83",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-11T17:38:23+00:00",
+                "ip": "182.8.98.83",
+                "username": "kontol",
+                "role": "user"
+            },
+            {
+                "type": "register",
+                "timestamp": "2025-11-11T17:38:18+00:00",
+                "ip": "182.8.98.83",
+                "username": "kontol"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-11T15:52:32+00:00",
+                "ip": "182.8.98.84",
                 "username": "admin",
                 "role": "admin"
             },
             {
                 "type": "login-failed",
-                "timestamp": "2025-11-07T10:27:58+00:00",
-                "ip": "112.215.153.58",
-                "username": "viewer"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T10:26:22+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T09:54:22+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T09:40:23+00:00",
-                "ip": "140.213.218.115",
-                "username": "tamu",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T08:50:46+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T08:37:06+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T08:36:33+00:00",
-                "ip": "182.8.122.139",
-                "username": "tamu",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T08:10:24+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T08:02:25+00:00",
-                "ip": "182.8.122.139",
-                "username": "tamu",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T07:59:46+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T07:46:45+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T07:29:33+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T07:28:53+00:00",
-                "ip": "182.8.122.139",
-                "username": "qolbi",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T07:19:30+00:00",
-                "ip": "182.8.122.139",
-                "username": "wibiso",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T06:54:58+00:00",
-                "ip": "182.8.122.139",
-                "username": "qolbi",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T06:34:25+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T05:58:46+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T05:58:33+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T04:26:51+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-07T04:22:19+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-06T22:08:32+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-06T21:21:26+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-06T21:16:16+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-06T20:10:25+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "security-check",
-                "timestamp": "2025-11-06T19:49:53+00:00",
-                "ip": "182.8.122.139"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-06T19:40:41+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
-            },
-            {
-                "type": "security-check",
-                "timestamp": "2025-11-06T19:40:25+00:00",
-                "ip": "182.8.122.139"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-06T19:40:18+00:00",
-                "ip": "182.8.122.139",
-                "username": "admin",
-                "role": "admin"
-            },
-            {
-                "type": "security-check",
-                "timestamp": "2025-11-06T19:40:17+00:00",
-                "ip": "182.8.122.139"
-            },
-            {
-                "type": "login",
-                "timestamp": "2025-11-06T19:04:25+00:00",
-                "ip": "182.8.122.139",
-                "username": "tester",
-                "role": "user"
+                "timestamp": "2025-11-11T15:33:24+00:00",
+                "ip": "182.8.122.30",
+                "username": "jnd"
             },
             {
                 "type": "login-failed",
-                "timestamp": "2025-11-06T19:04:16+00:00",
-                "ip": "182.8.122.139",
-                "username": "wibiso"
+                "timestamp": "2025-11-11T15:32:59+00:00",
+                "ip": "182.8.122.30",
+                "username": "jnd"
             },
             {
-                "type": "security-check",
-                "timestamp": "2025-11-06T19:04:08+00:00",
-                "ip": "182.8.122.139"
-            },
-            {
-                "type": "security-check",
-                "timestamp": "2025-11-06T18:37:12+00:00",
-                "ip": "182.8.125.86"
-            },
-            {
-                "type": "security-check",
-                "timestamp": "2025-11-06T18:36:44+00:00",
-                "ip": "182.8.125.86"
+                "type": "login-failed",
+                "timestamp": "2025-11-11T15:32:57+00:00",
+                "ip": "182.8.122.30",
+                "username": "jnd"
             },
             {
                 "type": "login",
-                "timestamp": "2025-11-06T17:19:46+00:00",
-                "ip": "182.8.125.19",
+                "timestamp": "2025-11-11T11:52:41+00:00",
+                "ip": "203.78.123.76",
                 "username": "admin",
                 "role": "admin"
             },
             {
-                "type": "security-check",
-                "timestamp": "2025-11-06T17:19:40+00:00",
-                "ip": "182.8.125.19"
+                "type": "login",
+                "timestamp": "2025-11-11T02:42:40+00:00",
+                "ip": "182.8.98.84",
+                "username": "admin",
+                "role": "admin"
             },
             {
                 "type": "login",
-                "timestamp": "2025-11-06T17:07:24+00:00",
-                "ip": "182.8.125.19",
-                "username": "tester",
+                "timestamp": "2025-11-11T01:44:34+00:00",
+                "ip": "182.8.98.84",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-10T10:03:00+00:00",
+                "ip": "112.215.243.122",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-10T10:02:55+00:00",
+                "ip": "112.215.243.122",
+                "username": "admin@akay.web.id"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-10T09:18:49+00:00",
+                "ip": "112.215.237.76",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-10T09:18:43+00:00",
+                "ip": "112.215.237.76",
+                "username": "admin"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-10T09:18:38+00:00",
+                "ip": "112.215.237.76",
+                "username": "admin@akay.web.id"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-10T08:55:14+00:00",
+                "ip": "140.213.246.181",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-10T08:55:06+00:00",
+                "ip": "140.213.246.181",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-10T08:55:05+00:00",
+                "ip": "140.213.246.181",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-10T07:17:40+00:00",
+                "ip": "36.90.174.181",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-10T05:35:43+00:00",
+                "ip": "140.213.246.155",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-10T04:56:14+00:00",
+                "ip": "112.215.153.233",
+                "username": "lubis",
                 "role": "user"
             },
             {
-                "type": "security-check",
-                "timestamp": "2025-11-06T17:07:18+00:00",
-                "ip": "182.8.125.19"
-            },
-            {
                 "type": "login",
-                "timestamp": "2025-11-06T17:04:59+00:00",
-                "ip": "182.8.125.19",
+                "timestamp": "2025-11-10T04:06:21+00:00",
+                "ip": "140.213.244.206",
                 "username": "admin",
                 "role": "admin"
             },
             {
-                "type": "security-check",
-                "timestamp": "2025-11-06T17:04:20+00:00",
-                "ip": "182.8.125.19"
+                "type": "login",
+                "timestamp": "2025-11-09T16:21:25+00:00",
+                "ip": "180.253.165.9",
+                "username": "jvkg",
+                "role": "user"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T16:18:14+00:00",
+                "ip": "114.5.103.201",
+                "username": "dhevon",
+                "role": "user"
+            },
+            {
+                "type": "register",
+                "timestamp": "2025-11-09T16:18:07+00:00",
+                "ip": "114.5.103.201",
+                "username": "dhevon"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T16:01:12+00:00",
+                "ip": "180.253.165.9",
+                "username": "jvkg",
+                "role": "user"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T16:01:11+00:00",
+                "ip": "180.253.165.9",
+                "username": "jvkg",
+                "role": "user"
+            },
+            {
+                "type": "register",
+                "timestamp": "2025-11-09T16:01:06+00:00",
+                "ip": "180.253.165.9",
+                "username": "jvkg"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T13:37:02+00:00",
+                "ip": "140.213.48.4",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T13:36:56+00:00",
+                "ip": "140.213.48.4",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T13:36:55+00:00",
+                "ip": "140.213.48.4",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-09T13:00:53+00:00",
+                "ip": "114.5.103.201",
+                "username": "wibicrot"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-09T13:00:47+00:00",
+                "ip": "114.5.103.201",
+                "username": "wibicrot"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-09T13:00:33+00:00",
+                "ip": "114.5.103.201",
+                "username": "wibicrot"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-09T13:00:31+00:00",
+                "ip": "114.5.103.201",
+                "username": "wibicrot"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-09T13:00:22+00:00",
+                "ip": "114.5.103.201",
+                "username": "wibicrot"
+            },
+            {
+                "type": "login-failed",
+                "timestamp": "2025-11-09T13:00:20+00:00",
+                "ip": "114.5.103.201",
+                "username": "wibicrot"
+            },
+            {
+                "type": "register",
+                "timestamp": "2025-11-09T13:00:04+00:00",
+                "ip": "114.5.103.201",
+                "username": "wibiicrot"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T09:59:38+00:00",
+                "ip": "203.78.112.132",
+                "username": "dima",
+                "role": "user"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T09:58:49+00:00",
+                "ip": "203.78.112.132",
+                "username": "lubis",
+                "role": "user"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T09:58:26+00:00",
+                "ip": "203.78.112.132",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T09:57:42+00:00",
+                "ip": "203.78.112.132",
+                "username": "admin",
+                "role": "admin"
+            },
+            {
+                "type": "login",
+                "timestamp": "2025-11-09T09:57:00+00:00",
+                "ip": "203.78.112.132",
+                "username": "dima",
+                "role": "user"
+            },
+            {
+                "type": "register",
+                "timestamp": "2025-11-09T09:56:48+00:00",
+                "ip": "203.78.112.132",
+                "username": "dima"
             }
         ],
-        "updated_at": "2025-11-07T13:31:53+00:00"
+        "updated_at": "2025-11-13T04:08:45+00:00"
+    },
+    "announcements": [
+        {
+            "id": "note_69105ca9a316f4.79503900",
+            "title": "UPDATE!!",
+            "description": "FITUR BARU EDIT FOTO SIMPLE",
+            "published_at": "2025-11-09T09:19:37+00:00",
+            "created_at": "2025-11-09T09:19:37+00:00",
+            "updated_at": "2025-11-09T09:19:37+00:00"
+        }
+    ],
+    "metrics": {
+        "total_generations": 760,
+        "recent_activity": [
+            {
+                "id": "act_69168439cc7383.08131308",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-14T01:22:01+00:00"
+            },
+            {
+                "id": "act_691684342fc6c1.45997402",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-14T01:21:56+00:00"
+            },
+            {
+                "id": "act_6916842e0272c7.72416723",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-14T01:21:50+00:00"
+            },
+            {
+                "id": "act_69168425ce1ec0.44664870",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-14T01:21:41+00:00"
+            },
+            {
+                "id": "act_6916841c84f2e5.82009096",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-14T01:21:32+00:00"
+            },
+            {
+                "id": "act_69158504452f08.01194096",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:13:08+00:00"
+            },
+            {
+                "id": "act_69158501d5bb87.67974862",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:13:05+00:00"
+            },
+            {
+                "id": "act_691584fedd6293.36993473",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:13:02+00:00"
+            },
+            {
+                "id": "act_691584fc878df0.08881933",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:13:00+00:00"
+            },
+            {
+                "id": "act_691584fa578a05.81738908",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:12:58+00:00"
+            },
+            {
+                "id": "act_691584f84aea29.98491718",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:12:56+00:00"
+            },
+            {
+                "id": "act_691584b4e5f129.46447496",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:11:48+00:00"
+            },
+            {
+                "id": "act_691584b2ace406.59686966",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:11:46+00:00"
+            },
+            {
+                "id": "act_691584b031bb25.50564953",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:11:44+00:00"
+            },
+            {
+                "id": "act_691584adcb1588.65651265",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:11:41+00:00"
+            },
+            {
+                "id": "act_691584aaa5aca8.00575237",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:11:38+00:00"
+            },
+            {
+                "id": "act_691584a825c7e3.56724240",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:11:36+00:00"
+            },
+            {
+                "id": "act_6915843f2fdd01.65893322",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:09:51+00:00"
+            },
+            {
+                "id": "act_6915843d0bf545.16047835",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:09:49+00:00"
+            },
+            {
+                "id": "act_6915843a4c6949.53933147",
+                "type": "freepik",
+                "source": "freepik",
+                "user_id": "account-default-admin",
+                "username": "admin",
+                "detail": "/v1/ai/gemini-2-5-flash-image-preview",
+                "timestamp": "2025-11-13T07:09:46+00:00"
+            }
+        ],
+        "updated_at": "2025-11-14T01:22:01+00:00"
     }
 }
