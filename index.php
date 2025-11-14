@@ -6060,6 +6060,38 @@ body[data-theme="light"] .profile-expiry.expired {
       background: #000;
       object-fit: cover;
     }
+    .ugc-upscale-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(236,72,153,0.18), rgba(168,85,247,0.14));
+      padding: 10px;
+      font-size: 11px;
+      text-align: center;
+      min-height: 80px;
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items:center;
+      justify-content:center;
+    }
+    .ugc-upscale-card img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 12px;
+      background: #000;
+      object-fit: cover;
+      cursor: pointer;
+    }
+    .ugc-upscale-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .ugc-upscale-error {
+      font-size: 10px;
+      color: #f87171;
+    }
     .ugc-video-actions {
       display: flex;
       gap: 6px;
@@ -8846,6 +8878,49 @@ body[data-theme="light"] .profile-expiry.expired {
         button.textContent = 'Simpan ke Drive';
       }
       alert('Gagal menyimpan gambar ke drive: ' + (err.message || err));
+    }
+  }
+
+  async function saveUgcUpscaleToDrive(item, button) {
+    if (!item || !item.upscaleImageUrl) {
+      alert('Hasil upscale belum siap.');
+      return;
+    }
+
+    const url = ensureAbsoluteUrl(item.upscaleImageUrl || item.upscaleRemoteUrl);
+    if (!/^https?:\/\//i.test(url)) {
+      alert('URL hasil upscale tidak valid.');
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Menyimpan…';
+    }
+
+    const entry = {
+      type: 'image',
+      url,
+      model: 'ugc-upscale-precision-v2',
+      prompt: item.prompt || null,
+      created_at: nowIso()
+    };
+
+    try {
+      await persistDriveItems([entry]);
+      if (button) {
+        button.textContent = 'Tersimpan ✓';
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = 'Simpan ke Drive';
+        }, 1800);
+      }
+    } catch (err) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Simpan ke Drive';
+      }
+      alert('Gagal menyimpan hasil upscale: ' + (err.message || err));
     }
   }
 
@@ -11892,6 +11967,7 @@ body[data-theme="light"] .profile-expiry.expired {
       if (generated && Array.isArray(generated) && generated.length) {
         job.generated = generated;
       }
+      updateUgcUpscaleStateFromJob(job);
       job.updatedAt = nowIso();
       saveJobs();
       renderJobs();
@@ -11907,6 +11983,7 @@ body[data-theme="light"] .profile-expiry.expired {
           await ensureLocalFiles(job);
         }
         await syncJobToDrive(job);
+        updateUgcUpscaleStateFromJob(job);
         if (job.type === 'video') {
           const url = (job.localUrls && job.localUrls[0]) ||
                       (job.generated && job.generated[0]) ||
@@ -13152,6 +13229,26 @@ body[data-theme="light"] .profile-expiry.expired {
     }
     ugcEmpty.style.display = 'none';
 
+    const formatUpscaleStatus = status => {
+      const normalized = (status || '').toUpperCase();
+      if (!normalized) return 'Belum ada proses. Klik tombol Upscale Precision V2.';
+      if (normalized === 'REQUESTING') return 'Mengirim permintaan ke server…';
+      if (['CREATED', 'PENDING', 'QUEUED', 'ACCEPTED'].includes(normalized)) {
+        return 'Task dibuat, menunggu giliran…';
+      }
+      if (['PROCESSING', 'RUNNING', 'STARTED', 'IN_PROGRESS', 'INPROGRESS'].includes(normalized)) {
+        return 'Upscale sedang diproses…';
+      }
+      if (normalized === 'COMPLETED') return 'Upscale selesai';
+      if (['FAILED', 'ERROR'].includes(normalized)) return 'Upscale gagal';
+      return normalized.charAt(0) + normalized.slice(1).toLowerCase();
+    };
+
+    const shortTaskId = id => {
+      if (!id) return '';
+      return String(id).length > 8 ? String(id).slice(0, 8) + '…' : String(id);
+    };
+
     ugcItems.forEach(item => {
       const row = document.createElement('div');
       row.className = 'ugc-row';
@@ -13230,8 +13327,91 @@ body[data-theme="light"] .profile-expiry.expired {
         videoCard.innerHTML = '<div><div class=\"ugc-media-title\">Video</div><div class=\"ugc-media-status\">No video yet</div></div>';
       }
 
+      const upscaleCard = document.createElement('div');
+      upscaleCard.className = 'ugc-upscale-card';
+      const normalizedUpscaleStatus = item.upscaleStatus ? String(item.upscaleStatus).toUpperCase() : '';
+
+      if (item.upscaleImageUrl) {
+        const title = document.createElement('div');
+        title.className = 'ugc-media-title';
+        title.textContent = 'Upscale Precision V2 siap';
+
+        const upscaleImg = document.createElement('img');
+        upscaleImg.src = item.upscaleImageUrl;
+        upscaleImg.alt = 'Upscale Image #' + item.index;
+        upscaleImg.classList.add('ugc-upscale-preview', 'clickable-media');
+        upscaleImg.addEventListener('click', () => openAssetPreview(item.upscaleImageUrl, 'image'));
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'ugc-media-status';
+        let statusText = formatUpscaleStatus(normalizedUpscaleStatus || 'COMPLETED');
+        if (item.upscaleTaskId) {
+          statusText += ' • Task ' + shortTaskId(item.upscaleTaskId);
+        }
+        statusEl.textContent = statusText;
+
+        const actions = document.createElement('div');
+        actions.className = 'ugc-upscale-actions';
+
+        const previewUpscaleBtn = document.createElement('button');
+        previewUpscaleBtn.type = 'button';
+        previewUpscaleBtn.className = 'small secondary';
+        previewUpscaleBtn.textContent = 'Preview Upscale';
+        previewUpscaleBtn.addEventListener('click', () => openAssetPreview(item.upscaleImageUrl, 'image'));
+        actions.appendChild(previewUpscaleBtn);
+
+        const downloadUpscaleBtn = document.createElement('button');
+        downloadUpscaleBtn.type = 'button';
+        downloadUpscaleBtn.className = 'small';
+        downloadUpscaleBtn.textContent = 'Download';
+        downloadUpscaleBtn.addEventListener('click', () => {
+          const a = document.createElement('a');
+          a.href = item.upscaleImageUrl;
+          a.download = '';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        });
+        actions.appendChild(downloadUpscaleBtn);
+
+        const saveUpscaleBtn = document.createElement('button');
+        saveUpscaleBtn.type = 'button';
+        saveUpscaleBtn.className = 'small secondary';
+        saveUpscaleBtn.textContent = 'Simpan ke Drive';
+        saveUpscaleBtn.addEventListener('click', () => saveUgcUpscaleToDrive(item, saveUpscaleBtn));
+        actions.appendChild(saveUpscaleBtn);
+
+        upscaleCard.appendChild(title);
+        upscaleCard.appendChild(upscaleImg);
+        upscaleCard.appendChild(statusEl);
+        upscaleCard.appendChild(actions);
+      } else {
+        const title = document.createElement('div');
+        title.className = 'ugc-media-title';
+        title.textContent = 'Upscale Precision V2';
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'ugc-media-status';
+        let statusText = formatUpscaleStatus(normalizedUpscaleStatus);
+        if (normalizedUpscaleStatus && item.upscaleTaskId && !finalStatus(normalizedUpscaleStatus)) {
+          statusText += ' • Task ' + shortTaskId(item.upscaleTaskId);
+        }
+        statusEl.textContent = statusText;
+
+        upscaleCard.appendChild(title);
+        upscaleCard.appendChild(statusEl);
+
+        if (item.upscaleError && ['FAILED', 'ERROR'].includes(normalizedUpscaleStatus)) {
+          const errorEl = document.createElement('div');
+          errorEl.className = 'ugc-upscale-error';
+          errorEl.textContent = item.upscaleError;
+          upscaleCard.appendChild(errorEl);
+        }
+      }
+
       left.appendChild(imgCard);
       left.appendChild(videoCard);
+      left.appendChild(upscaleCard);
 
       const right = document.createElement('div');
       right.className = 'ugc-right';
@@ -13311,8 +13491,15 @@ body[data-theme="light"] .profile-expiry.expired {
       const upscaleBtn = document.createElement('button');
       upscaleBtn.type = 'button';
       upscaleBtn.className = 'small secondary';
-      upscaleBtn.textContent = 'Upscale Precision V2';
-      upscaleBtn.disabled = !item.remoteUrl;
+      let upscaleLabel = 'Upscale Precision V2';
+      const upscaleStatusRaw = item.upscaleStatus ? String(item.upscaleStatus) : '';
+      const upscaleStatusNormalized = upscaleStatusRaw ? upscaleStatusRaw.toUpperCase() : '';
+      const isUpscaleBusy = !!(upscaleStatusNormalized && !finalStatus(upscaleStatusNormalized));
+      if (isUpscaleBusy) {
+        upscaleLabel = 'Upscale sedang diproses…';
+      }
+      upscaleBtn.textContent = upscaleLabel;
+      upscaleBtn.disabled = !item.remoteUrl || isUpscaleBusy;
       upscaleBtn.addEventListener('click', () => ugcUpscaleImage(item));
 
       btnRow.appendChild(previewImgBtn);
@@ -13475,8 +13662,15 @@ body[data-theme="light"] .profile-expiry.expired {
         status: 'CREATED',
         taskId: null,
         imageUrl: null,
+        remoteUrl: null,
         videoJobId: null,
-        videoUrl: null
+        videoUrl: null,
+        upscaleStatus: null,
+        upscaleJobId: null,
+        upscaleImageUrl: null,
+        upscaleRemoteUrl: null,
+        upscaleTaskId: null,
+        upscaleError: null
       };
       ugcItems.push(item);
       renderUgcList();
@@ -13601,6 +13795,56 @@ body[data-theme="light"] .profile-expiry.expired {
     }
   }
 
+  function updateUgcUpscaleStateFromJob(job) {
+    if (!job || !job.id) return;
+
+    const statusRaw = job.status ? String(job.status) : '';
+    const statusNormalized = statusRaw ? statusRaw.toUpperCase() : '';
+    const remoteUrl = Array.isArray(job.generated) && job.generated.length
+      ? job.generated[0]
+      : (job.extraUrl || null);
+    const localUrl = Array.isArray(job.localUrls) && job.localUrls.length
+      ? job.localUrls[0]
+      : null;
+    const resolvedUrl = localUrl || remoteUrl || null;
+
+    let changed = false;
+
+    ugcItems.forEach(item => {
+      if (!item || item.upscaleJobId !== job.id) return;
+
+      if (statusNormalized && item.upscaleStatus !== statusNormalized) {
+        item.upscaleStatus = statusNormalized;
+        if (!['FAILED', 'ERROR'].includes(statusNormalized)) {
+          item.upscaleError = null;
+        }
+        if (['FAILED', 'ERROR'].includes(statusNormalized) && !item.upscaleError) {
+          item.upscaleError = 'Cek Queue untuk detail error.';
+        }
+        changed = true;
+      }
+
+      if (job.taskId && item.upscaleTaskId !== job.taskId) {
+        item.upscaleTaskId = job.taskId;
+        changed = true;
+      }
+
+      if (resolvedUrl && item.upscaleImageUrl !== resolvedUrl) {
+        item.upscaleImageUrl = resolvedUrl;
+        changed = true;
+      }
+
+      if (remoteUrl && item.upscaleRemoteUrl !== remoteUrl) {
+        item.upscaleRemoteUrl = remoteUrl;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      renderUgcList();
+    }
+  }
+
   async function ugcUpscaleImage(item) {
     if (!featureAvailableForCurrentUser('ugc')) {
       showFeatureLockedMessage('ugc');
@@ -13617,6 +13861,14 @@ body[data-theme="light"] .profile-expiry.expired {
       alert('Konfigurasi model upscale tidak ditemukan.');
       return;
     }
+
+    item.upscaleStatus = 'REQUESTING';
+    item.upscaleError = null;
+    item.upscaleImageUrl = null;
+    item.upscaleRemoteUrl = null;
+    item.upscaleTaskId = null;
+    item.upscaleJobId = null;
+    renderUgcList();
 
     const payload = {
       imageUrl: item.remoteUrl,
@@ -13650,6 +13902,13 @@ body[data-theme="light"] .profile-expiry.expired {
         }
       }
 
+      const firstGenerated = Array.isArray(generated) && generated.length
+        ? generated[0]
+        : (extraUrl || null);
+      const normalizedStatus = status ? String(status).toUpperCase() : '';
+      const jobStatus = normalizedStatus || (taskId ? 'CREATED' : 'COMPLETED');
+      status = jobStatus;
+
       const jobId = uuid();
       const job = {
         id: jobId,
@@ -13668,6 +13927,15 @@ body[data-theme="light"] .profile-expiry.expired {
       saveJobs();
       renderJobs();
 
+      item.upscaleJobId = jobId;
+      item.upscaleStatus = status;
+      item.upscaleTaskId = taskId || null;
+      if (firstGenerated) {
+        item.upscaleRemoteUrl = firstGenerated;
+        item.upscaleImageUrl = firstGenerated;
+      }
+      renderUgcList();
+
       if (taskId && !finalStatus(status)) {
         startJobProgress(job);
         startPolling(job);
@@ -13677,12 +13945,14 @@ body[data-theme="light"] .profile-expiry.expired {
           await ensureLocalFiles(job);
         }
         await syncJobToDrive(job);
+        updateUgcUpscaleStateFromJob(job);
       }
-
-      item.upscaleJobId = jobId;
-      renderUgcList();
     } catch (e) {
       console.error(e);
+      item.upscaleStatus = 'ERROR';
+      item.upscaleError = e && e.message ? e.message : 'Terjadi kesalahan saat upscale.';
+      item.upscaleJobId = null;
+      renderUgcList();
       alert('Gagal melakukan upscale: ' + e.message);
     }
   }
