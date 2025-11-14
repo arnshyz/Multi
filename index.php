@@ -112,6 +112,10 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
                     if (($entry['type'] ?? 'image') !== 'video') {
                         $entry['thumbnail_url'] = $localUrl;
                     }
+                    $size = @filesize($absolute);
+                    if ($size) {
+                        $entry['size_bytes'] = (int)$size;
+                    }
                 }
             }
         }
@@ -165,6 +169,7 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
         if (!$createdAt) {
             $createdAt = time();
         }
+        $size = @filesize($file);
 
         $items[] = [
             'id' => 'fs_' . sha1($relative),
@@ -175,6 +180,7 @@ function drive_merge_items_with_filesystem(array $account, array $items): array
             'prompt' => null,
             'created_at' => gmdate('c', $createdAt),
             'storage_path' => $relative,
+            'size_bytes' => $size ?: null,
         ];
     }
 
@@ -8606,6 +8612,35 @@ body[data-theme="light"] .profile-expiry.expired {
     return date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
   }
 
+  function driveItemSizeBytes(item) {
+    if (!item || typeof item !== 'object') return null;
+    const keys = ['size_bytes', 'sizeBytes', 'size'];
+    for (const key of keys) {
+      if (!(key in item)) continue;
+      const raw = item[key];
+      if (raw === null || raw === undefined) continue;
+      const numeric = typeof raw === 'string' ? Number(raw.trim()) : Number(raw);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        return numeric;
+      }
+    }
+    return null;
+  }
+
+  function formatDriveSize(bytes) {
+    const value = Number(bytes);
+    if (!Number.isFinite(value) || value <= 0) return '';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = value;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    const fractionDigits = unitIndex === 0 ? 0 : size >= 100 ? 0 : 1;
+    return `${size.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: fractionDigits })} ${units[unitIndex]}`;
+  }
+
   function updateDriveSummary() {
     const total = Array.isArray(driveItems) ? driveItems.length : 0;
     const photos = Array.isArray(driveItems) ? driveItems.filter(item => (item.type || 'image') !== 'video').length : 0;
@@ -8697,7 +8732,17 @@ body[data-theme="light"] .profile-expiry.expired {
       footer.appendChild(title);
 
       const meta = document.createElement('span');
-      meta.textContent = formatDriveDate(item.created_at || item.createdAt);
+      const metaParts = [];
+      const dateText = formatDriveDate(item.created_at || item.createdAt);
+      if (dateText && dateText !== '-') {
+        metaParts.push(dateText);
+      }
+      const sizeBytes = driveItemSizeBytes(item);
+      const sizeLabel = formatDriveSize(sizeBytes);
+      if (sizeLabel) {
+        metaParts.push(sizeLabel);
+      }
+      meta.textContent = metaParts.length ? metaParts.join(' • ') : '-';
       footer.appendChild(meta);
 
       if (item.prompt) {
