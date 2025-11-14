@@ -1,0 +1,24 @@
+# 1. NONAKTIFKAN AKSES KE FILE SENSITIF (termasuk .env)
+# Ini mencegah browser mengakses file yang dimulai dengan titik (.) dan file konfigurasi penting lainnya.
+<FilesMatch "^(\.env|\.htaccess|\.htpasswd|composer\.json|package\.json|error_log)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# 2. NONAKTIFKAN DIRECTORY BROWSING
+# Mencegah pengunjung melihat daftar file dan folder jika mereka mengakses direktori yang kosong.
+Options -Indexes
+
+# 3. AKTIFKAN MODUL REWRITE UNTUK PATH API BERSIH
+RewriteEngine On
+
+# Biarkan file statis dan direktori tetap diakses langsung
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# API publik: /api/{aksi} -> index.php?api={aksi}
+RewriteRule ^api/([a-zA-Z0-9_-]+)$ index.php?api=$1 [L,QSA]
+
+# API admin: /admin/api/{aksi} -> admin.php?api={aksi}
+RewriteRule ^admin/api/([a-zA-Z0-9_-]+)$ admin.php?api=$1 [L,QSA]
