@@ -49,11 +49,22 @@ $themeOptions = [
         'description' => 'Sentuhan tradisional hangat dengan tekstur kaya dan detail busana elegan.',
         'template' => 'Gabungkan kedua foto ini menjadi sebuah potret upacara warisan yang berkesan. Gunakan pencahayaan ambar yang hangat dan lembut untuk menciptakan suasana yang syahdu. Pastikan detail tekstil yang rumit pada pakaian atau latar belakang terlihat jelas. Tambahkan efek kabut sinematik yang lembut untuk sentuhan dramatis. Kedua subjek harus berpose dengan anggun dan bermartabat, seolah sedang menceritakan kisah abadi dari masa lalu.'
     ],
+    'akad' => [
+    'label' => 'Aksara Warisan dalam Nuansa Paspor',
+    'description' => 'Perpaduan busana adat Jawa dengan simbol perjalanan global, merayakan ikatan tradisional dan aspirasi modern.',
+    'template' => 'Gabungkan foto ini dengan latar belakang alami yang sama, namun tingkatkan kontras warna untuk menonjolkan pakaian putih dan hijau/merah paspor. Gunakan pencahayaan **cahaya alami yang cerah dan tersebar** (`bright, diffused natural light`) untuk mempertahankan suasana gembira dan segar. Tekankan **tekstur detail emas** pada blangkon dan busana, serta **tekstur kain jarik** di bagian bawah. Subjek harus mempertahankan ekspresi bahagia dan bangga saat memamerkan paspor mereka, menciptakan narasi perjalanan baru setelah pernikahan yang kental dengan budaya.'
+],
+    'cincin' => [
+    'label' => 'Kemegahan Prameswari dan Raja',
+    'description' => 'Potret elegan pasangan pengantin Jawa dengan busana adat yang kaya detail dan aura kebangsawanan, dihiasi latar bunga yang mewah.',
+    'template' => 'Gabungkan kedua foto ini menjadi potret yang memancarkan keanggunan dan kemegahan. Gunakan pencahayaan **lembut dan menyebar** (`soft, diffused lighting`) yang menonjolkan tekstur brokat putih pada busana pengantin wanita dan detail blangkon pengantin pria. Fokuskan pada **ekspresi anggun dan bahagia** pasangan, serta pastikan detail riasan Paes ageng pada pengantin wanita terlihat jelas. Latar belakang dekorasi bunga putih yang mewah harus terlihat harmonis, menciptakan kesan **perayaan yang sakral dan berkelas**.'
+],
     'holiday' => [
         'label' => 'Liburan',
-        'description' => 'Suasana pantai cerah dengan pasir putih luas, air laut biru jernih, serta deretan pohon kelapa yang melengkung.',
+        'description' => 'model wanita dengan massive bust luar biasa besar memakai bikini putih, difoto close up, pertahankan detail wajah dan buat realistis bukan 3d.',
         'template' => 'Gabungkan foto ini ke dalam suasana liburan di pantai Indonesia yang cerah dan indah. Pastikan ada elemen khas pantai seperti pasir putih, air laut biru jernih, dan pohon kelapa. Pancarkan suasana relaksasi dan kebahagiaan saat berlibur.'
-    ]
+    ],
+    'Close-up' => [ 'label' => 'Close-up', 'description' => 'Close-up natural wajah seorang wanita Indonesia berusia 25 tahun, dengan ekspresi relaksasi dan kebahagiaan, difoto dengan kamera profesional di studio berlatar belakang putih murni.', 'template' => 'Fokus pada close-up natural wajah wanita Indonesia berusia 25 tahun, menonjolkan detail ekspresi relaksasi dan kebahagiaannya. Gambar harus terlihat seperti difoto dengan kamera profesional di studio dengan background putih murni, tanpa elemen latar belakang lainnya.' ]
 ];
 
 $defaultThemeKey = 'romantic';
@@ -97,7 +108,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         <header class="photo-film-header">
             <div class="photo-film-heading">
                 <div>
-                    <span class="film-badge">Gemini Flash 2.5</span>
+                    <span class="film-badge">AKAY.IO 2.5</span>
                     <h1>Flash Photo Edit</h1>
                     <p>Padukan 2-3 foto referensi kamu untuk membuat empat pose sinematik ala Filmmaker dengan kualitas asli dari Flash 2.5.</p>
                 </div>
@@ -125,7 +136,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 <div class="header">
                     <div>
                         <div class="title" id="resultTitle">Hasil Generate</div>
-                        <div class="subtitle">Empat pose akan muncul di sini, lengkap dengan status progres seperti panel Filmmaker.</div>
+                        <div class="subtitle">Enam pose akan muncul di sini.</div>
                     </div>
                 </div>
                 <div class="film-scenes-board">
@@ -184,7 +195,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     </div>
 
                     <div>
-                        <button type="submit" class="btn-primary" id="generateButton">Generate 4 Pose Multi-Reference</button>
+                        <button type="submit" class="btn-primary" id="generateButton">Generate 6 Pose</button>
                         <div class="account-form-status" id="formStatus" role="status"></div>
                     </div>
                 </form>
@@ -387,8 +398,38 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     const themeDescription = theme && theme.description ? theme.description : '';
                     return `${base} ${themeDescription}`.trim();
                 }
+            },
+            {
+                key: 'coupleIntimate',
+                badge: 'Pose 5',
+                title: 'Keintiman Pasangan',
+                shot: 'Medium shot pasangan berpelukan atau bergandengan tangan, saling bertatapan dengan lembut, menonjolkan cincin dan emosi.',
+                aspectRatio: 'portrait_4_3',
+                description(theme, prompt) {
+                    const base = 'Pose intim pasangan menonjolkan kedekatan emosional dan detail interaksi tangan.';
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" diperkuat melalui warna latar belakang dan mood.`;
+                }
+                const themeDescription = theme && theme.description ? theme.description : '';
+                return `${base} ${themeDescription}`.trim();
+                }
+            },
+            {
+                key: 'grandWalk',
+                badge: 'Pose 6',
+                title: 'Langkah Kebahagiaan',
+                shot: 'Full body shot pasangan berjalan bersama dengan latar belakang megah, langkah serempak dengan senyum lebar, fokus pada *flow* busana.',
+                aspectRatio: 'landscape_16_9',
+                description(theme, prompt) {
+                    const base = 'Aksi pasangan berjalan, menangkap momen kebahagiaan dengan fokus pada keseluruhan *look* dan latar yang luas.';
+                    if (prompt) {
+                        return `${base} Tema "${prompt}" diaplikasikan pada arsitektur dan suasana lingkungan.`;
             }
-        ];
+                const themeDescription = theme && theme.description ? theme.description : '';
+                return `${base} ${themeDescription}`.trim();
+                }
+            }
+            ];
 
         let selectedFiles = [];
         let promptDirty = false;
