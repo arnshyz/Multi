@@ -1,118 +1,10 @@
 <?php
 require_once __DIR__ . '/env.php';
+require_once __DIR__ . '/db.php';
 
 app_load_env(__DIR__ . '/.env');
 const AUTH_DEFAULT_USERNAME = 'admin';
 const AUTH_DEFAULT_PASSWORD_HASH = '$2y$12$8d6CiI0X1xIzaIPxtm6gWujpCv.nUoI6RxiX8MDqq9jia83DeQqGm';
-
-function auth_db_config(): ?array
-{
-    $host = getenv('APP_DB_HOST');
-    if ($host === false || $host === '') {
-        $host = getenv('DB_HOST');
-    }
-    $host = is_string($host) && $host !== '' ? $host : '127.0.0.1';
-
-    $port = getenv('APP_DB_PORT');
-    if ($port === false || $port === '') {
-        $port = getenv('DB_PORT');
-    }
-    $port = is_string($port) && $port !== '' ? (int)$port : 3306;
-    if ($port <= 0) {
-        $port = 3306;
-    }
-
-    $name = getenv('APP_DB_NAME');
-    if ($name === false || $name === '') {
-        $name = getenv('DB_NAME');
-    }
-    $name = is_string($name) ? trim($name) : '';
-
-    $user = getenv('APP_DB_USER');
-    if ($user === false) {
-        $user = getenv('DB_USER');
-    }
-    $user = is_string($user) ? $user : '';
-
-    $pass = getenv('APP_DB_PASS');
-    if ($pass === false) {
-        $pass = getenv('DB_PASS');
-    }
-    if ($pass === false) {
-        $pass = getenv('DB_PASSWORD');
-    }
-    $pass = is_string($pass) ? $pass : '';
-
-    if ($name === '') {
-        return null;
-    }
-
-    return [
-        'host' => $host,
-        'port' => $port,
-        'name' => $name,
-        'user' => $user,
-        'pass' => $pass,
-    ];
-}
-
-function auth_db_pdo(): ?\PDO
-{
-    static $pdo = null;
-    static $failed = false;
-
-    if ($failed) {
-        return null;
-    }
-
-    if ($pdo instanceof \PDO) {
-        return $pdo;
-    }
-
-    $config = auth_db_config();
-    if ($config === null) {
-        $failed = true;
-        return null;
-    }
-
-    $dsn = sprintf(
-        'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
-        $config['host'],
-        $config['port'],
-        $config['name']
-    );
-
-    try {
-        $pdo = new \PDO($dsn, $config['user'], $config['pass'], [
-            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-            \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
-            \PDO::ATTR_EMULATE_PREPARES => false,
-        ]);
-        return $pdo;
-    } catch (\PDOException $exception) {
-        error_log('auth_db_pdo: gagal koneksi database - ' . $exception->getMessage());
-        $failed = true;
-        return null;
-    }
-}
-
-function auth_storage_ensure_table(\PDO $pdo): void
-{
-    static $ensured = false;
-    if ($ensured) {
-        return;
-    }
-
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS admin_storage (
-            id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-            data LONGTEXT NOT NULL,
-            updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
-    );
-
-    $ensured = true;
-}
 
 function auth_default_credential_values(): array
 {
@@ -366,34 +258,18 @@ function auth_env_credentials(): ?array
 
 function auth_storage_write(array $data): bool
 {
+    $path = auth_storage_path();
     $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     if ($json === false) {
         return false;
     }
 
-    $pdo = auth_db_pdo();
-    if ($pdo instanceof \PDO) {
-        try {
-            auth_storage_ensure_table($pdo);
-            $stmt = $pdo->prepare(
-                'INSERT INTO admin_storage (id, data, updated_at) VALUES (1, :data, NOW())
-                ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = VALUES(updated_at)'
-            );
-            $stmt->bindValue(':data', $json, \PDO::PARAM_STR);
-            $written = $stmt->execute();
-            if ($written) {
-                auth_storage_cache($data);
-                return true;
-            }
-        } catch (\PDOException $exception) {
-            error_log('auth_storage_write: gagal menyimpan ke database - ' . $exception->getMessage());
-        }
-    }
-
-    $path = auth_storage_path();
     $written = @file_put_contents($path, $json, LOCK_EX) !== false;
     if ($written) {
         auth_storage_cache($data);
+        if (function_exists('auth_sync_accounts_to_db')) {
+            auth_sync_accounts_to_db($data);
+        }
     }
 
     return $written;
@@ -422,46 +298,22 @@ function auth_storage_read(bool $fresh = false): array
         return $cached;
     }
 
-    $data = null;
-    $json = null;
-
-    $pdo = auth_db_pdo();
-    if ($pdo instanceof \PDO) {
-        try {
-            auth_storage_ensure_table($pdo);
-            $stmt = $pdo->query('SELECT data FROM admin_storage WHERE id = 1 LIMIT 1');
-            $row = $stmt->fetch();
-            if ($row && isset($row['data']) && is_string($row['data'])) {
-                $json = $row['data'];
-            }
-        } catch (\PDOException $exception) {
-            error_log('auth_storage_read: gagal membaca dari database - ' . $exception->getMessage());
-            $json = null;
-        }
+    $path = auth_storage_path();
+    if (!is_file($path)) {
+        $data = auth_storage_default();
+        auth_storage_write($data);
+        return $data;
     }
 
-    if (is_string($json) && $json !== '') {
-        $decoded = json_decode($json, true);
-        if (is_array($decoded)) {
-            $data = $decoded;
-        }
+    $json = @file_get_contents($path);
+    if ($json === false) {
+        $data = auth_storage_default();
+        auth_storage_write($data);
+        return $data;
     }
 
-    if ($data === null) {
-        $path = auth_storage_path();
-        if (is_file($path)) {
-            $fileJson = @file_get_contents($path);
-            if ($fileJson !== false) {
-                $decoded = json_decode($fileJson, true);
-                if (is_array($decoded)) {
-                    $data = $decoded;
-                    auth_storage_write($data);
-                }
-            }
-        }
-    }
-
-    if ($data === null) {
+    $data = json_decode($json, true);
+    if (!is_array($data)) {
         $data = auth_storage_default();
         auth_storage_write($data);
         return $data;
@@ -1130,42 +982,21 @@ function auth_drive_storage_info(?array $account): array
         $slug = 'user';
     }
 
-    $baseRelative = 'generated/' . $slug;
-    $baseAbsolute = __DIR__ . '/' . $baseRelative;
-    $generateRelative = $baseRelative . '/generate';
-    $generateAbsolute = __DIR__ . '/' . $generateRelative;
-    $uploadsRelative = $baseRelative . '/uploads';
-    $uploadsAbsolute = __DIR__ . '/' . $uploadsRelative;
+    $relative = 'generated/' . $slug;
+    $absolute = __DIR__ . '/' . $relative;
 
     return [
         'slug' => $slug,
-        'relative' => $generateRelative,
-        'absolute' => $generateAbsolute,
-        'relative_base' => $baseRelative,
-        'absolute_base' => $baseAbsolute,
-        'relative_generate' => $generateRelative,
-        'absolute_generate' => $generateAbsolute,
-        'relative_uploads' => $uploadsRelative,
-        'absolute_uploads' => $uploadsAbsolute,
+        'relative' => $relative,
+        'absolute' => $absolute,
     ];
 }
 
 function auth_drive_ensure_storage_directory(?array $account): array
 {
     $info = auth_drive_storage_info($account);
-    $directories = [
-        $info['absolute_base'] ?? null,
-        $info['absolute_generate'] ?? null,
-        $info['absolute_uploads'] ?? null,
-    ];
-
-    foreach ($directories as $dir) {
-        if (!$dir) {
-            continue;
-        }
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
+    if (!is_dir($info['absolute'])) {
+        @mkdir($info['absolute'], 0775, true);
     }
 
     return $info;
@@ -1204,10 +1035,7 @@ function auth_drive_download_remote_asset(array $account, string $url, string $k
     }
 
     $storageInfo = auth_drive_ensure_storage_directory($account);
-    $dir = $storageInfo['absolute_generate'] ?? ($storageInfo['absolute'] ?? null);
-    if (!$dir) {
-        return null;
-    }
+    $dir = $storageInfo['absolute'];
     if (!is_dir($dir) && !@mkdir($dir, 0775, true)) {
         return null;
     }
@@ -1291,12 +1119,7 @@ function auth_drive_download_remote_asset(array $account, string $url, string $k
 
     @chmod($dest, 0664);
 
-    $relativeBase = $storageInfo['relative_generate'] ?? ($storageInfo['relative'] ?? null);
-    if (!$relativeBase) {
-        return null;
-    }
-
-    $relative = $relativeBase . '/' . $basename;
+    $relative = $storageInfo['relative'] . '/' . $basename;
 
     return [
         'relative_path' => $relative,
@@ -1318,13 +1141,7 @@ function auth_drive_prepare_local_item(array $account, array $item): ?array
         $sourceUrl = $url;
     }
 
-    $storageInfo = auth_drive_storage_info($account);
-    $allowedPrefix = $storageInfo['relative_generate'] ?? ($storageInfo['relative'] ?? '');
-
     $storagePath = isset($item['storage_path']) ? auth_drive_normalize_storage_path($item['storage_path']) : null;
-    if ($storagePath && $allowedPrefix !== '' && strpos($storagePath, $allowedPrefix) !== 0) {
-        $storagePath = null;
-    }
 
     if ($storagePath) {
         $absolute = __DIR__ . '/' . $storagePath;
@@ -1359,7 +1176,7 @@ function auth_drive_prepare_local_item(array $account, array $item): ?array
 
     if (isset($item['storage_path'])) {
         $normalized = auth_drive_normalize_storage_path($item['storage_path']);
-        if ($normalized && ($allowedPrefix === '' || strpos($normalized, $allowedPrefix) === 0)) {
+        if ($normalized) {
             $item['storage_path'] = $normalized;
         } else {
             unset($item['storage_path']);
@@ -1452,22 +1269,8 @@ function auth_drive_delete_storage_files(array $account, array $paths): void
     }
 
     $info = auth_drive_storage_info($account);
-    $baseDir = $info['absolute_base'] ?? ($info['absolute'] ?? null);
-    if (!$baseDir) {
-        return;
-    }
-
+    $baseDir = $info['absolute'];
     $realBase = realpath($baseDir) ?: null;
-    $allowedPrefixes = [];
-    if (!empty($info['relative_base'])) {
-        $allowedPrefixes[] = $info['relative_base'];
-    }
-    if (!empty($info['relative_generate'])) {
-        $allowedPrefixes[] = $info['relative_generate'];
-    }
-    if (!empty($info['relative_uploads'])) {
-        $allowedPrefixes[] = $info['relative_uploads'];
-    }
 
     foreach ($paths as $path) {
         $normalized = auth_drive_normalize_storage_path($path);
@@ -1475,15 +1278,7 @@ function auth_drive_delete_storage_files(array $account, array $paths): void
             continue;
         }
 
-        $allowed = false;
-        foreach ($allowedPrefixes as $prefix) {
-            if ($prefix !== '' && strpos($normalized, $prefix) === 0) {
-                $allowed = true;
-                break;
-            }
-        }
-
-        if (!$allowed) {
+        if (strpos($normalized, $info['relative']) !== 0) {
             continue;
         }
 
@@ -1499,140 +1294,6 @@ function auth_drive_delete_storage_files(array $account, array $paths): void
 
         @unlink($absolute);
     }
-}
-
-function auth_drive_delete_items(string $accountId, array $targets, array &$errors = [])
-{
-    $errors = [];
-    if (!$targets) {
-        $errors['items'] = 'Tidak ada item drive yang dikirimkan.';
-        return null;
-    }
-
-    $normalizedTargets = [];
-    foreach ($targets as $target) {
-        if (!is_array($target)) {
-            continue;
-        }
-
-        $id = isset($target['id']) ? trim((string)$target['id']) : '';
-        $url = isset($target['url']) ? trim((string)$target['url']) : '';
-        $storage = isset($target['storage_path']) ? auth_drive_normalize_storage_path($target['storage_path']) : null;
-
-        if ($id === '' && $url === '' && !$storage) {
-            continue;
-        }
-
-        $normalizedTargets[] = [
-            'id' => $id !== '' ? $id : null,
-            'url' => $url !== '' ? $url : null,
-            'storage_path' => $storage,
-        ];
-    }
-
-    if (!$normalizedTargets) {
-        $errors['items'] = 'Tidak ada item drive yang valid untuk dihapus.';
-        return null;
-    }
-
-    $data = auth_storage_read();
-    $foundIndex = null;
-    foreach ($data['accounts'] as $idx => $account) {
-        if (is_array($account) && ($account['id'] ?? null) === $accountId) {
-            $foundIndex = $idx;
-            break;
-        }
-    }
-
-    if ($foundIndex === null) {
-        $errors['account'] = 'Akun tidak ditemukan.';
-        return null;
-    }
-
-    $account = auth_normalize_account($data['accounts'][$foundIndex]);
-    $items = isset($account['drive_items']) && is_array($account['drive_items'])
-        ? $account['drive_items']
-        : [];
-
-    $idSet = [];
-    $urlSet = [];
-    $storageSet = [];
-    foreach ($normalizedTargets as $target) {
-        if ($target['id']) {
-            $idSet[$target['id']] = true;
-        }
-        if ($target['url']) {
-            $urlSet[strtolower($target['url'])] = true;
-        }
-        if ($target['storage_path']) {
-            $storageSet[$target['storage_path']] = true;
-        }
-    }
-
-    if (!$idSet && !$urlSet && !$storageSet) {
-        $errors['items'] = 'Tidak ada item drive yang valid untuk dihapus.';
-        return null;
-    }
-
-    $filtered = [];
-    $storageToDelete = [];
-    $removedCount = 0;
-
-    foreach ($items as $entry) {
-        if (!is_array($entry)) {
-            continue;
-        }
-
-        $entryId = isset($entry['id']) ? (string)$entry['id'] : '';
-        $entryUrl = isset($entry['url']) ? strtolower((string)$entry['url']) : '';
-        $entryStorage = isset($entry['storage_path']) ? auth_drive_normalize_storage_path($entry['storage_path']) : null;
-
-        $matches = false;
-        if ($entryId !== '' && isset($idSet[$entryId])) {
-            $matches = true;
-        }
-        if (!$matches && $entryUrl !== '' && isset($urlSet[$entryUrl])) {
-            $matches = true;
-        }
-        if (!$matches && $entryStorage && isset($storageSet[$entryStorage])) {
-            $matches = true;
-        }
-
-        if ($matches) {
-            $removedCount++;
-            if ($entryStorage) {
-                $storageToDelete[] = $entryStorage;
-                unset($storageSet[$entryStorage]);
-            }
-            continue;
-        }
-
-        $filtered[] = $entry;
-    }
-
-    if ($storageSet) {
-        $storageToDelete = array_merge($storageToDelete, array_keys($storageSet));
-    }
-
-    if ($removedCount === 0 && !$storageToDelete) {
-        $errors['general'] = 'Item drive tidak ditemukan.';
-        return null;
-    }
-
-    $account['drive_items'] = array_values($filtered);
-    $account['updated_at'] = gmdate('c');
-    $data['accounts'][$foundIndex] = auth_normalize_account($account);
-
-    if (!auth_storage_write($data)) {
-        $errors['general'] = 'Gagal menyimpan perubahan drive.';
-        return null;
-    }
-
-    if ($storageToDelete) {
-        auth_drive_delete_storage_files($account, array_unique($storageToDelete));
-    }
-
-    return $data['accounts'][$foundIndex]['drive_items'] ?? [];
 }
 
 function auth_normalize_drive_item($item): ?array
@@ -1875,6 +1536,38 @@ function auth_current_account_id(): ?string
 
 function auth_find_account(string $username): ?array
 {
+    $username = trim($username);
+    if ($username === '') {
+        return null;
+    }
+
+    // 1) Coba ambil dari MySQL lebih dulu
+    if (function_exists('db_get_connection')) {
+        try {
+            $pdo = db_get_connection();
+            if ($pdo instanceof PDO) {
+                $stmt = $pdo->prepare("SELECT * FROM accounts WHERE username = :username LIMIT 1");
+                $stmt->execute([':username' => $username]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    // Decode kolom JSON agar tetap kompatibel dengan struktur lama
+                    if (isset($row['ip_history']) && is_string($row['ip_history']) && $row['ip_history'] !== '') {
+                        $decoded = json_decode($row['ip_history'], true);
+                        $row['ip_history'] = is_array($decoded) ? $decoded : [];
+                    }
+                    if (isset($row['drive_items']) && is_string($row['drive_items']) && $row['drive_items'] !== '') {
+                        $decoded = json_decode($row['drive_items'], true);
+                        $row['drive_items'] = is_array($decoded) ? $decoded : [];
+                    }
+                    return $row;
+                }
+            }
+        } catch (Throwable $e) {
+            // Jika DB error, fallback ke JSON
+        }
+    }
+
+    // 2) Fallback ke JSON lama (admin-data.json)
     $data = auth_storage_read();
     foreach ($data['accounts'] as $account) {
         if (!is_array($account)) {
@@ -3004,3 +2697,29 @@ function auth_current_account(): ?array
 
     return null;
 }
+
+if (!function_exists('auth_sync_accounts_to_db')) {
+    /**
+     * Sinkronisasi data akun dari admin-data.json ke database MySQL.
+     * Dipanggil otomatis setiap kali auth_storage_write() sukses.
+     *
+     * @param array $data
+     * @return void
+     */
+    function auth_sync_accounts_to_db(array $data): void
+    {
+        if (!isset($data['accounts']) || !is_array($data['accounts'])) {
+            return;
+        }
+        if (!function_exists('db_sync_accounts')) {
+            return;
+        }
+
+        try {
+            db_sync_accounts($data['accounts']);
+        } catch (Throwable $e) {
+            // Jangan mengganggu aplikasi utama jika sinkronisasi DB gagal.
+        }
+    }
+}
+
