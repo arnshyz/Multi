@@ -7544,12 +7544,6 @@ body[data-theme="light"] .profile-expiry.expired {
           Sistem akan membuat 5 ide UGC beserta gambar dari Gemini Flash 2.5.
           Tiap baris punya prompt video + tombol Generate Video (Wan 720) &amp; Download.
         </div>
-        <div class="progress-inline" id="ugcProgress">
-          <div class="progress-label"><span>Progress</span><span id="ugcProgressValue">0%</span></div>
-          <div class="progress-bar">
-            <div class="progress-fill" id="ugcProgressFill"></div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -13307,10 +13301,18 @@ body[data-theme="light"] .profile-expiry.expired {
       vidBtn.disabled = !item.imageUrl;
       vidBtn.addEventListener('click', () => ugcGenerateVideo(item));
 
+      const seedanceBtn = document.createElement('button');
+      seedanceBtn.type = 'button';
+      seedanceBtn.className = 'small secondary';
+      seedanceBtn.textContent = 'Generate to Seedance Pro 1080';
+      seedanceBtn.disabled = !item.imageUrl;
+      seedanceBtn.addEventListener('click', () => ugcGenerateVideo(item, 'seedancePro1080'));
+
       btnRow.appendChild(previewImgBtn);
       btnRow.appendChild(dlBtn);
       btnRow.appendChild(saveImgBtn);
       btnRow.appendChild(vidBtn);
+      btnRow.appendChild(seedanceBtn);
 
       right.appendChild(pLabel);
       right.appendChild(pText);
@@ -13520,7 +13522,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
   ugcGenerateBtn.addEventListener('click', () => { ugcGenerate(); });
 
-  async function ugcGenerateVideo(item) {
+  async function ugcGenerateVideo(item, modelId = 'wan720') {
     if (!featureAvailableForCurrentUser('ugc')) {
       showFeatureLockedMessage('ugc');
       return;
@@ -13532,7 +13534,11 @@ body[data-theme="light"] .profile-expiry.expired {
       return;
     }
 
-    const cfg = MODEL_CONFIG.wan720;
+    const cfg = MODEL_CONFIG[modelId];
+    if (!cfg) {
+      alert('Konfigurasi model video tidak ditemukan.');
+      return;
+    }
     const body = {
       prompt: item.videoPrompt || ('UGC video animation for image #' + item.index),
       image: item.remoteUrl,   // <-- PENTING
@@ -13555,7 +13561,7 @@ body[data-theme="light"] .profile-expiry.expired {
       const jobId = uuid();
       const job = {
         id: jobId,
-        modelId: 'wan720',
+        modelId,
         type: 'video',
         taskId,
         createdAt: nowIso(),
