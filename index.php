@@ -5876,6 +5876,40 @@ body[data-theme="light"] .profile-expiry.expired {
       gap: 6px;
       font-size: 11px;
     }
+    .film-upscale-card {
+      border: 1px solid rgba(59,130,246,0.35);
+      background: rgba(37,99,235,0.12);
+      border-radius: 10px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .film-upscale-title {
+      font-weight: 500;
+      font-size: 11px;
+      color: #bfdbfe;
+    }
+    .film-upscale-status {
+      font-size: 11px;
+      color: rgba(191,219,254,0.9);
+    }
+    .film-upscale-preview {
+      width: 100%;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #0f172a;
+    }
+    .film-upscale-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .film-upscale-error {
+      font-size: 11px;
+      color: var(--danger);
+    }
     .film-scene-thumb {
       width: 100%;
       aspect-ratio: 9 / 16;
@@ -7488,12 +7522,6 @@ body[data-theme="light"] .profile-expiry.expired {
         </button>
         <div class="muted" style="font-size:10px;margin-top:6px;">
           Setiap scene akan memanggil model Gemini Flash 2.5 secara terpisah. Progress scene akan muncul di panel kiri.
-        </div>
-        <div class="progress-inline" id="filmProgress">
-          <div class="progress-label"><span>Progress</span><span id="filmProgressValue">0%</span></div>
-          <div class="progress-bar">
-            <div class="progress-fill" id="filmProgressFill"></div>
-          </div>
         </div>
       </div>
     </div>
@@ -9113,6 +9141,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
   async function syncJobToDrive(job) {
     if (!job || !currentAccount) return;
+    if (job.skipDriveSync) return;
     if (!finalStatus(job.status)) return;
     if (job.driveSynced) return;
 
@@ -12013,6 +12042,7 @@ body[data-theme="light"] .profile-expiry.expired {
         job.generated = generated;
       }
       updateUgcUpscaleStateFromJob(job);
+      updateFilmUpscaleStateFromJob(job);
       job.updatedAt = nowIso();
       saveJobs();
       renderJobs();
@@ -12029,6 +12059,7 @@ body[data-theme="light"] .profile-expiry.expired {
         }
         await syncJobToDrive(job);
         updateUgcUpscaleStateFromJob(job);
+        updateFilmUpscaleStateFromJob(job);
         if (job.type === 'video') {
           const url = (job.localUrls && job.localUrls[0]) ||
                       (job.generated && job.generated[0]) ||
@@ -12813,6 +12844,27 @@ body[data-theme="light"] .profile-expiry.expired {
     filmScenesEmpty.style.display = 'none';
     filmScenesContainer.innerHTML = '';
 
+    const formatUpscaleStatus = status => {
+      const normalized = (status || '').toUpperCase();
+      if (!normalized) return 'Belum ada proses. Klik tombol Upscale Precision V2.';
+      if (normalized === 'REQUESTING') return 'Mengirim permintaan ke server…';
+      if (['CREATED', 'PENDING', 'QUEUED', 'ACCEPTED'].includes(normalized)) {
+        return 'Task dibuat, menunggu giliran…';
+      }
+      if (['PROCESSING', 'RUNNING', 'STARTED', 'IN_PROGRESS', 'INPROGRESS'].includes(normalized)) {
+        return 'Upscale sedang diproses…';
+      }
+      if (normalized === 'COMPLETED') return 'Upscale selesai';
+      if (['FAILED', 'ERROR'].includes(normalized)) return 'Upscale gagal';
+      return normalized.charAt(0) + normalized.slice(1).toLowerCase();
+    };
+
+    const shortTaskId = id => {
+      if (!id) return '';
+      const str = String(id);
+      return str.length > 8 ? str.slice(0, 8) + '…' : str;
+    };
+
     filmScenes.forEach(scene => {
       const card = document.createElement('div');
       card.className = 'film-scene-card';
@@ -12884,7 +12936,82 @@ body[data-theme="light"] .profile-expiry.expired {
 
         a.appendChild(btn);
         actions.appendChild(a);
+
+        const upscaleBtn = document.createElement('button');
+        upscaleBtn.type = 'button';
+        upscaleBtn.className = 'small secondary';
+        const upscaleStatusRaw = scene.upscaleStatus ? String(scene.upscaleStatus) : '';
+        const upscaleStatusNormalized = upscaleStatusRaw ? upscaleStatusRaw.toUpperCase() : '';
+        const upscaleBusy = !!(upscaleStatusNormalized && !finalStatus(upscaleStatusNormalized));
+        upscaleBtn.textContent = upscaleBusy ? 'Upscale sedang diproses…' : 'Upscale Precision V2';
+        upscaleBtn.disabled = !scene.remoteUrl || upscaleBusy;
+        upscaleBtn.addEventListener('click', () => filmUpscaleScene(scene));
+        actions.appendChild(upscaleBtn);
+
         card.appendChild(actions);
+
+        const showUpscaleCard = !!(scene.upscaleStatus || scene.upscaleJobId || scene.upscaleImageUrl || scene.upscaleError);
+        if (showUpscaleCard) {
+          const upscaleCard = document.createElement('div');
+          upscaleCard.className = 'film-upscale-card';
+
+          const title = document.createElement('div');
+          title.className = 'film-upscale-title';
+          title.textContent = 'Upscale Precision V2';
+          upscaleCard.appendChild(title);
+
+          const statusEl = document.createElement('div');
+          statusEl.className = 'film-upscale-status';
+          const statusLabel = formatUpscaleStatus(scene.upscaleStatus);
+          const parts = [statusLabel];
+          if (scene.upscaleTaskId) {
+            parts.push('Task ' + shortTaskId(scene.upscaleTaskId));
+          }
+          statusEl.textContent = parts.filter(Boolean).join(' • ');
+          upscaleCard.appendChild(statusEl);
+
+          if (scene.upscaleImageUrl) {
+            const upscaleImg = document.createElement('img');
+            upscaleImg.src = scene.upscaleImageUrl;
+            upscaleImg.alt = 'Upscale Scene ' + scene.index;
+            upscaleImg.className = 'film-upscale-preview clickable-media';
+            upscaleImg.addEventListener('click', () => openAssetPreview(scene.upscaleImageUrl, 'image'));
+            upscaleCard.appendChild(upscaleImg);
+
+            const actionsRow = document.createElement('div');
+            actionsRow.className = 'film-upscale-actions';
+
+            const previewUpscaleBtn = document.createElement('button');
+            previewUpscaleBtn.type = 'button';
+            previewUpscaleBtn.className = 'small secondary';
+            previewUpscaleBtn.textContent = 'Preview Upscale';
+            previewUpscaleBtn.addEventListener('click', () => openAssetPreview(scene.upscaleImageUrl, 'image'));
+            actionsRow.appendChild(previewUpscaleBtn);
+
+            const downloadUpscaleLink = document.createElement('a');
+            downloadUpscaleLink.href = scene.upscaleImageUrl;
+            downloadUpscaleLink.target = '_blank';
+            downloadUpscaleLink.download = '';
+
+            const downloadUpscaleBtn = document.createElement('button');
+            downloadUpscaleBtn.type = 'button';
+            downloadUpscaleBtn.className = 'small';
+            downloadUpscaleBtn.textContent = 'Download';
+            downloadUpscaleLink.appendChild(downloadUpscaleBtn);
+            actionsRow.appendChild(downloadUpscaleLink);
+
+            upscaleCard.appendChild(actionsRow);
+          }
+
+          if (scene.upscaleError && scene.upscaleStatus && ['FAILED', 'ERROR'].includes(String(scene.upscaleStatus).toUpperCase())) {
+            const errorEl = document.createElement('div');
+            errorEl.className = 'film-upscale-error';
+            errorEl.textContent = scene.upscaleError;
+            upscaleCard.appendChild(errorEl);
+          }
+
+          card.appendChild(upscaleCard);
+        }
       }
 
       const promptDiv = document.createElement('div');
@@ -12898,6 +13025,167 @@ body[data-theme="light"] .profile-expiry.expired {
     updateFilmProgressUI();
   }
 
+  function updateFilmUpscaleStateFromJob(job) {
+    if (!job || !job.id) return;
+
+    const statusRaw = job.status ? String(job.status) : '';
+    const statusNormalized = statusRaw ? statusRaw.toUpperCase() : '';
+    const remoteUrl = Array.isArray(job.generated) && job.generated.length
+      ? job.generated[0]
+      : (job.extraUrl || null);
+    const localUrl = Array.isArray(job.localUrls) && job.localUrls.length
+      ? job.localUrls[0]
+      : null;
+    const resolvedUrl = localUrl || remoteUrl || null;
+
+    let changed = false;
+
+    filmScenes.forEach(scene => {
+      if (!scene || scene.upscaleJobId !== job.id) return;
+
+      if (statusNormalized && scene.upscaleStatus !== statusNormalized) {
+        scene.upscaleStatus = statusNormalized;
+        if (!['FAILED', 'ERROR'].includes(statusNormalized)) {
+          scene.upscaleError = null;
+        }
+        if (['FAILED', 'ERROR'].includes(statusNormalized) && !scene.upscaleError) {
+          scene.upscaleError = 'Cek Queue untuk detail error.';
+        }
+        changed = true;
+      }
+
+      if (job.taskId && scene.upscaleTaskId !== job.taskId) {
+        scene.upscaleTaskId = job.taskId;
+        changed = true;
+      }
+
+      if (resolvedUrl && scene.upscaleImageUrl !== resolvedUrl) {
+        scene.upscaleImageUrl = resolvedUrl;
+        changed = true;
+      }
+
+      if (remoteUrl && scene.upscaleRemoteUrl !== remoteUrl) {
+        scene.upscaleRemoteUrl = remoteUrl;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      renderFilmScenes();
+    }
+  }
+
+  async function filmUpscaleScene(scene) {
+    if (!featureAvailableForCurrentUser('filmmaker')) {
+      showFeatureLockedMessage('filmmaker');
+      return;
+    }
+    if (!scene || !scene.remoteUrl || !scene.remoteUrl.startsWith('http')) {
+      alert('URL scene belum siap untuk proses upscale. Pastikan status scene sudah COMPLETED.');
+      return;
+    }
+
+    const cfg = MODEL_CONFIG.upscalePrecV2;
+    if (!cfg) {
+      alert('Konfigurasi model upscale tidak ditemukan.');
+      return;
+    }
+
+    scene.upscaleStatus = 'REQUESTING';
+    scene.upscaleError = null;
+    scene.upscaleImageUrl = null;
+    scene.upscaleRemoteUrl = null;
+    scene.upscaleTaskId = null;
+    scene.upscaleJobId = null;
+    renderFilmScenes();
+
+    const payload = {
+      imageUrl: scene.remoteUrl,
+      prompt: scene.prompt || undefined
+    };
+
+    try {
+      const body = cfg.buildBody(payload);
+      const data = await callFreepik(cfg, body, 'POST');
+
+      let taskId = null;
+      let status = 'CREATED';
+      let generated = null;
+      let extraUrl = null;
+
+      if (data && data.data) {
+        taskId = data.data.task_id || null;
+        status  = data.data.status   || status;
+        generated = data.data.generated || null;
+      } else if (data && typeof data === 'object') {
+        if (Array.isArray(data.generated)) {
+          generated = data.generated;
+          status = 'COMPLETED';
+        } else if (data.url || data.high_resolution || data.preview) {
+          extraUrl = data.url || data.high_resolution || data.preview || null;
+          generated = [];
+          if (extraUrl) {
+            generated.push(extraUrl);
+          }
+          status = 'COMPLETED';
+        }
+      }
+
+      const firstGenerated = Array.isArray(generated) && generated.length
+        ? generated[0]
+        : (extraUrl || null);
+      const normalizedStatus = status ? String(status).toUpperCase() : '';
+      const jobStatus = normalizedStatus || (taskId ? 'CREATED' : 'COMPLETED');
+      status = jobStatus;
+
+      const jobId = uuid();
+      const job = {
+        id: jobId,
+        modelId: cfg.id,
+        type: cfg.type,
+        taskId,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        status,
+        generated: generated || [],
+        extraUrl,
+        prompt: payload.prompt || null,
+        skipDriveSync: true
+      };
+
+      jobs.unshift(job);
+      saveJobs();
+      renderJobs();
+
+      scene.upscaleJobId = jobId;
+      scene.upscaleStatus = status;
+      scene.upscaleTaskId = taskId || null;
+      if (firstGenerated) {
+        scene.upscaleRemoteUrl = firstGenerated;
+        scene.upscaleImageUrl = firstGenerated;
+      }
+      renderFilmScenes();
+
+      if (taskId && !finalStatus(status)) {
+        startJobProgress(job);
+        startPolling(job);
+      } else {
+        finishJobProgress(job);
+        if (job.generated && job.generated.length) {
+          await ensureLocalFiles(job);
+        }
+        updateFilmUpscaleStateFromJob(job);
+      }
+    } catch (e) {
+      console.error(e);
+      scene.upscaleStatus = 'ERROR';
+      scene.upscaleError = e && e.message ? e.message : 'Terjadi kesalahan saat upscale.';
+      scene.upscaleJobId = null;
+      renderFilmScenes();
+      alert('Gagal melakukan upscale: ' + e.message);
+    }
+  }
+
   async function pollFilmScenesOnce() {
     const pending = filmScenes.filter(s => s.taskId && !finalStatus(s.status));
     if (!pending.length) return;
@@ -12908,10 +13196,13 @@ body[data-theme="light"] .profile-expiry.expired {
         if (status) scene.status = status;
         if (generated && Array.isArray(generated) && generated.length) {
           const remote = generated[0];
+          scene.remoteUrl = remote || scene.remoteUrl;
           try {
             const local = await cacheUrl(remote);
+            scene.localUrl = local || null;
             scene.url = local || remote;
           } catch {
+            scene.localUrl = null;
             scene.url = remote;
           }
         }
@@ -13011,7 +13302,15 @@ body[data-theme="light"] .profile-expiry.expired {
         meta: plan.meta,
         taskId,
         status,
-        url: null
+        url: null,
+        remoteUrl: null,
+        localUrl: null,
+        upscaleStatus: null,
+        upscaleTaskId: null,
+        upscaleJobId: null,
+        upscaleImageUrl: null,
+        upscaleRemoteUrl: null,
+        upscaleError: null
       });
 
       if (success) {
