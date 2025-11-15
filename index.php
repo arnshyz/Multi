@@ -5220,6 +5220,31 @@ body[data-theme="light"] .profile-expiry.expired {
       flex-wrap: wrap;
       margin-top: 8px;
     }
+    a.button-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      text-decoration: none;
+      transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, filter 0.12s ease-out;
+      gap: 6px;
+    }
+    a.button-link.small {
+      padding: 4px 10px;
+      font-size: 11px;
+    }
+    a.button-link.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    a.button-link.secondary:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+    a.button-link.is-disabled {
+      opacity: 0.55;
+      pointer-events: none;
+    }
 
     .select-group {
       display: flex;
@@ -5876,6 +5901,13 @@ body[data-theme="light"] .profile-expiry.expired {
       gap: 6px;
       font-size: 11px;
     }
+    .film-scene-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+      justify-content: flex-start;
+    }
     .film-upscale-card {
       border: 1px solid rgba(59,130,246,0.35);
       background: rgba(37,99,235,0.12);
@@ -5902,7 +5934,7 @@ body[data-theme="light"] .profile-expiry.expired {
     }
     .film-upscale-actions {
       display: flex;
-      justify-content: flex-end;
+      justify-content: flex-start;
       gap: 6px;
       flex-wrap: wrap;
     }
@@ -12904,17 +12936,23 @@ body[data-theme="light"] .profile-expiry.expired {
         card.appendChild(img);
 
         const actions = document.createElement('div');
-        actions.style.display = 'flex';
-        actions.style.justifyContent = 'flex-end';
-        actions.style.marginTop = '4px';
-        actions.style.gap = '6px';
+        actions.className = 'film-scene-actions';
 
         const previewBtn = document.createElement('button');
         previewBtn.type = 'button';
         previewBtn.className = 'small secondary';
-        previewBtn.textContent = 'Preview';
+        previewBtn.textContent = 'Lihat Scene';
         previewBtn.addEventListener('click', () => openAssetPreview(scene.url, 'image'));
         actions.appendChild(previewBtn);
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = scene.url;
+        downloadLink.target = '_blank';
+        downloadLink.rel = 'noopener noreferrer';
+        downloadLink.download = '';
+        downloadLink.className = 'button-link small secondary';
+        downloadLink.textContent = 'Download Scene';
+        actions.appendChild(downloadLink);
 
         const saveBtn = document.createElement('button');
         saveBtn.type = 'button';
@@ -12924,27 +12962,16 @@ body[data-theme="light"] .profile-expiry.expired {
         saveBtn.addEventListener('click', () => saveSceneToDrive(scene, saveBtn));
         actions.appendChild(saveBtn);
 
-        const a = document.createElement('a');
-        a.href = scene.url;
-        a.target = '_blank';
-        a.download = '';
-
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'small';
-        btn.textContent = 'Download';
-
-        a.appendChild(btn);
-        actions.appendChild(a);
-
         const upscaleBtn = document.createElement('button');
         upscaleBtn.type = 'button';
         upscaleBtn.className = 'small secondary';
         const upscaleStatusRaw = scene.upscaleStatus ? String(scene.upscaleStatus) : '';
         const upscaleStatusNormalized = upscaleStatusRaw ? upscaleStatusRaw.toUpperCase() : '';
         const upscaleBusy = !!(upscaleStatusNormalized && !finalStatus(upscaleStatusNormalized));
-        upscaleBtn.textContent = upscaleBusy ? 'Upscale sedang diproses…' : 'Upscale Precision V2';
+        const upscaleLabel = 'Upscale Precision V2';
+        upscaleBtn.textContent = upscaleBusy ? 'Upscale sedang diproses…' : upscaleLabel;
         upscaleBtn.disabled = !scene.remoteUrl || upscaleBusy;
+        upscaleBtn.title = 'Hasil Upscale Precision V2 akan tampil di bawah kartu scene.';
         upscaleBtn.addEventListener('click', () => filmUpscaleScene(scene));
         actions.appendChild(upscaleBtn);
 
@@ -12962,6 +12989,8 @@ body[data-theme="light"] .profile-expiry.expired {
 
           const statusEl = document.createElement('div');
           statusEl.className = 'film-upscale-status';
+          statusEl.setAttribute('aria-live', 'polite');
+          statusEl.setAttribute('aria-atomic', 'true');
           const statusLabel = formatUpscaleStatus(scene.upscaleStatus);
           const parts = [statusLabel];
           if (scene.upscaleTaskId) {
@@ -12984,20 +13013,17 @@ body[data-theme="light"] .profile-expiry.expired {
             const previewUpscaleBtn = document.createElement('button');
             previewUpscaleBtn.type = 'button';
             previewUpscaleBtn.className = 'small secondary';
-            previewUpscaleBtn.textContent = 'Preview Upscale';
+            previewUpscaleBtn.textContent = 'Lihat Upscale';
             previewUpscaleBtn.addEventListener('click', () => openAssetPreview(scene.upscaleImageUrl, 'image'));
             actionsRow.appendChild(previewUpscaleBtn);
 
             const downloadUpscaleLink = document.createElement('a');
             downloadUpscaleLink.href = scene.upscaleImageUrl;
             downloadUpscaleLink.target = '_blank';
+            downloadUpscaleLink.rel = 'noopener noreferrer';
             downloadUpscaleLink.download = '';
-
-            const downloadUpscaleBtn = document.createElement('button');
-            downloadUpscaleBtn.type = 'button';
-            downloadUpscaleBtn.className = 'small';
-            downloadUpscaleBtn.textContent = 'Download';
-            downloadUpscaleLink.appendChild(downloadUpscaleBtn);
+            downloadUpscaleLink.className = 'button-link small secondary';
+            downloadUpscaleLink.textContent = 'Download Upscale';
             actionsRow.appendChild(downloadUpscaleLink);
 
             upscaleCard.appendChild(actionsRow);
