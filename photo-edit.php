@@ -338,6 +338,10 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         const themeOptions = <?php echo json_encode($themeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         const DEFAULT_THEME_KEY = <?php echo json_encode($defaultThemeKey, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
+        const UPSCALE_PATH = '/v1/ai/image-upscaler-precision-v2';
+        const UPSCALE_STATUS_PATH = (taskId) => `/v1/ai/image-upscaler-precision-v2/${taskId}`;
+        const UPSCALE_POLL_INTERVAL = 7000;
+
         const poseVariants = [
             {
                 key: 'closeUpGlow',
@@ -479,6 +483,42 @@ if (!auth_is_admin() && !$isFlashEnabled) {
         function finalStatus(status) {
             const value = normalizeStatus(status);
             return value === 'COMPLETED' || value === 'FAILED' || value === 'ERROR';
+        }
+
+        function formatUpscaleStatus(status, hasRemote) {
+            const normalized = status ? String(status).toUpperCase() : '';
+            if (!normalized) {
+                return hasRemote
+                    ? 'Belum ada proses. Klik tombol Upscale Precision V2.'
+                    : 'Menunggu hasil generate selesai sebelum melakukan upscale.';
+            }
+            if (normalized === 'REQUESTING') {
+                return 'Mengirim permintaan ke server…';
+            }
+            if (['CREATED', 'PENDING', 'QUEUED', 'ACCEPTED', 'IN_QUEUE'].includes(normalized)) {
+                return 'Task dibuat, menunggu giliran…';
+            }
+            if (['PROCESSING', 'RUNNING', 'STARTED', 'IN_PROGRESS', 'INPROGRESS'].includes(normalized)) {
+                return 'Upscale sedang diproses…';
+            }
+            if (normalized === 'COMPLETED') {
+                return 'Upscale selesai';
+            }
+            if (['FAILED', 'ERROR'].includes(normalized)) {
+                return 'Upscale gagal';
+            }
+            return normalized.charAt(0) + normalized.slice(1).toLowerCase();
+        }
+
+        function clearUpscalePolling(task) {
+            if (task && task.upscalePollTimer) {
+                clearTimeout(task.upscalePollTimer);
+                task.upscalePollTimer = null;
+            }
+        }
+
+        function clearAllUpscalePolling() {
+            tasks.forEach((task) => clearUpscalePolling(task));
         }
 
         function updateFormStatus(message, type = 'info') {
@@ -858,6 +898,262 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             };
         }
 
+        async function fetchUpscaleStatus(taskId) {
+            if (!taskId) {
+                throw new Error('Task ID tidak ditemukan.');
+            }
+            const data = await callFreepik({ path: UPSCALE_STATUS_PATH(taskId), method: 'GET' });
+            const response = data && data.data ? data.data : (data || {});
+            const generated = Array.isArray(response.generated) ? [...response.generated] : [];
+            const candidates = [response.high_resolution, response.preview, response.url];
+            let extraUrl = null;
+            for (const candidate of candidates) {
+                if (typeof candidate === 'string' && candidate) {
+                    extraUrl = candidate;
+                    if (!generated.includes(candidate)) {
+                        generated.push(candidate);
+                    }
+                    break;
+                }
+            }
+            return {
+                status: response.status || null,
+                generated,
+                extraUrl
+            };
+        }
+
+        async function applyUpscaleResult(task, remoteUrl) {
+            if (!task || !remoteUrl) {
+                return;
+            }
+            if (task.upscaleRemoteUrl === remoteUrl && task.upscaleImageUrl) {
+                return;
+            }
+            task.upscaleRemoteUrl = remoteUrl;
+            try {
+                const cachedUrl = await cacheGeneratedAsset(remoteUrl);
+                task.upscaleImageUrl = cachedUrl || remoteUrl;
+                task.upscaleCachedUrl = cachedUrl || null;
+                task.upscaleCacheError = null;
+            } catch (error) {
+                task.upscaleImageUrl = remoteUrl;
+                task.upscaleCachedUrl = null;
+                task.upscaleCacheError = error && error.message ? error.message : 'Gagal menyimpan hasil ke server.';
+                console.warn('Gagal menyimpan hasil upscale ke server:', error);
+            }
+        }
+
+        async function pollUpscaleTask(task) {
+            if (!task || !task.upscaleTaskId) {
+                clearUpscalePolling(task);
+                return;
+            }
+
+            clearUpscalePolling(task);
+
+            try {
+                const { status, generated, extraUrl } = await fetchUpscaleStatus(task.upscaleTaskId);
+                if (status) {
+                    const normalized = normalizeStatus(status);
+                    task.upscaleStatus = status;
+                    if (!['FAILED', 'ERROR'].includes(normalized)) {
+                        task.upscaleError = null;
+                    }
+                    if (['FAILED', 'ERROR'].includes(normalized) && !task.upscaleError) {
+                        task.upscaleError = 'Upscale gagal diproses. Coba lagi.';
+                    }
+                }
+
+                const firstGenerated = Array.isArray(generated) && generated.length
+                    ? generated[0]
+                    : (extraUrl || null);
+                if (firstGenerated) {
+                    await applyUpscaleResult(task, firstGenerated);
+                }
+            } catch (error) {
+                task.upscaleStatus = 'ERROR';
+                task.upscaleError = error && error.message ? error.message : 'Gagal memantau status upscale.';
+            }
+
+            renderResults();
+
+            if (!finalStatus(task.upscaleStatus)) {
+                task.upscalePollTimer = setTimeout(() => {
+                    pollUpscaleTask(task);
+                }, UPSCALE_POLL_INTERVAL);
+            }
+        }
+
+        async function requestUpscale(task) {
+            if (!task) {
+                return;
+            }
+            if (!task.remoteUrl || !task.remoteUrl.startsWith('http')) {
+                alert('Upscale hanya dapat dilakukan setelah gambar selesai digenerate.');
+                return;
+            }
+
+            clearUpscalePolling(task);
+            task.upscaleStatus = 'REQUESTING';
+            task.upscaleError = null;
+            task.upscaleTaskId = null;
+            task.upscaleImageUrl = null;
+            task.upscaleRemoteUrl = null;
+            task.upscaleCachedUrl = null;
+            task.upscaleCacheError = null;
+            renderResults();
+
+            try {
+                const body = { image: task.remoteUrl };
+                if (task.prompt) {
+                    body.prompt = task.prompt;
+                }
+
+                const data = await callFreepik({ path: UPSCALE_PATH, method: 'POST', body });
+
+                let taskId = null;
+                let status = 'CREATED';
+                let generated = [];
+                let extraUrl = null;
+
+                if (data && data.data) {
+                    taskId = data.data.task_id || null;
+                    status = data.data.status || status;
+                    if (Array.isArray(data.data.generated)) {
+                        generated = data.data.generated;
+                    }
+                } else if (data && typeof data === 'object') {
+                    if (Array.isArray(data.generated)) {
+                        generated = data.generated;
+                        status = 'COMPLETED';
+                    } else {
+                        extraUrl = data.url || data.high_resolution || data.preview || null;
+                        if (extraUrl) {
+                            generated = [extraUrl];
+                            status = 'COMPLETED';
+                        }
+                    }
+                }
+
+                const firstGenerated = Array.isArray(generated) && generated.length
+                    ? generated[0]
+                    : (extraUrl || null);
+
+                task.upscaleStatus = status;
+                task.upscaleTaskId = taskId || null;
+
+                if (firstGenerated) {
+                    await applyUpscaleResult(task, firstGenerated);
+                }
+
+                renderResults();
+
+                if (taskId && !finalStatus(status)) {
+                    await pollUpscaleTask(task);
+                } else if (!firstGenerated && finalStatus(status) && ['FAILED', 'ERROR'].includes(normalizeStatus(status))) {
+                    task.upscaleError = task.upscaleError || 'Upscale gagal diproses. Coba lagi.';
+                    renderResults();
+                }
+            } catch (error) {
+                task.upscaleStatus = 'ERROR';
+                task.upscaleError = error && error.message ? error.message : 'Terjadi kesalahan saat melakukan upscale.';
+                renderResults();
+                alert('Gagal melakukan upscale: ' + task.upscaleError);
+            }
+        }
+
+        function createUpscaleCard(task) {
+            const card = document.createElement('div');
+            card.className = 'pose-upscale-card';
+
+            const normalized = task.upscaleStatus ? normalizeStatus(task.upscaleStatus) : '';
+            const hasRemote = !!task.remoteUrl;
+            const stateKey = normalized
+                ? statusIndicatorKey(task.upscaleStatus)
+                : (hasRemote ? 'pending' : 'waiting');
+            card.dataset.state = stateKey;
+
+            const header = document.createElement('div');
+            header.className = 'pose-upscale-header';
+
+            const title = document.createElement('div');
+            title.className = 'pose-upscale-title';
+            title.textContent = 'Upscale Precision V2';
+            header.appendChild(title);
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'pose-upscale-button';
+            const isProcessing = task.upscaleStatus && !finalStatus(task.upscaleStatus);
+            if (!hasRemote) {
+                button.textContent = 'Menunggu hasil generate';
+            } else if (isProcessing) {
+                button.textContent = 'Upscale sedang diproses…';
+            } else {
+                button.textContent = 'Upscale Precision V2';
+            }
+            button.disabled = !hasRemote || isProcessing;
+            button.addEventListener('click', () => requestUpscale(task));
+            header.appendChild(button);
+
+            card.appendChild(header);
+
+            const status = document.createElement('div');
+            status.className = 'pose-upscale-status';
+            if (task.upscaleError) {
+                status.dataset.type = 'error';
+                status.textContent = `Upscale gagal: ${task.upscaleError}`;
+            } else {
+                status.textContent = formatUpscaleStatus(task.upscaleStatus, hasRemote);
+                if (stateKey === 'completed') {
+                    status.dataset.type = 'success';
+                } else if (stateKey === 'processing') {
+                    status.dataset.type = 'info';
+                }
+            }
+            card.appendChild(status);
+
+            if (task.upscaleImageUrl) {
+                const preview = document.createElement('div');
+                preview.className = 'pose-upscale-preview';
+                const img = document.createElement('img');
+                img.src = task.upscaleImageUrl;
+                img.alt = `${task.variant.title} — Upscale Precision V2`;
+                preview.appendChild(img);
+                card.appendChild(preview);
+
+                const actions = document.createElement('div');
+                actions.className = 'pose-upscale-actions';
+
+                const openLink = document.createElement('a');
+                openLink.href = task.upscaleImageUrl;
+                openLink.target = '_blank';
+                openLink.rel = 'noopener';
+                openLink.className = 'pose-upscale-action';
+                openLink.textContent = 'Buka';
+                actions.appendChild(openLink);
+
+                const downloadLink = document.createElement('a');
+                downloadLink.href = task.upscaleImageUrl;
+                downloadLink.download = `${task.variant.key || 'pose'}-upscale.png`;
+                downloadLink.className = 'pose-upscale-action';
+                downloadLink.textContent = 'Download';
+                actions.appendChild(downloadLink);
+
+                card.appendChild(actions);
+            }
+
+            if (task.upscaleCacheError) {
+                const note = document.createElement('div');
+                note.className = 'pose-upscale-note';
+                note.textContent = task.upscaleCacheError;
+                card.appendChild(note);
+            }
+
+            return card;
+        }
+
         function renderResults() {
             if (!resultGrid) {
                 return;
@@ -933,6 +1229,13 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                     toolbar.appendChild(downloadLink);
 
                     tile.appendChild(toolbar);
+                }
+
+                if (task.imageUrl || task.remoteUrl) {
+                    const upscaleCard = createUpscaleCard(task);
+                    if (upscaleCard) {
+                        tile.appendChild(upscaleCard);
+                    }
                 }
 
                 fragment.appendChild(tile);
@@ -1062,6 +1365,7 @@ if (!auth_is_admin() && !$isFlashEnabled) {
             setLoadingState(true);
             updateFormStatus('Mengunggah referensi ke server…', 'info');
             stopPolling();
+            clearAllUpscalePolling();
             tasks = [];
             coinsDebitedForRun = false;
             renderResults();
@@ -1107,7 +1411,15 @@ if (!auth_is_admin() && !$isFlashEnabled) {
                 cacheError: null,
                 cacheAttempts: 0,
                 downloadName: null,
-                error: null
+                error: null,
+                upscaleStatus: null,
+                upscaleTaskId: null,
+                upscaleImageUrl: null,
+                upscaleRemoteUrl: null,
+                upscaleError: null,
+                upscalePollTimer: null,
+                upscaleCachedUrl: null,
+                upscaleCacheError: null
             }));
             renderResults();
 

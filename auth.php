@@ -1120,11 +1120,16 @@ function auth_drive_download_remote_asset(array $account, string $url, string $k
     @chmod($dest, 0664);
 
     $relative = $storageInfo['relative'] . '/' . $basename;
+    $sizeBytes = @filesize($dest);
+    if (!$sizeBytes && isset($data) && $data !== false) {
+        $sizeBytes = strlen($data);
+    }
 
     return [
         'relative_path' => $relative,
         'absolute_path' => $dest,
         'url' => app_public_url($relative),
+        'size_bytes' => $sizeBytes ?: null,
     ];
 }
 
@@ -1152,6 +1157,10 @@ function auth_drive_prepare_local_item(array $account, array $item): ?array
             if ($type !== 'video') {
                 $item['thumbnail_url'] = $localUrl;
             }
+            $size = @filesize($absolute);
+            if ($size) {
+                $item['size_bytes'] = (int)$size;
+            }
             if ($sourceUrl !== '') {
                 $item['source_url'] = $sourceUrl;
             }
@@ -1170,6 +1179,9 @@ function auth_drive_prepare_local_item(array $account, array $item): ?array
             $item['url'] = $downloaded['url'];
             if ($type !== 'video') {
                 $item['thumbnail_url'] = $downloaded['url'];
+            }
+            if (!empty($downloaded['size_bytes'])) {
+                $item['size_bytes'] = (int)$downloaded['size_bytes'];
             }
         }
     }
@@ -1323,6 +1335,24 @@ function auth_normalize_drive_item($item): ?array
     $model = isset($item['model']) && $item['model'] !== '' ? (string)$item['model'] : null;
     $prompt = isset($item['prompt']) && $item['prompt'] !== '' ? (string)$item['prompt'] : null;
 
+    $sizeBytes = null;
+    foreach (['size_bytes', 'sizeBytes', 'size'] as $sizeKey) {
+        if (!isset($item[$sizeKey])) {
+            continue;
+        }
+        $value = $item[$sizeKey];
+        if (is_string($value)) {
+            $value = trim($value);
+        }
+        if ($value === '' || $value === null) {
+            continue;
+        }
+        if (is_numeric($value)) {
+            $sizeBytes = (int)round((float)$value);
+            break;
+        }
+    }
+
     $createdAt = isset($item['created_at']) && $item['created_at'] !== ''
         ? (string)$item['created_at']
         : gmdate('c');
@@ -1349,6 +1379,10 @@ function auth_normalize_drive_item($item): ?array
         'prompt' => $prompt,
         'created_at' => $createdAt,
     ];
+
+    if ($sizeBytes && $sizeBytes > 0) {
+        $normalized['size_bytes'] = $sizeBytes;
+    }
 
     if ($storagePath) {
         $normalized['storage_path'] = $storagePath;
