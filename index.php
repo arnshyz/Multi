@@ -1192,6 +1192,254 @@ if ($requestedApi === 'drive-delete') {
     ]);
 }
 
+if ($requestedApi === 'drive-delete-bulk') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'DELETE') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST atau DELETE untuk menghapus drive.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $account = auth_normalize_account($account);
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $items = [];
+    if (isset($payload['items']) && is_array($payload['items'])) {
+        $items = $payload['items'];
+    }
+    if (isset($payload['ids']) && is_array($payload['ids'])) {
+        foreach ($payload['ids'] as $id) {
+            if (!is_string($id) && !is_numeric($id)) {
+                continue;
+            }
+            $items[] = ['id' => (string)$id];
+        }
+    }
+
+    if (!$items) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 422,
+            'error' => 'Tidak ada item drive yang dikirimkan.'
+        ], 422);
+    }
+
+    $errors = [];
+    $remaining = auth_drive_delete_items($account['id'], $items, $errors);
+    if ($remaining === null) {
+        $status = isset($errors['general']) ? 500 : 404;
+        auth_json_response([
+            'ok' => false,
+            'status' => $status,
+            'error' => $errors ?: 'Item drive tidak ditemukan.'
+        ], $status);
+    }
+
+    $remaining = drive_merge_items_with_filesystem($account, $remaining);
+
+    auth_json_response([
+        'ok' => true,
+        'status' => 200,
+        'data' => [
+            'items' => $remaining,
+        ],
+    ]);
+}
+
+if ($requestedApi === 'drive-download') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        auth_json_response([
+            'ok' => false,
+            'status' => 405,
+            'error' => 'Gunakan metode POST untuk mengunduh drive.'
+        ], 405);
+    }
+
+    $account = auth_current_account();
+    if (!$account) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 401,
+            'error' => 'Sesi berakhir, silakan login ulang.'
+        ], 401);
+    }
+
+    $account = auth_normalize_account($account);
+
+    $raw = file_get_contents('php://input');
+    $payload = json_decode($raw, true);
+    if (!is_array($payload)) {
+        $payload = $_POST;
+    }
+
+    $downloadAll = !empty($payload['all']);
+    $ids = [];
+    $paths = [];
+    if (!$downloadAll) {
+        if (isset($payload['ids']) && is_array($payload['ids'])) {
+            foreach ($payload['ids'] as $id) {
+                if (!is_string($id) && !is_numeric($id)) {
+                    continue;
+                }
+                $ids[] = (string)$id;
+            }
+        }
+        if (isset($payload['items']) && is_array($payload['items'])) {
+            foreach ($payload['items'] as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                if (isset($item['id']) && $item['id'] !== '') {
+                    $ids[] = (string)$item['id'];
+                }
+                if (!empty($item['storage_path'])) {
+                    $normalized = auth_drive_normalize_storage_path($item['storage_path']);
+                    if ($normalized) {
+                        $paths[] = $normalized;
+                    }
+                }
+            }
+        }
+    }
+
+    $items = auth_drive_get_items($account['id']);
+    $items = drive_merge_items_with_filesystem($account, $items);
+
+    $storageInfo = auth_drive_storage_info($account);
+    $baseDir = $storageInfo['absolute'];
+    $realBase = realpath($baseDir) ?: null;
+
+    $files = [];
+    $addedPaths = [];
+    foreach ($items as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $entryId = isset($entry['id']) ? (string)$entry['id'] : '';
+        $storagePath = isset($entry['storage_path']) ? auth_drive_normalize_storage_path($entry['storage_path']) : null;
+
+        if (!$downloadAll && $entryId === '' && !$storagePath) {
+            continue;
+        }
+
+        if (!$downloadAll && $entryId !== '' && $ids && !in_array($entryId, $ids, true) && (!$storagePath || !in_array($storagePath, $paths, true))) {
+            continue;
+        }
+
+        if (!$storagePath) {
+            continue;
+        }
+
+        $absolute = __DIR__ . '/' . $storagePath;
+        if (!is_file($absolute)) {
+            continue;
+        }
+        $real = realpath($absolute);
+        if ($realBase && $real && strpos($real, $realBase) !== 0) {
+            continue;
+        }
+
+        $files[] = [
+            'path' => $absolute,
+            'name' => basename($absolute),
+        ];
+        $addedPaths[$storagePath] = true;
+    }
+
+    foreach ($paths as $path) {
+        if (isset($addedPaths[$path])) {
+            continue;
+        }
+        $absolute = __DIR__ . '/' . $path;
+        if (!is_file($absolute)) {
+            continue;
+        }
+        $real = realpath($absolute);
+        if ($realBase && $real && strpos($real, $realBase) !== 0) {
+            continue;
+        }
+        $files[] = [
+            'path' => $absolute,
+            'name' => basename($absolute),
+        ];
+    }
+
+    if (!$files) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 404,
+            'error' => 'File tidak tersedia untuk diunduh.'
+        ], 404);
+    }
+
+    if (!class_exists('ZipArchive')) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 500,
+            'error' => 'ZipArchive tidak tersedia di server.'
+        ], 500);
+    }
+
+    $tmpFile = tempnam(sys_get_temp_dir(), 'drive_zip_');
+    if ($tmpFile === false) {
+        auth_json_response([
+            'ok' => false,
+            'status' => 500,
+            'error' => 'Gagal membuat file sementara.'
+        ], 500);
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($tmpFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        @unlink($tmpFile);
+        auth_json_response([
+            'ok' => false,
+            'status' => 500,
+            'error' => 'Gagal menyiapkan arsip ZIP.'
+        ], 500);
+    }
+
+    $nameUsage = [];
+    foreach ($files as $file) {
+        $name = $file['name'];
+        if (isset($nameUsage[$name])) {
+            $nameUsage[$name]++;
+            $info = pathinfo($name);
+            $base = $info['filename'] ?? $name;
+            $ext = isset($info['extension']) ? '.' . $info['extension'] : '';
+            $zipName = $base . '-' . $nameUsage[$name] . $ext;
+        } else {
+            $nameUsage[$name] = 0;
+            $zipName = $name;
+        }
+        $zip->addFile($file['path'], $zipName);
+    }
+
+    $zip->close();
+
+    header('Content-Type: application/zip');
+    header('Content-Length: ' . filesize($tmpFile));
+    header('Content-Disposition: attachment; filename="drive-download-' . date('Ymd-His') . '.zip"');
+    readfile($tmpFile);
+    @unlink($tmpFile);
+    exit;
+}
+
 if ($requestedApi === 'gemini') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         auth_json_response([
@@ -3427,6 +3675,42 @@ body[data-theme="light"] {
   flex-direction: column;
   gap: 18px;
 }
+.drive-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+.drive-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text);
+}
+.drive-select-all input {
+  width: 18px;
+  height: 18px;
+  accent-color: #6366f1;
+}
+.drive-selection-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+.drive-bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.drive-bulk-actions button {
+  min-width: 150px;
+}
 .drive-empty {
   padding: 48px 24px;
   border: 1px dashed var(--border);
@@ -3515,6 +3799,25 @@ body[data-theme="light"] {
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
   z-index: 6;
 }
+.drive-select-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 7;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 4px 6px;
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
+}
+.drive-select-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #6366f1;
+}
+.drive-card[data-selected="true"] {
+  border-color: rgba(99, 102, 241, 0.7);
+  box-shadow: 0 20px 40px rgba(99, 102, 241, 0.15);
+}
 .drive-card-footer {
   display: flex;
   flex-direction: column;
@@ -3578,6 +3881,18 @@ body[data-theme="light"] {
   }
   .drive-filters {
     align-items: stretch;
+  }
+  .drive-bulk {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .drive-bulk-actions {
+    width: 100%;
+    flex-direction: column;
+    margin-left: 0;
+  }
+  .drive-bulk-actions button {
+    width: 100%;
   }
 }
 
@@ -7010,6 +7325,19 @@ body[data-theme="light"] .profile-expiry.expired {
         <button type="button" class="small secondary drive-clear-date" id="driveClearDate">Reset tanggal</button>
       </section>
 
+      <section class="drive-bulk" id="driveBulkToolbar">
+        <label class="drive-select-all" for="driveSelectAll">
+          <input type="checkbox" id="driveSelectAll">
+          <span>Pilih semua</span>
+        </label>
+        <span class="drive-selection-count" id="driveSelectionCount">Tidak ada file dipilih</span>
+        <div class="drive-bulk-actions">
+          <button type="button" class="small secondary" id="driveDownloadSelected">Download terpilih (ZIP)</button>
+          <button type="button" class="small secondary" id="driveDownloadAll">Download semua (ZIP)</button>
+          <button type="button" class="small danger" id="driveDeleteSelected">Hapus terpilih</button>
+        </div>
+      </section>
+
       <section class="drive-content">
         <div id="driveEmpty" class="drive-empty">Belum ada file tersimpan. Generate konten untuk mengisi drive pribadi kamu.</div>
         <div id="driveGrid" class="drive-grid"></div>
@@ -7745,6 +8073,12 @@ body[data-theme="light"] .profile-expiry.expired {
   const driveClearDateBtn = document.getElementById('driveClearDate');
   const driveTotalCountEl = document.getElementById('driveTotalCount');
   const driveTypeSummaryEl = document.getElementById('driveTypeSummary');
+  const driveBulkToolbar = document.getElementById('driveBulkToolbar');
+  const driveSelectAllCheckbox = document.getElementById('driveSelectAll');
+  const driveSelectionCount = document.getElementById('driveSelectionCount');
+  const driveDownloadSelectedBtn = document.getElementById('driveDownloadSelected');
+  const driveDownloadAllBtn = document.getElementById('driveDownloadAll');
+  const driveDeleteSelectedBtn = document.getElementById('driveDeleteSelected');
   const watermarkNotice = document.getElementById('watermarkNotice');
   const driveWatermarkNotice = document.getElementById('driveWatermarkNotice');
   const maintenanceOverlayEl = document.getElementById('maintenanceOverlay');
@@ -7981,6 +8315,10 @@ body[data-theme="light"] .profile-expiry.expired {
   let driveItems = [];
   let driveLoaded = false;
   let driveLoading = false;
+  let driveSelectedIds = new Set();
+  let driveVisibleIds = new Set();
+
+  updateDriveSelectionUI();
 
   function defaultPlatformState() {
     return {
@@ -8713,6 +9051,66 @@ body[data-theme="light"] .profile-expiry.expired {
     }
   }
 
+  function driveItemKey(item) {
+    if (!item || typeof item !== 'object') return '';
+    if (item.id) return String(item.id);
+    if (item.url) return String(item.url);
+    return '';
+  }
+
+  function pruneDriveSelection() {
+    const available = new Set((driveItems || []).map(driveItemKey).filter(Boolean));
+    let changed = false;
+    driveSelectedIds.forEach(id => {
+      if (!available.has(id)) {
+        driveSelectedIds.delete(id);
+        changed = true;
+      }
+    });
+    return { available, changed };
+  }
+
+  function getValidDriveSelectionIds() {
+    pruneDriveSelection();
+    return Array.from(driveSelectedIds);
+  }
+
+  function updateDriveSelectionForKey(key, selected) {
+    if (!key) return;
+    if (selected) {
+      driveSelectedIds.add(key);
+    } else {
+      driveSelectedIds.delete(key);
+    }
+  }
+
+  function resetDriveSelection() {
+    driveSelectedIds = new Set();
+    updateDriveSelectionUI();
+  }
+
+  function updateDriveSelectionUI() {
+    pruneDriveSelection();
+    const selections = Array.from(driveSelectedIds);
+    const visibleTotal = driveVisibleIds.size;
+    if (driveSelectionCount) {
+      driveSelectionCount.textContent = selections.length
+        ? `${selections.length.toLocaleString('id-ID')} file dipilih`
+        : 'Tidak ada file dipilih';
+    }
+    if (driveSelectAllCheckbox) {
+      driveSelectAllCheckbox.disabled = visibleTotal === 0;
+      driveSelectAllCheckbox.indeterminate = selections.length > 0 && selections.length < visibleTotal;
+      driveSelectAllCheckbox.checked = visibleTotal > 0 && selections.length === visibleTotal;
+    }
+    if (driveDownloadSelectedBtn) {
+      driveDownloadSelectedBtn.disabled = selections.length === 0;
+    }
+    if (driveDeleteSelectedBtn) {
+      driveDeleteSelectedBtn.disabled = selections.length === 0;
+    }
+  }
+
   function renderDriveItems() {
     if (!driveGrid || !driveEmpty) {
       return;
@@ -8747,10 +9145,19 @@ body[data-theme="light"] .profile-expiry.expired {
     driveEmpty.style.display = items.length ? 'none' : 'block';
     driveGrid.innerHTML = '';
 
+    const visibleSet = new Set();
+
     items.forEach(item => {
       if (!item || !item.url) return;
       const card = document.createElement('div');
       card.className = 'drive-card';
+
+      const itemKey = driveItemKey(item);
+      const isSelected = itemKey && driveSelectedIds.has(itemKey);
+      card.dataset.selected = isSelected ? 'true' : 'false';
+      if (itemKey) {
+        visibleSet.add(itemKey);
+      }
 
       const thumb = document.createElement('div');
       thumb.className = 'drive-thumb';
@@ -8761,6 +9168,21 @@ body[data-theme="light"] .profile-expiry.expired {
       badge.className = 'drive-type-badge';
       badge.textContent = type === 'video' ? 'VIDEO' : 'FOTO';
       thumb.appendChild(badge);
+
+      const selector = document.createElement('label');
+      selector.className = 'drive-select-toggle';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isSelected;
+      checkbox.disabled = !itemKey;
+      checkbox.addEventListener('click', evt => evt.stopPropagation());
+      checkbox.addEventListener('change', () => {
+        updateDriveSelectionForKey(itemKey, checkbox.checked);
+        card.dataset.selected = checkbox.checked ? 'true' : 'false';
+        updateDriveSelectionUI();
+      });
+      selector.appendChild(checkbox);
+      card.appendChild(selector);
 
       if (type === 'video') {
         const video = document.createElement('video');
@@ -8847,6 +9269,8 @@ body[data-theme="light"] .profile-expiry.expired {
       driveGrid.appendChild(card);
     });
 
+    driveVisibleIds = visibleSet;
+    updateDriveSelectionUI();
     updateDriveSummary();
   }
 
@@ -8870,6 +9294,7 @@ body[data-theme="light"] .profile-expiry.expired {
       }
       driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
       driveLoaded = true;
+      resetDriveSelection();
       renderDriveItems();
     } catch (err) {
       console.warn('Gagal memuat drive:', err);
@@ -8896,6 +9321,7 @@ body[data-theme="light"] .profile-expiry.expired {
 
     driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
     driveLoaded = true;
+    resetDriveSelection();
     renderDriveItems();
     return driveItems;
   }
@@ -9106,6 +9532,7 @@ body[data-theme="light"] .profile-expiry.expired {
       }
       driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
       driveLoaded = true;
+      resetDriveSelection();
       renderDriveItems();
     } catch (err) {
       alert('Gagal menghapus file: ' + (err.message || err));
@@ -9395,6 +9822,8 @@ body[data-theme="light"] .profile-expiry.expired {
       freeUpgradeAutoShown = false;
       driveItems = [];
       driveLoaded = false;
+      driveVisibleIds = new Set();
+      resetDriveSelection();
       setDriveAccess(false);
       renderDriveItems();
     }
@@ -9483,6 +9912,109 @@ body[data-theme="light"] .profile-expiry.expired {
       } else {
         trigger.removeAttribute('aria-disabled');
       }
+    }
+  }
+
+  function withButtonLoading(button, label) {
+    if (!button) return () => {};
+    const original = button.textContent;
+    button.disabled = true;
+    if (label) {
+      button.textContent = label;
+    }
+    return () => {
+      button.disabled = false;
+      button.textContent = original;
+    };
+  }
+
+  async function downloadDriveItems(options = {}, button) {
+    const ids = Array.isArray(options.ids) ? options.ids.filter(Boolean) : [];
+    const downloadAll = Boolean(options.all);
+    if (!downloadAll && ids.length === 0) {
+      alert('Pilih minimal 1 file untuk diunduh.');
+      return;
+    }
+
+    const stopLoading = withButtonLoading(button, 'Menyiapkan ZIP…');
+    try {
+      const payload = downloadAll ? { all: true } : { ids };
+      const res = await fetch(DRIVE_DOWNLOAD_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+      });
+
+      const contentType = (res.headers.get('Content-Type') || '').toLowerCase();
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(pickErrorMessage(data && data.error));
+        }
+        throw new Error('Respon unduhan tidak valid.');
+      }
+
+      if (!res.ok) {
+        throw new Error('Gagal menyiapkan unduhan.');
+      }
+
+      const blob = await res.blob();
+      if (!blob || !blob.size) {
+        throw new Error('File ZIP kosong.');
+      }
+
+      const url = URL.createObjectURL(blob);
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match ? match[1] : `drive-download-${Date.now()}.zip`;
+
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Gagal menyiapkan download: ' + (err.message || err));
+    } finally {
+      stopLoading();
+    }
+  }
+
+  async function deleteSelectedDriveEntries() {
+    const ids = getValidDriveSelectionIds();
+    if (!ids.length) {
+      alert('Pilih minimal 1 file untuk dihapus.');
+      return;
+    }
+
+    const message = `Hapus ${ids.length.toLocaleString('id-ID')} file dari drive?`;
+    if (!confirm(message)) {
+      return;
+    }
+
+    const stopLoading = withButtonLoading(driveDeleteSelectedBtn, 'Menghapus…');
+    try {
+      const res = await fetch(DRIVE_DELETE_BULK_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ ids })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(pickErrorMessage(data && data.error));
+      }
+      driveItems = Array.isArray(data.data && data.data.items) ? data.data.items : [];
+      driveLoaded = true;
+      resetDriveSelection();
+      renderDriveItems();
+    } catch (err) {
+      alert('Gagal menghapus file terpilih: ' + (err.message || err));
+    } finally {
+      stopLoading();
     }
   }
 
@@ -9959,6 +10491,8 @@ body[data-theme="light"] .profile-expiry.expired {
   const STORAGE_KEY = 'freepik_jobs_v1';
   const DRIVE_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive';
   const DRIVE_DELETE_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive-delete';
+  const DRIVE_DELETE_BULK_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive-delete-bulk';
+  const DRIVE_DOWNLOAD_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=drive-download';
   const ACCOUNT_AVATAR_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-avatar';
   const ACCOUNT_PASSWORD_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=account-password';
   const GEMINI_ENDPOINT = '<?= htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES) ?>?api=gemini';
@@ -12327,6 +12861,31 @@ body[data-theme="light"] .profile-expiry.expired {
       if (driveDateFilter) driveDateFilter.value = '';
       renderDriveItems();
     });
+  }
+  if (driveSelectAllCheckbox) {
+    driveSelectAllCheckbox.addEventListener('change', () => {
+      const shouldSelect = driveSelectAllCheckbox.checked;
+      driveVisibleIds.forEach(id => {
+        updateDriveSelectionForKey(id, shouldSelect);
+      });
+      renderDriveItems();
+    });
+  }
+  if (driveDownloadSelectedBtn) {
+    driveDownloadSelectedBtn.dataset.defaultLabel = driveDownloadSelectedBtn.textContent;
+    driveDownloadSelectedBtn.addEventListener('click', () => {
+      downloadDriveItems({ ids: getValidDriveSelectionIds() }, driveDownloadSelectedBtn);
+    });
+  }
+  if (driveDownloadAllBtn) {
+    driveDownloadAllBtn.dataset.defaultLabel = driveDownloadAllBtn.textContent;
+    driveDownloadAllBtn.addEventListener('click', () => {
+      downloadDriveItems({ all: true }, driveDownloadAllBtn);
+    });
+  }
+  if (driveDeleteSelectedBtn) {
+    driveDeleteSelectedBtn.dataset.defaultLabel = driveDeleteSelectedBtn.textContent;
+    driveDeleteSelectedBtn.addEventListener('click', deleteSelectedDriveEntries);
   }
 
   navButtons = Array.from(document.querySelectorAll('.sidebar-link[data-target]'));
