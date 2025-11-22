@@ -2358,6 +2358,125 @@ function auth_drive_delete_item(string $accountId, ?string $itemId, ?string $ite
     return $data['accounts'][$foundIndex]['drive_items'] ?? [];
 }
 
+function auth_drive_delete_items(string $accountId, array $items, array &$errors = [])
+{
+    $errors = [];
+
+    if (!$items) {
+        $errors['general'] = 'Tidak ada item drive yang dikirimkan.';
+        return null;
+    }
+
+    $idSet = [];
+    $urlSet = [];
+    $storageSet = [];
+    foreach ($items as $entry) {
+        if (is_string($entry)) {
+            $entry = ['id' => $entry];
+        }
+        if (!is_array($entry)) {
+            continue;
+        }
+        if (!empty($entry['id'])) {
+            $idSet[(string)$entry['id']] = true;
+        }
+        if (!empty($entry['url'])) {
+            $urlSet[strtolower((string)$entry['url'])] = true;
+        }
+        if (!empty($entry['storage_path'])) {
+            $normalized = auth_drive_normalize_storage_path($entry['storage_path']);
+            if ($normalized) {
+                $storageSet[$normalized] = true;
+            }
+        }
+    }
+
+    if (!$idSet && !$urlSet && !$storageSet) {
+        $errors['general'] = 'Tidak ada item drive yang valid.';
+        return null;
+    }
+
+    $data = auth_storage_read();
+    $foundIndex = null;
+    foreach ($data['accounts'] as $idx => $account) {
+        if (is_array($account) && ($account['id'] ?? null) === $accountId) {
+            $foundIndex = $idx;
+            break;
+        }
+    }
+
+    if ($foundIndex === null) {
+        $errors['account'] = 'Akun tidak ditemukan.';
+        return null;
+    }
+
+    $account = auth_normalize_account($data['accounts'][$foundIndex]);
+    $existing = isset($account['drive_items']) && is_array($account['drive_items'])
+        ? $account['drive_items']
+        : [];
+
+    $filtered = [];
+    $removed = false;
+    $storageToDelete = [];
+
+    foreach ($existing as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        $entryId = isset($entry['id']) ? (string)$entry['id'] : '';
+        $entryUrl = isset($entry['url']) ? strtolower((string)$entry['url']) : '';
+        $entryStorage = isset($entry['storage_path']) ? auth_drive_normalize_storage_path($entry['storage_path']) : null;
+
+        $matches = false;
+        if ($entryId !== '' && isset($idSet[$entryId])) {
+            $matches = true;
+        }
+        if (!$matches && $entryUrl !== '' && isset($urlSet[$entryUrl])) {
+            $matches = true;
+        }
+        if (!$matches && $entryStorage && isset($storageSet[$entryStorage])) {
+            $matches = true;
+        }
+
+        if ($matches) {
+            $removed = true;
+            if ($entryStorage) {
+                $storageToDelete[] = $entryStorage;
+            }
+            continue;
+        }
+
+        $filtered[] = $entry;
+    }
+
+    foreach (array_keys($storageSet) as $path) {
+        if (!in_array($path, $storageToDelete, true)) {
+            $storageToDelete[] = $path;
+        }
+    }
+
+    if (!$removed && !$storageToDelete) {
+        $errors['general'] = 'Item drive tidak ditemukan.';
+        return null;
+    }
+
+    $account['drive_items'] = array_values($filtered);
+    $account['updated_at'] = gmdate('c');
+    $data['accounts'][$foundIndex] = auth_normalize_account($account);
+
+    if (!auth_storage_write($data)) {
+        $errors['general'] = 'Gagal menyimpan perubahan drive.';
+        return null;
+    }
+
+    if ($storageToDelete) {
+        auth_drive_delete_storage_files($account, $storageToDelete);
+    }
+
+    return $data['accounts'][$foundIndex]['drive_items'] ?? [];
+}
+
 function auth_create_account_entry(array $input, array &$errors = []): ?array
 {
     $errors = [];
