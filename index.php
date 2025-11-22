@@ -13385,6 +13385,18 @@ body[data-theme="light"] .profile-expiry.expired {
       ]
     },
     {
+      id: 'luxury',
+      title: 'Action with Product',
+      styles: [
+        { key: 'holding_bossride', label: 'Boss Ride', description: 'Backseat boss with driver', icon: '🔥', prompt: 'first-person POV from the back seat behind the driver, professional chauffeur clearly visible driving in front, camera at chest level of a VIP passenger sitting in the middle seat, hand casually holding the product toward the camera, logo clearly visible, interior luxury car, outside road slightly blurred, looks like a rich boss on a business trip, vertical 9:16 UGC smartphone photo, natural light, cinematic but realistic' },
+        { key: 'mobil', label: 'Mobil BMW', description: 'Didalam Mobil', icon: '🚘', prompt: 'first-person POV of a hand holding the product in a luxury car interior, logo clearly visible, relaxed grip, legs slightly visible in the background, soft daylight, vertical 9:16 UGC smartphone photo, natural colors, looks like a real TikTok content' },
+        { key: 'bedroom_aesthetic', label: 'Bedroom Aesthetic', description: 'cozy aesthetic bedroom', icon: '🛏️', prompt: 'aesthetic bedroom scene with soft warm lighting, neutral tones and cozy decor, fairy lights and minimalistic furniture, female model based on the reference photo sitting on the bed, casually holding the product near the camera, logo clearly visible, natural smile and eye contact, keep the face and hairstyle consistent with the reference image, realistic skin texture, vertical 9:16 smartphone UGC photo, looks like a real influencer promoting the product on social media' },
+        { key: 'lookbook_studio', label: 'Lookbook Studio', description: 'di ruangan estetik', icon: '🧍', prompt: 'full-body shot of a stylish model standing in a bright minimalist living room, casual streetwear vibe, sofa on the side, clothing rack with hanging clothes behind, indoor plant, soft daylight through sheer curtains, clean wooden floor and rug, vertical 9:16 smartphone UGC photo, looks like fashion lookbook / outfit try-on content for social media' },
+        { key: 'lookbook_top_angle', label: 'Lookbook Top Angle', description: 'Model difoto dari atas', icon: '📸', prompt: 'slightly high-angle shot of a stylish model standing in a minimalist dressing room, hands in pockets, relaxed pose, clothing rack with hanging outfits and shoes in the background, wall decor and clock on the wall, soft indoor lighting, clean and modern room aesthetic, vertical 9:16 smartphone UGC photo, looks like casual outfit showcase content for social media' },
+        { key: 'quick_demo', label: 'Quick Demo', description: 'How-To Tutorial', icon: '🎥', prompt: 'step-by-step demonstration shot, clear view of key features, instructional framing, slightly angled top view' }
+      ]
+    },
+    {
       id: 'action',
       title: 'Action with Product',
       styles: [
