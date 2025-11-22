@@ -9983,14 +9983,39 @@ body[data-theme="light"] .profile-expiry.expired {
     }
   }
 
+  function buildSelectedDriveEntriesPayload() {
+    const selected = getValidDriveSelectionIds();
+    const lookup = new Map();
+    (driveItems || []).forEach(item => {
+      if (!item || typeof item !== 'object') return;
+      const key = driveItemKey(item);
+      if (!key) return;
+      lookup.set(key, item);
+    });
+
+    return selected.map(key => {
+      const item = lookup.get(key);
+      if (item && typeof item === 'object') {
+        const entry = {};
+        if (item.id) entry.id = String(item.id);
+        if (item.url) entry.url = String(item.url);
+        const storagePath = item.storage_path || item.storagePath;
+        if (storagePath) entry.storage_path = storagePath;
+        return entry;
+      }
+    
+      return { id: key };
+    });
+  }
+
   async function deleteSelectedDriveEntries() {
-    const ids = getValidDriveSelectionIds();
-    if (!ids.length) {
+    const payloadItems = buildSelectedDriveEntriesPayload();
+    if (!payloadItems.length) {
       alert('Pilih minimal 1 file untuk dihapus.');
       return;
     }
 
-    const message = `Hapus ${ids.length.toLocaleString('id-ID')} file dari drive?`;
+    const message = `Hapus ${payloadItems.length.toLocaleString('id-ID')} file dari drive?`;
     if (!confirm(message)) {
       return;
     }
@@ -10001,7 +10026,7 @@ body[data-theme="light"] .profile-expiry.expired {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ ids })
+        body: JSON.stringify({ items: payloadItems })
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
